@@ -367,7 +367,7 @@ export const AttendanceLogTable: React.FC<AttendanceLogTableProps> = ({
           <h2 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2.5 flex-wrap">
             <span>{lang === 'ar' ? 'سجل الحضور اليومي والورديات' : 'Attendance & Shift Log'}</span>
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#0d2240] text-white text-xs font-bold border border-blue-900 shadow-sm shrink-0" dir="ltr">
-              <img src="/logo.png" alt="Tech Source" className="w-4 h-4 object-contain bg-white rounded-full p-0.5" onError={(e) => { (e.currentTarget as HTMLElement).style.display = 'none'; }} />
+              <img src="logo.png" alt="Tech Source" className="w-4 h-4 object-contain bg-white rounded-full p-0.5" onError={(e) => { (e.currentTarget as HTMLElement).style.display = 'none'; }} />
               <span>TECH SOURCE GDS</span>
             </span>
           </h2>

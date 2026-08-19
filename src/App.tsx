@@ -1633,7 +1633,7 @@ export default function App() {
             <div className="flex items-center gap-2.5">
               <div className="h-7 px-2 py-0.5 rounded-md bg-white border border-slate-700 flex items-center justify-center shrink-0">
                 <img 
-                  src="/logo.png" 
+                  src="logo.png"
                   alt="Tech Source GDS" 
                   className="h-full w-auto object-contain"
                   onError={(e) => { (e.currentTarget as HTMLElement).style.display = 'none'; }}

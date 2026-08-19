@@ -227,7 +227,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
               <Search className="w-5 h-5 text-emerald-600" />
               <span>{lang === 'ar' ? 'قسم Overall Search والتقارير الشاملة' : 'Overall Search & Employee Reports'}</span>
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#0d2240] text-white text-xs font-bold border border-blue-900 shadow-sm shrink-0" dir="ltr">
-                <img src="/logo.png" alt="Tech Source" className="w-4 h-4 object-contain bg-white rounded-full p-0.5" onError={(e) => { (e.currentTarget as HTMLElement).style.display = 'none'; }} />
+                <img src="logo.png" alt="Tech Source" className="w-4 h-4 object-contain bg-white rounded-full p-0.5" onError={(e) => { (e.currentTarget as HTMLElement).style.display = 'none'; }} />
                 <span>TECH SOURCE GDS</span>
               </span>
             </h2>

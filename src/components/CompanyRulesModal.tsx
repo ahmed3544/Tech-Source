@@ -45,7 +45,7 @@ export const CompanyRulesModal: React.FC<CompanyRulesModalProps> = ({
           <div className="flex items-center gap-3 min-w-0">
             <div className="h-12 px-3 py-1.5 rounded-xl bg-white border border-slate-300 shadow-sm flex items-center justify-center shrink-0 overflow-hidden">
               <img 
-                src="/logo.png" 
+                src="logo.png"
                 alt="Tech Source GDS" 
                 className="h-full w-auto object-contain"
                 onError={(e) => {

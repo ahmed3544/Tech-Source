@@ -29,7 +29,7 @@ export const TechSourceLogo: React.FC<TechSourceLogoProps> = ({
       {withBg ? (
         <div className={`bg-white shadow-sm border border-slate-100/90 flex items-center justify-center ${containerPadding} transition-all duration-200 hover:shadow-md`}>
           <img 
-            src="/logo.png" 
+            src="logo.png" 
             alt="Tech Source GDS - Global Development" 
             referrerPolicy="no-referrer"
             className={`${imgHeightClass} w-auto max-w-full object-contain`}
@@ -37,7 +37,7 @@ export const TechSourceLogo: React.FC<TechSourceLogoProps> = ({
         </div>
       ) : (
         <img 
-          src="/logo.png" 
+          src="logo.png" 
           alt="Tech Source GDS - Global Development" 
           referrerPolicy="no-referrer"
           className={`${imgHeightClass} w-auto max-w-full object-contain`}
