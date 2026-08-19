@@ -47,9 +47,26 @@ function saveServerData(data: any) {
   }
 }
 
+function calculateWorkHoursServer(checkIn: string, checkOut: string, breakStart?: string, breakEnd?: string): number {
+  const inSeconds = parseSecsServer(checkIn);
+  let outSeconds = parseSecsServer(checkOut);
+  if (outSeconds < inSeconds) outSeconds += 24 * 60 * 60;
+
+  let breakSeconds = 0;
+  if (breakStart) {
+    let breakEndSeconds = breakEnd ? parseSecsServer(breakEnd) : outSeconds;
+    const breakStartSeconds = parseSecsServer(breakStart);
+    if (breakEndSeconds < breakStartSeconds) breakEndSeconds += 24 * 60 * 60;
+    breakSeconds = Math.max(0, breakEndSeconds - breakStartSeconds);
+  }
+
+  return Math.round((Math.max(0, outSeconds - inSeconds - breakSeconds) / 3600) * 10) / 10;
+}
+
 // Global server state cache
 let serverState: {
   employees?: any[];
+  shifts?: any[];
   attendanceRecords?: any[];
   leaveRequests?: any[];
   overtimeRequests?: any[];

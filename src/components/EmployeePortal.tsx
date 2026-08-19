@@ -942,7 +942,7 @@ export const EmployeePortal: React.FC<EmployeePortalProps> = ({
                 <span className="text-[10px] text-emerald-800 block font-bold">
                   {lang === 'ar' ? 'مدة التواجد بالحضور:' : 'Live Elapsed Duration:'}
                 </span>
-                <WorkTimer variant="box" shift={shifts.find(s => s.id === (currentEmployee?.shiftId || 'default'))} checkIn={todayRecord.checkIn} checkOut={todayRecord.checkOut} breakStart={todayRecord.breakStart} breakEnd={todayRecord.breakEnd} />
+                <WorkTimer variant="box" shift={shifts.find(s => s.id === (emp?.shiftId || 'default'))} checkIn={todayRecord.checkIn} checkOut={todayRecord.checkOut} breakStart={todayRecord.breakStart} breakEnd={todayRecord.breakEnd} />
               </div>
             </div>
           </div>

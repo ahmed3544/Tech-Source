@@ -1,6 +1,18 @@
 import React, { useState } from 'react';
 import { CloudUpload, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 
+declare const google: {
+  accounts: {
+    oauth2: {
+      initTokenClient: (config: {
+        client_id: string;
+        scope: string;
+        callback: (tokenResponse: { access_token?: string }) => void;
+      }) => { requestAccessToken: () => void };
+    };
+  };
+};
+
 interface DriveBackupButtonProps {
   csvData: string;
   filename: string;
