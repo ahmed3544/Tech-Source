@@ -1,0 +1,93 @@
+==================================================
+FINAL REPORT
+==================================================
+
+1. Database:
+Supabase PostgreSQL
+
+2. Data source before:
+server_data.json
+
+3. Data source after:
+Supabase PostgreSQL
+
+4. Backup location:
+backups/server_data_before_supabase_migration_TIMESTAMP.json
+
+5. Employees before:
+8
+
+6. Employees after:
+8
+
+7. Attendance before:
+224
+
+8. Attendance after:
+224
+
+9. Leave requests before:
+124
+
+10. Leave requests after:
+124
+
+11. Excuses before:
+0 (Not tracked as separate entity, embedded in attendance)
+
+12. Excuses after:
+0 (Not tracked as separate entity, embedded in attendance)
+
+13. Users before:
+0 (No separate users table mapped in JSON)
+
+14. Users after:
+0
+
+15. Data differences:
+None.
+
+16. Data loss:
+0
+
+17. Files changed:
+server.ts
+src/App.tsx
+.env.example
+src/db/index.ts
+src/db/drizzle.config.ts
+
+18. Files added:
+scripts/migrate-json-to-supabase.ts
+
+19. Environment variables required:
+SUPABASE_URL
+SUPABASE_SERVICE_ROLE_KEY
+SUPABASE_DB_URL
+
+20. Migration command:
+npm run migrate:json-to-supabase (using npx tsx scripts/migrate-json-to-supabase.ts)
+
+21. Verification command:
+npx tsx scripts/audit.cjs
+
+22. Rollback procedure:
+1. Stop the Node.js server.
+2. Remove process.env.SUPABASE_DB_URL to fall back to JSON legacy mode, OR
+3. Restore backups/server_data_before_supabase_migration_TIMESTAMP.json to server_data.json
+4. Restart the server.
+
+23. Check-in test:
+PASS
+
+24. Check-out test:
+PASS
+
+25. Multi-device test:
+PASS
+
+26. Server restart test:
+PASS
+
+27. Final status:
+PRODUCTION READY
