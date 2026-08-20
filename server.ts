@@ -592,26 +592,40 @@ function mergeByUniqueId(existing: any[] = [], incoming: any[] = []): any[] {
 
 // GET /api/data - Fetch current central state for sync
 
-app.get('/api/shifts', async (req, res) => {
-  if (process.env.SUPABASE_DB_URL) {
-    const dbShifts = await db.select().from(schema.shifts);
-    return res.json({ success: true, shifts: dbShifts });
+// متغيرة الذاكرة الاحتياطية
+let localServerState = { records: [], employees: [], shifts: [] };
+
+// 1. مسار جلب البيانات الموحد
+app.get('/api/data', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  try {
+    if (process.env.REDIS_URL || process.env.KV_REST_API_URL) {
+      const data = (await kv.get('app_data')) || localServerState;
+      return res.json({ success: true, ...data });
+    }
+    return res.json({ success: true, ...localServerState });
+  } catch (err) {
+    return res.json({ success: true, ...localServerState });
   }
-  return res.json({ success: true, shifts: serverState.shifts || [] });
 });
 
-app.post('/api/shifts', async (req, res) => {
-  const shift = req.body;
-  if (!shift || !shift.id) return res.status(400).json({ error: 'Invalid shift' });
-  if (process.env.SUPABASE_DB_URL) {
-    await db.insert(schema.shifts).values(shift).onConflictDoUpdate({ target: schema.shifts.id, set: shift });
-  } else {
-    serverState.shifts = serverState.shifts || [];
-    const idx = serverState.shifts.findIndex(s => s.id === shift.id);
-    if (idx >= 0) serverState.shifts[idx] = shift;
-    else serverState.shifts.push(shift);
+// 2. مسار حفظ البيانات الموحد
+app.post('/api/data', async (req, res) => {
+  try {
+    const body = req.body || {};
+    if (process.env.REDIS_URL || process.env.KV_REST_API_URL) {
+      const currentData: any = (await kv.get('app_data')) || localServerState;
+      const updatedData = { ...currentData, ...body };
+      await kv.set('app_data', updatedData);
+      localServerState = updatedData;
+      return res.json({ success: true, ...updatedData });
+    } else {
+      localServerState = { ...localServerState, ...body };
+      return res.json({ success: true, ...localServerState });
+    }
+  } catch (err) {
+    return res.status(500).json({ success: false, error: 'فشل حفظ البيانات' });
   }
-  return res.json({ success: true });
 });
 
 app.delete('/api/shifts/:id', async (req, res) => {
