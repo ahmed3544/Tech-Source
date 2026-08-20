@@ -1,24 +1,38 @@
 import { AttendanceRecord, Shift, AttendanceStatus, PermissionSlot, LeaveRequest } from '../types';
 
+const APP_TIME_ZONE = 'Africa/Cairo';
+
+function getCairoParts(date: Date): Record<string, string> {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: APP_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(date).reduce<Record<string, string>>((parts, part) => {
+    if (part.type !== 'literal') parts[part.type] = part.value;
+    return parts;
+  }, {});
+}
+
 /**
  * Get current date string formatted as YYYY-MM-DD in LOCAL browser timezone.
  * Prevents ISO UTC date shifts before local 12:00 midnight!
  */
 export function getTodayString(d: Date = new Date()): string {
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  const parts = getCairoParts(d);
+  return `${parts.year}-${parts.month}-${parts.day}`;
 }
 
 /**
  * Get current time string formatted as HH:MM:SS in 24-hour local time (e.g. "17:05:30")
  */
 export function getNowTimeString(d: Date = new Date()): string {
-  const hours = String(d.getHours()).padStart(2, '0');
-  const minutes = String(d.getMinutes()).padStart(2, '0');
-  const seconds = String(d.getSeconds()).padStart(2, '0');
-  return `${hours}:${minutes}:${seconds}`;
+  const parts = getCairoParts(d);
+  return `${parts.hour}:${parts.minute}:${parts.second}`;
 }
 
 /**

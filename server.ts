@@ -39,6 +39,14 @@ function getServerClock() {
 }
 
 app.use(express.json({ limit: '50mb' }));
+app.use('/api', (req, res, next) => {
+  res.set({
+    'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+    Pragma: 'no-cache',
+    Expires: '0',
+  });
+  next();
+});
 
 const DATA_FILE = path.join(process.cwd(), 'server_data.json');
 const KV_STATE_KEY = 'techsource:serverState';
@@ -70,7 +78,7 @@ async function loadPersistentServerData() {
 const BACKUP_DIR = path.join(process.cwd(), 'backups');
 
 // Helper to save server data with automatic rolling backup
-function saveServerData(data: any) {
+async function saveServerData(data: any) {
   try {
     fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), 'utf-8');
     
@@ -85,7 +93,7 @@ function saveServerData(data: any) {
   }
 
   if (hasKvStorage) {
-    void kv.set(KV_STATE_KEY, data).catch((err) => {
+    await kv.set(KV_STATE_KEY, data).catch((err) => {
       console.error('Error writing serverState to Vercel KV:', err);
     });
   }
@@ -756,7 +764,7 @@ app.post('/api/login', async (req, res) => {
   return res.json({ success: true, employee: safeEmp });
 });
 
-app.post('/api/sync', (req, res) => {
+app.post('/api/sync', async (req, res) => {
   const { employees, attendanceRecords, leaveRequests, companyNameAr, companyNameEn, urgentNotice, deletedAttendanceIds } = req.body;
   if (!serverState.deletedAttendanceKeys) serverState.deletedAttendanceKeys = {};
 
@@ -800,7 +808,7 @@ app.post('/api/sync', (req, res) => {
     serverState.attendanceRecords = ensureApprovedLeaveRecordsServer(serverState.attendanceRecords, serverState.leaveRequests);
   }
   serverState.lastUpdated = Date.now();
-  saveServerData(serverState);
+  await saveServerData(serverState);
   res.json({ success: true, lastUpdated: serverState.lastUpdated });
 });
 
@@ -836,7 +844,7 @@ app.put('/api/employees/:id', async (req, res) => {
   }
   serverState.employees = employees.map((employee: any, employeeIndex: number) => employeeIndex === index ? updated : employee);
   serverState.lastUpdated = Date.now();
-  saveServerData(serverState);
+  await saveServerData(serverState);
   return res.json({ success: true, employee: updated, lastUpdated: serverState.lastUpdated });
 });
 
@@ -970,7 +978,7 @@ app.post('/api/punch', async (req, res) => {
   targetRec.updatedAt = new Date().toISOString();
 
   serverState.lastUpdated = Date.now();
-  saveServerData(serverState);
+  await saveServerData(serverState);
   
   const deletedEmpKeys = serverState.deletedEmployeeKeys || {};
   res.json({

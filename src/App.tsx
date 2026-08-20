@@ -372,7 +372,7 @@ export default function App() {
     };
 
     fetchLatestData();
-    const interval = setInterval(fetchLatestData, 1500);
+    const interval = setInterval(fetchLatestData, 5000);
     return () => {
       isMounted = false;
       clearInterval(interval);
