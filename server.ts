@@ -867,6 +867,21 @@ app.post('/api/punch', async (req, res) => {
   } else if (action === 'update' && record) {
     Object.assign(targetRec, record);
   }
+
+  // Keep the client-calculated attendance details while the server remains
+  // authoritative for punch timestamps and the existing record identity.
+  if (record && action !== 'update') {
+    for (const field of [
+      'location', 'notes', 'lateMinutes', 'lateSeconds', 'earlyLeaveMinutes',
+      'workHours', 'overtimeHours', 'minusHours', 'status', 'verifiedByFace',
+      'isExcused', 'excusedReason', 'excusedBy', 'leaveType'
+    ]) {
+      if (record[field] !== undefined) targetRec[field] = record[field];
+    }
+  }
+
+  const sanitizedTarget = sanitizeRecordServer(targetRec);
+  Object.assign(targetRec, sanitizedTarget);
   targetRec.updatedAt = new Date().toISOString();
 
   serverState.lastUpdated = Date.now();
