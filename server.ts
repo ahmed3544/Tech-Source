@@ -163,21 +163,21 @@ function parseSecsServer(str: string): number {
 
 
 // Parses HH:MM or HH:MM:SS string to total minutes
-function parseMinutes(timeStr) {
+function parseMinutes(timeStr: string): number {
   if (!timeStr) return 0;
   const parts = timeStr.split(':');
   return parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
 }
 
 // Format minutes to HH:MM format (without using raw decimal/fraction like 11.1)
-function formatHoursMinutes(totalMinutes) {
+function formatHoursMinutes(totalMinutes: number): string {
   if (isNaN(totalMinutes) || totalMinutes < 0) return '00:00';
   const h = Math.floor(totalMinutes / 60);
   const m = Math.floor(totalMinutes % 60);
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
-function calculateAttendanceStatus(r, shiftConfig, checkInMinutes, checkOutMinutes) {
+function calculateAttendanceStatus(r: any, shiftConfig: any, checkInMinutes: number, checkOutMinutes: number) {
   const isLeave = r.status === 'on_leave' || r.status === 'approved_leave' || r.status === 'vacation' || r.status === 'official_holiday' || r.isExcused;
   if (isLeave) return { status: r.status, lateMinutes: 0, earlyLeaveMinutes: 0 };
 
@@ -220,7 +220,7 @@ function calculateAttendanceStatus(r, shiftConfig, checkInMinutes, checkOutMinut
   return { status: finalStatus, lateMinutes, earlyLeaveMinutes };
 }
 
-function sanitizeRecordServer(r, employeesMap = null, shiftsMap = null) {
+function sanitizeRecordServer(r: any, employeesMap: Record<string, any> = {}, shiftsMap: Record<string, any> = {}) {
   if (!employeesMap && serverState.employees) {
     employeesMap = {};
     serverState.employees.forEach(e => { employeesMap[e.id] = e; });
@@ -539,7 +539,7 @@ function mergeAttendanceRecords(existing: any[] = [], incoming: any[] = []): any
   for (const r of existing) processRecord(r, false);
   for (const r of incoming) processRecord(r, true);
 
-  return Array.from(map.values()).map(sanitizeRecordServer).sort((a, b) => {
+  return Array.from(map.values()).map(record => sanitizeRecordServer(record)).sort((a, b) => {
     if (b.date !== a.date) return (b.date || '').localeCompare(a.date || '');
     return (a.employeeId || '').localeCompare(b.employeeId || '');
   });
@@ -624,6 +624,10 @@ app.delete('/api/shifts/:id', async (req, res) => {
 });
 
 app.get('/api/data', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+
   if (process.env.SUPABASE_DB_URL) {
     try {
       const dbEmployees = await db.select().from(schema.employees);
@@ -647,6 +651,17 @@ app.get('/api/data', async (req, res) => {
     } catch (err) {
       console.error("Supabase Data Fetch Error:", err);
       return res.status(500).json({ success: false, error: "Database error" });
+    }
+  }
+
+  if (hasKvStorage) {
+    try {
+      const kvState = await kv.get<typeof serverState>(KV_STATE_KEY);
+      if (kvState && typeof kvState === 'object') {
+        serverState = { ...serverState, ...kvState };
+      }
+    } catch (err) {
+      console.error('Vercel KV data fetch failed, using in-memory state:', err);
     }
   }
 
