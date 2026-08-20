@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import express from 'express';
 import path from 'path';
 import fs from 'fs';
+import { kv } from '@vercel/kv';
 
 import { db } from './src/db/index.js';
 import * as schema from './src/db/schema.js';
@@ -15,6 +16,8 @@ const PORT = 3000;
 app.use(express.json({ limit: '50mb' }));
 
 const DATA_FILE = path.join(process.cwd(), 'server_data.json');
+const KV_STATE_KEY = 'techsource:serverState';
+const hasKvStorage = Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
 
 // Helper to load stored data
 function loadServerData() {
@@ -27,6 +30,16 @@ function loadServerData() {
     }
   }
   return null;
+}
+
+async function loadPersistentServerData() {
+  if (!hasKvStorage) return null;
+  try {
+    return await kv.get<typeof serverState>(KV_STATE_KEY);
+  } catch (err) {
+    console.error('Error reading serverState from Vercel KV:', err);
+    return null;
+  }
 }
 
 const BACKUP_DIR = path.join(process.cwd(), 'backups');
@@ -44,6 +57,12 @@ function saveServerData(data: any) {
     fs.writeFileSync(autoBackupPath, JSON.stringify(data, null, 2), 'utf-8');
   } catch (err) {
     console.error('Error writing server_data.json:', err);
+  }
+
+  if (hasKvStorage) {
+    void kv.set(KV_STATE_KEY, data).catch((err) => {
+      console.error('Error writing serverState to Vercel KV:', err);
+    });
   }
 }
 
@@ -782,6 +801,43 @@ app.post('/api/punch', async (req, res) => {
         updatedAt: new Date().toISOString()
       };
       
+
+    // PUT /api/employees/:id - Persist an employee edit without replacing other records
+    app.put('/api/employees/:id', async (req, res) => {
+      const employeeId = String(req.params.id || '').trim();
+      const changes = req.body;
+      if (!employeeId || !changes || typeof changes !== 'object') {
+        return res.status(400).json({ success: false, error: 'Invalid employee update' });
+      }
+
+      if (process.env.SUPABASE_DB_URL) {
+        try {
+          const [employee] = await db.update(schema.employees)
+            .set({ ...changes, id: employeeId })
+            .where(sql`id = ${employeeId}`)
+            .returning();
+          if (!employee) return res.status(404).json({ success: false, error: 'Employee not found' });
+          return res.json({ success: true, employee, lastUpdated: Date.now() });
+        } catch (err) {
+          console.error('[EMPLOYEE-UPDATE-DB-ERROR]', err);
+          return res.status(500).json({ success: false, error: 'Failed to update employee' });
+        }
+      }
+
+      const employees = serverState.employees || [];
+      const index = employees.findIndex((employee: any) => String(employee.id).toLowerCase() === employeeId.toLowerCase());
+      if (index < 0) return res.status(404).json({ success: false, error: 'Employee not found' });
+
+      const current = employees[index];
+      const updated = { ...current, ...changes, id: current.id };
+      if (!changes._isPhotoRemoved && (!changes.avatar || String(changes.avatar).trim() === '')) {
+        updated.avatar = current.avatar || '';
+      }
+      serverState.employees = employees.map((employee: any, employeeIndex: number) => employeeIndex === index ? updated : employee);
+      serverState.lastUpdated = Date.now();
+      saveServerData(serverState);
+      return res.json({ success: true, employee: updated, lastUpdated: serverState.lastUpdated });
+    });
       if (action === 'check_in') {
         newRecord.checkIn = newRecord.checkIn || timeVal;
       } else if (action === 'check_out') {
@@ -1196,6 +1252,15 @@ app.put('/api/overtime/:id/status', (req, res) => {
 });
 
 async function startServer() {
+  const persistentState = await loadPersistentServerData();
+  if (persistentState && typeof persistentState === 'object') {
+    serverState = { ...serverState, ...persistentState };
+  }
+
+  if (serverState.leaveRequests && serverState.attendanceRecords) {
+    serverState.attendanceRecords = ensureApprovedLeaveRecordsServer(serverState.attendanceRecords, serverState.leaveRequests);
+  }
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({

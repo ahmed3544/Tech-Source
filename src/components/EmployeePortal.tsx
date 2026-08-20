@@ -171,7 +171,11 @@ export const EmployeePortal: React.FC<EmployeePortalProps> = ({
 
   const emp = employees.find(e => e.id === targetEmpId) || employees[0];
   const todayStr = getTodayString();
-  const todayRecord = attendanceRecords.find(r => r.employeeId === emp?.id && r.date === todayStr);
+  const todayRecord = attendanceRecords.find(r =>
+    r.date === todayStr &&
+    Boolean(r.employeeId && emp?.id) &&
+    r.employeeId.trim().toLowerCase() === emp!.id.trim().toLowerCase()
+  );
 
   const isBreakActive = Boolean(todayRecord?.breakStart && !todayRecord?.breakEnd);
 

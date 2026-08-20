@@ -93,13 +93,16 @@ export const KioskPunch: React.FC<KioskPunchProps> = ({
       emp.department.includes(searchQuery)
   );
 
+  const sameEmployee = (left?: string, right?: string) =>
+    Boolean(left && right) && left.trim().toLowerCase() === right.trim().toLowerCase();
+
   const currentRecord = selectedEmp 
-    ? todayRecords.find(r => r.employeeId === selectedEmp.id) 
+    ? todayRecords.find(r => sameEmployee(r.employeeId, selectedEmp.id)) 
     : undefined;
 
   const todayDateStr = getTodayString();
   const activeApprovedLeaveToday = selectedEmp ? leaveRequests.find(l => 
-    l.employeeId === selectedEmp.id &&
+    sameEmployee(l.employeeId, selectedEmp.id) &&
     l.status === 'approved' &&
     l.type !== 'permission' &&
     todayDateStr >= l.startDate &&
@@ -107,7 +110,7 @@ export const KioskPunch: React.FC<KioskPunchProps> = ({
   ) : undefined;
 
   const activePermissionToday = selectedEmp ? leaveRequests.find(l => 
-    l.employeeId === selectedEmp.id &&
+    sameEmployee(l.employeeId, selectedEmp.id) &&
     l.status === 'approved' &&
     l.type === 'permission' &&
     todayDateStr >= l.startDate &&
@@ -430,12 +433,12 @@ export const KioskPunch: React.FC<KioskPunchProps> = ({
             {/* Employee Cards List */}
             <div className="space-y-2 max-h-[440px] overflow-y-auto pr-1">
               {filteredEmployees.map((emp) => {
-                const rec = todayRecords.find(r => r.employeeId === emp.id);
+                const rec = todayRecords.find(r => sameEmployee(r.employeeId, emp.id));
                 const isSelected = selectedEmp?.id === emp.id;
                 const onBreak = Boolean(rec?.breakStart && !rec?.breakEnd);
                 const todayStr = getTodayString();
                 const activeLeaveObj = leaveRequests.find(
-                  l => l.employeeId === emp.id && l.status === 'approved' && l.type !== 'permission' && todayStr >= l.startDate && todayStr <= l.endDate
+                  l => sameEmployee(l.employeeId, emp.id) && l.status === 'approved' && l.type !== 'permission' && todayStr >= l.startDate && todayStr <= l.endDate
                 );
                 const hasApprovedLeave = Boolean(activeLeaveObj) || rec?.status === 'on_leave';
 
@@ -559,10 +562,10 @@ export const KioskPunch: React.FC<KioskPunchProps> = ({
                       {(() => {
                         const todayStr = getTodayString();
                         const selLeaveObj = leaveRequests.find(
-                          l => l.employeeId === selectedEmp.id && l.status === 'approved' && l.type !== 'permission' && todayStr >= l.startDate && todayStr <= l.endDate
+                          l => sameEmployee(l.employeeId, selectedEmp.id) && l.status === 'approved' && l.type !== 'permission' && todayStr >= l.startDate && todayStr <= l.endDate
                         );
                         const selPermObj = leaveRequests.find(
-                          l => l.employeeId === selectedEmp.id && l.status === 'approved' && l.type === 'permission' && todayStr >= l.startDate && todayStr <= l.endDate
+                          l => sameEmployee(l.employeeId, selectedEmp.id) && l.status === 'approved' && l.type === 'permission' && todayStr >= l.startDate && todayStr <= l.endDate
                         );
                         const selHasLeave = Boolean(selLeaveObj) || currentRecord?.status === 'on_leave';
 

@@ -654,7 +654,7 @@ export default function App() {
     }
 
     
-    // Call server first to guarantee DB consistency (No Optimistic Overwrite)
+    // Sync with the server when it is available.
     try {
       fetch('/api/punch', {
         method: 'POST',
@@ -665,9 +665,10 @@ export default function App() {
       .then(data => {
         if (data && data.success && Array.isArray(data.attendanceRecords)) {
           const sanitized = data.attendanceRecords.map(ensureSanitizedRecord);
-          attendanceRecordsRef.current = sanitized;
-          setAttendanceRecords(sanitized);
-          localStorage.setItem('attendance_records', JSON.stringify(sanitized));
+          const merged = mergeAttendanceRecords(sanitized, attendanceRecordsRef.current || []);
+          attendanceRecordsRef.current = merged;
+          setAttendanceRecords(merged);
+          localStorage.setItem('attendance_records', JSON.stringify(merged));
           if (data.lastUpdated) {
             lastLocalUpdateRef.current = data.lastUpdated;
           }
@@ -677,6 +678,11 @@ export default function App() {
     } catch (e) {
       console.error(e);
     }
+      // Keep the punch visible and recoverable even when the API is temporarily offline.
+      attendanceRecordsRef.current = nextRecords;
+      setAttendanceRecords(nextRecords);
+      localStorage.setItem('attendance_records', JSON.stringify(nextRecords));
+      lastLocalUpdateRef.current = Date.now();
   };
 
   // Add / Edit Record manually
