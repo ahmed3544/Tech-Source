@@ -1666,3 +1666,24 @@ export default function App() {
     </div>
   );
 }
+useEffect(() => {
+  const syncDataFromServer = async () => {
+    try {
+      const response = await fetch('/api/data?t=' + Date.now(), {
+        cache: 'no-store'
+      });
+      const data = await response.json();
+
+      if (data && data.success) {
+        if (data.records) setAttendanceRecords(data.records);
+        if (data.employees) setEmployees(data.employees);
+        if (data.shifts) setShifts(data.shifts);
+      }
+    } catch (err) {
+      console.error("خطأ في جلب البيانات:", err);
+    }
+  };
+
+  syncDataFromServer();
+}, []);
+
