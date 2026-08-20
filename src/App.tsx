@@ -77,6 +77,26 @@ export default function App() {
     } catch {
       // ignore
     }
+    useEffect(() => {
+  const syncDataFromServer = async () => {
+    try {
+      const response = await fetch('/api/data?t=' + Date.now(), {
+        cache: 'no-store'
+      });
+      if (!response.ok) return;
+
+      const data = await response.json();
+
+      if (data && data.success && Array.isArray(data.records) && data.records.length > 0) {
+        setAttendanceRecords(data.records);
+      }
+    } catch (err) {
+      console.warn("تعذر الجلب المباشر من السيرفر:", err);
+    }
+  };
+
+  syncDataFromServer();
+}, []);
     return null;
   });
 
@@ -1666,25 +1686,3 @@ export default function App() {
     </div>
   );
 }
-useEffect(() => {
-  const syncDataFromServer = async () => {
-    try {
-      const response = await fetch('/api/data?t=' + Date.now(), {
-        cache: 'no-store'
-      });
-      if (!response.ok) return;
-
-      const data = await response.json();
-
-      if (data && data.success && Array.isArray(data.records)) {
-        if (typeof mergeAttendanceRecords === 'function') {
-          mergeAttendanceRecords(data.records);
-        }
-      }
-    } catch (err) {
-      console.warn("تعذر الجلب المباشر من السيرفر:", err);
-    }
-  };
-
-  syncDataFromServer();
-}, []);
