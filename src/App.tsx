@@ -290,7 +290,13 @@ export default function App() {
     let isMounted = true;
     const fetchLatestData = async () => {
       try {
-        const res = await fetch('/api/data');
+        const res = await fetch('/api/data', {
+          headers: {
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache',
+          },
+          cache: 'no-store',
+        });
         if (!res.ok) return;
         const data = await res.json();
         if (data.success && isMounted) {
