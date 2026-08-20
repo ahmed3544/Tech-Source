@@ -1674,10 +1674,9 @@ useEffect(() => {
       });
       const data = await response.json();
 
-      if (data && data.success) {
-        if (data.records) setAttendanceRecords(data.records);
-        if (data.employees) setEmployees(data.employees);
-        if (data.shifts) setShifts(data.shifts);
+      if (data && data.success && data.records) {
+        // استخدام دالة الدمج المعتمدة في التطبيق لديك
+        mergeAttendanceRecords(data.records);
       }
     } catch (err) {
       console.error("خطأ في جلب البيانات:", err);
