@@ -1335,3 +1335,46 @@ async function startServer() {
 }
 
 startServer();
+// متغيرة الذاكرة المؤقتة الاحتياطية
+let localServerState = { records: [], employees: [], shifts: [] };
+
+// 1. مسار جلب البيانات الموحد (يمنع الكاش كلياً)
+app.get('/api/data', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+
+  try {
+    if (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) {
+      const data = (await kv.get('app_data')) || localServerState;
+      return res.json({ success: true, ...data });
+    }
+    return res.json({ success: true, ...localServerState });
+  } catch (err) {
+    console.error('KV Fetch Error:', err);
+    return res.json({ success: true, ...localServerState });
+  }
+});
+
+// 2. مسار حفظ/تحديث البيانات الموحد
+app.post('/api/data', async (req, res) => {
+  try {
+    const body = req.body || {};
+
+    if (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) {
+      const currentData = (await kv.get('app_data')) || localServerState;
+      const updatedData = { ...currentData, ...body };
+
+      await kv.set('app_data', updatedData);
+      localServerState = updatedData;
+
+      return res.json({ success: true, ...updatedData });
+    } else {
+      localServerState = { ...localServerState, ...body };
+      return res.json({ success: true, ...localServerState });
+    }
+  } catch (err) {
+    console.error('KV Save Error:', err);
+    return res.status(500).json({ success: false, error: 'فشل حفظ البيانات في KV' });
+  }
+});
