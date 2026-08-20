@@ -39,7 +39,6 @@ import {
   sanitizeAttendanceWithPermissions,
   mergeAttendanceRecords,
   ensureApprovedLeaveRecords,
-  mergeByUniqueId,
   ensureSanitizedRecord,
   calculateWorkDaysInPeriod,
   isWeekend,
@@ -75,28 +74,8 @@ export default function App() {
         if (parsed?.id && parsed.status !== 'inactive') return parsed;
       }
     } catch {
-      // ignore
+      // Ignore malformed localStorage data.
     }
-    useEffect(() => {
-  const syncDataFromServer = async () => {
-    try {
-      const response = await fetch('/api/data?t=' + Date.now(), {
-        cache: 'no-store'
-      });
-      if (!response.ok) return;
-
-      const data = await response.json();
-
-      if (data && data.success && Array.isArray(data.records) && data.records.length > 0) {
-        setAttendanceRecords(data.records);
-      }
-    } catch (err) {
-      console.warn("تعذر الجلب المباشر من السيرفر:", err);
-    }
-  };
-
-  syncDataFromServer();
-}, []);
     return null;
   });
 
@@ -680,18 +659,30 @@ export default function App() {
     }
 
     
-    // Sync with the server when it is available.
-    try {
-      fetch('/api/punch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ employeeId: emp.id, action, record: updatedRecord, nowTimeStr })
+    // Save locally FIRST. This guarantees the punch remains visible even if
+    // the API is slow or temporarily unavailable.
+    attendanceRecordsRef.current = nextRecords;
+    setAttendanceRecords(nextRecords);
+    localStorage.setItem('attendance_records', JSON.stringify(nextRecords));
+    lastLocalUpdateRef.current = Date.now();
+
+    // Sync with the server after the local state is safely persisted.
+    void fetch('/api/punch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ employeeId: emp.id, action, record: updatedRecord, nowTimeStr })
+    })
+      .then(async res => {
+        if (!res.ok) throw new Error(`Punch API failed: ${res.status}`);
+        return res.json();
       })
-      .then(res => res.json())
       .then(data => {
-        if (data && data.success && Array.isArray(data.attendanceRecords)) {
+        if (data?.success && Array.isArray(data.attendanceRecords)) {
           const sanitized = data.attendanceRecords.map(ensureSanitizedRecord);
-          const merged = mergeAttendanceRecords(sanitized, attendanceRecordsRef.current || []);
+          const merged = mergeAttendanceRecords(
+            sanitized,
+            attendanceRecordsRef.current || []
+          );
           attendanceRecordsRef.current = merged;
           setAttendanceRecords(merged);
           localStorage.setItem('attendance_records', JSON.stringify(merged));
@@ -700,15 +691,10 @@ export default function App() {
           }
         }
       })
-      .catch((err) => { console.error("Punch Error:", err); });
-    } catch (e) {
-      console.error(e);
-    }
-      // Keep the punch visible and recoverable even when the API is temporarily offline.
-      attendanceRecordsRef.current = nextRecords;
-      setAttendanceRecords(nextRecords);
-      localStorage.setItem('attendance_records', JSON.stringify(nextRecords));
-      lastLocalUpdateRef.current = Date.now();
+      .catch(err => {
+        console.error('Punch Error:', err);
+        // Do NOT erase local state when the server is unavailable.
+      });
   };
 
   // Add / Edit Record manually
@@ -856,23 +842,31 @@ export default function App() {
     setEmployees(nextEmps);
 
     try {
+      const updatedEmployee = nextEmps.find(e => e.id === updatedEmp.id);
       const res = await fetch(`/api/employees/${updatedEmp.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(nextEmps.find(e => e.id === updatedEmp.id))
+        body: JSON.stringify(updatedEmployee)
       });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.employee) {
-          // Confirm with server response
-          const confirmedEmps = employeesRef.current.map(e => e.id === updatedEmp.id ? data.employee : e);
-          employeesRef.current = confirmedEmps;
-          setEmployees(confirmedEmps);
-          localStorage.setItem('attendance_employees', JSON.stringify(confirmedEmps));
-        }
+
+      if (!res.ok) {
+        throw new Error(`Employee update failed: ${res.status}`);
       }
+
+      const data = await res.json();
+      if (data?.employee) {
+        const confirmedEmps = employeesRef.current.map(e =>
+          e.id === updatedEmp.id ? { ...e, ...data.employee } : e
+        );
+        employeesRef.current = confirmedEmps;
+        setEmployees(confirmedEmps);
+        localStorage.setItem('attendance_employees', JSON.stringify(confirmedEmps));
+      }
+
+      await pushSync({ employees: employeesRef.current });
     } catch (err) {
       console.error('Failed to update employee on server', err);
+      // Keep the optimistic local update; do not restore stale server data.
     }
 
     // If updating currently logged in user, update currentUser as well
