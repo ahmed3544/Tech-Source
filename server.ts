@@ -12,6 +12,31 @@ import { createServer as createViteServer } from 'vite';
 
 const app = express();
 const PORT = 3000;
+const SERVER_TIME_ZONE = process.env.SERVER_TIME_ZONE || 'Africa/Cairo';
+
+function getServerClock() {
+  const now = new Date();
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: SERVER_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(now).reduce<Record<string, string>>((result, part) => {
+    if (part.type !== 'literal') result[part.type] = part.value;
+    return result;
+  }, {});
+
+  return {
+    date: `${parts.year}-${parts.month}-${parts.day}`,
+    time: `${parts.hour}:${parts.minute}:${parts.second}`,
+    iso: now.toISOString(),
+    timeZone: SERVER_TIME_ZONE,
+  };
+}
 
 app.use(express.json({ limit: '50mb' }));
 
@@ -779,15 +804,54 @@ app.post('/api/sync', (req, res) => {
   res.json({ success: true, lastUpdated: serverState.lastUpdated });
 });
 
+// PUT /api/employees/:id - Persist an employee edit without replacing other records
+app.put('/api/employees/:id', async (req, res) => {
+  const employeeId = String(req.params.id || '').trim();
+  const changes = req.body;
+  if (!employeeId || !changes || typeof changes !== 'object') {
+    return res.status(400).json({ success: false, error: 'Invalid employee update' });
+  }
+
+  if (process.env.SUPABASE_DB_URL) {
+    try {
+      const [employee] = await db.update(schema.employees)
+        .set({ ...changes, id: employeeId })
+        .where(sql`id = ${employeeId}`)
+        .returning();
+      if (!employee) return res.status(404).json({ success: false, error: 'Employee not found' });
+      return res.json({ success: true, employee, lastUpdated: Date.now() });
+    } catch (err) {
+      console.error('[EMPLOYEE-UPDATE-DB-ERROR]', err);
+      return res.status(500).json({ success: false, error: 'Failed to update employee' });
+    }
+  }
+
+  const employees = serverState.employees || [];
+  const index = employees.findIndex((employee: any) => String(employee.id).toLowerCase() === employeeId.toLowerCase());
+  if (index < 0) return res.status(404).json({ success: false, error: 'Employee not found' });
+  const current = employees[index];
+  const updated = { ...current, ...changes, id: current.id };
+  if (!changes._isPhotoRemoved && (!changes.avatar || String(changes.avatar).trim() === '')) {
+    updated.avatar = current.avatar || '';
+  }
+  serverState.employees = employees.map((employee: any, employeeIndex: number) => employeeIndex === index ? updated : employee);
+  serverState.lastUpdated = Date.now();
+  saveServerData(serverState);
+  return res.json({ success: true, employee: updated, lastUpdated: serverState.lastUpdated });
+});
+
 app.post('/api/punch', async (req, res) => {
-  const { employeeId, record, action, nowTimeStr } = req.body;
+  const { employeeId, record, action } = req.body;
   if (!employeeId) return res.status(400).json({ success: false, error: 'Employee ID is required' });
 
   const rawEmpId = String(employeeId).trim();
   const normEmpId = rawEmpId.toLowerCase();
-  const todayDate = record?.date ? String(record.date).trim() : new Date().toISOString().split('T')[0];
+  const serverClock = getServerClock();
+  const todayDate = action === 'update' && record?.date ? String(record.date).trim() : serverClock.date;
   const canonicalId = `rec-${normEmpId}-${todayDate}`;
-  const timeVal = nowTimeStr || record?.checkIn || record?.checkOut || new Date().toTimeString().split(' ')[0];
+  const timeVal = action === 'update'
+    ? (record?.checkIn || record?.checkOut || serverClock.time)
+    : serverClock.time;
 
   if (process.env.SUPABASE_DB_URL) {
     try {
@@ -802,42 +866,6 @@ app.post('/api/punch', async (req, res) => {
       };
       
 
-    // PUT /api/employees/:id - Persist an employee edit without replacing other records
-    app.put('/api/employees/:id', async (req, res) => {
-      const employeeId = String(req.params.id || '').trim();
-      const changes = req.body;
-      if (!employeeId || !changes || typeof changes !== 'object') {
-        return res.status(400).json({ success: false, error: 'Invalid employee update' });
-      }
-
-      if (process.env.SUPABASE_DB_URL) {
-        try {
-          const [employee] = await db.update(schema.employees)
-            .set({ ...changes, id: employeeId })
-            .where(sql`id = ${employeeId}`)
-            .returning();
-          if (!employee) return res.status(404).json({ success: false, error: 'Employee not found' });
-          return res.json({ success: true, employee, lastUpdated: Date.now() });
-        } catch (err) {
-          console.error('[EMPLOYEE-UPDATE-DB-ERROR]', err);
-          return res.status(500).json({ success: false, error: 'Failed to update employee' });
-        }
-      }
-
-      const employees = serverState.employees || [];
-      const index = employees.findIndex((employee: any) => String(employee.id).toLowerCase() === employeeId.toLowerCase());
-      if (index < 0) return res.status(404).json({ success: false, error: 'Employee not found' });
-
-      const current = employees[index];
-      const updated = { ...current, ...changes, id: current.id };
-      if (!changes._isPhotoRemoved && (!changes.avatar || String(changes.avatar).trim() === '')) {
-        updated.avatar = current.avatar || '';
-      }
-      serverState.employees = employees.map((employee: any, employeeIndex: number) => employeeIndex === index ? updated : employee);
-      serverState.lastUpdated = Date.now();
-      saveServerData(serverState);
-      return res.json({ success: true, employee: updated, lastUpdated: serverState.lastUpdated });
-    });
       if (action === 'check_in') {
         newRecord.checkIn = newRecord.checkIn || timeVal;
       } else if (action === 'check_out') {
@@ -882,7 +910,8 @@ app.post('/api/punch', async (req, res) => {
         success: true,
         record: single,
         attendanceRecords: finalRecs,
-        lastUpdated: Date.now()
+        lastUpdated: Date.now(),
+        serverTime: serverClock
       });
     } catch (err) {
       console.error("[PUNCH-DB-ERROR]", err);
@@ -948,6 +977,7 @@ app.post('/api/punch', async (req, res) => {
     success: true,
     lastUpdated: serverState.lastUpdated,
     record: targetRec,
+    serverTime: serverClock,
     attendanceRecords: (serverState.attendanceRecords || []).filter((r: any) => !deletedEmpKeys[r.employeeId]),
   });
 });
@@ -1182,7 +1212,7 @@ app.post('/api/backup/restore', (req, res) => {
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', serverTime: new Date().toISOString() });
+  res.json({ status: 'ok', serverTime: getServerClock() });
 });
 
 // POST /api/overtime - Create a new overtime request
