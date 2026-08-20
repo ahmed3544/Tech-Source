@@ -1672,17 +1672,19 @@ useEffect(() => {
       const response = await fetch('/api/data?t=' + Date.now(), {
         cache: 'no-store'
       });
+      if (!response.ok) return;
+
       const data = await response.json();
 
-      if (data && data.success && data.records) {
-        // استخدام دالة الدمج المعتمدة في التطبيق لديك
-        mergeAttendanceRecords(data.records);
+      if (data && data.success && Array.isArray(data.records)) {
+        if (typeof mergeAttendanceRecords === 'function') {
+          mergeAttendanceRecords(data.records);
+        }
       }
     } catch (err) {
-      console.error("خطأ في جلب البيانات:", err);
+      console.warn("تعذر الجلب المباشر من السيرفر:", err);
     }
   };
 
   syncDataFromServer();
 }, []);
-
