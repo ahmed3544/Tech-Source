@@ -1349,8 +1349,8 @@ async function startServer() {
 }
 
 startServer();
-// متغيرة الذاكرة المؤقتة الاحتياطية
-let localServerState = { records: [], employees: [], shifts: [] };
+ localServerState// متغيرة الذاكرة المؤقتة الاحتياطية
+ = { records: [], employees: [], shifts: [] };
 
 // 1. مسار جلب البيانات الموحد (يمنع الكاش كلياً)
 app.get('/api/data', async (req, res) => {
