@@ -2,11 +2,15 @@ import crypto from 'crypto';
 import express from 'express';
 import path from 'path';
 import fs from 'fs';
-import { kv } from '@vercel/kv';
+import { fileURLToPath } from 'url';
+import { sql } from 'drizzle-orm';
 import { createServer as createViteServer } from 'vite';
+
 import { db } from './src/db/index.js';
 import * as schema from './src/db/schema.js';
-import { sql } from 'drizzle-orm';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
@@ -14,61 +18,97 @@ const SERVER_TIME_ZONE = process.env.SERVER_TIME_ZONE || 'Africa/Cairo';
 
 const DATA_FILE = path.join(process.cwd(), 'server_data.json');
 const BACKUP_DIR = path.join(process.cwd(), 'backups');
-const KV_STATE_KEY = 'techsource:serverState';
-const KV_APP_DATA_KEY = 'app_data';
 
-const hasKvStorage = Boolean(
-  process.env.KV_REST_API_URL &&
-  process.env.KV_REST_API_TOKEN
-);
-
-const hasDatabase = Boolean(process.env.SUPABASE_DB_URL);
+const USE_DATABASE = Boolean(process.env.SUPABASE_DB_URL);
 
 type ServerState = {
-  employees?: any[];
-  shifts?: any[];
-  attendanceRecords?: any[];
-  leaveRequests?: any[];
-  overtimeRequests?: any[];
-  companyNameAr?: string;
-  companyNameEn?: string;
+  employees: any[];
+  attendanceRecords: any[];
+  leaveRequests: any[];
+  overtimeRequests: any[];
+  shifts: any[];
+  companyNameAr?: string | null;
+  companyNameEn?: string | null;
   urgentNotice?: any;
-  deletedAttendanceKeys?: Record<string, number>;
-  deletedLeaveKeys?: Record<string, number>;
-  deletedEmployeeKeys?: Record<string, number>;
-  lastUpdated?: number;
+  deletedAttendanceKeys: Record<string, number>;
+  deletedEmployeeKeys: Record<string, number>;
+  deletedLeaveKeys: Record<string, number>;
+  lastUpdated: number;
 };
 
-let serverState: ServerState = loadServerData() || {};
+function emptyState(): ServerState {
+  return {
+    employees: [],
+    attendanceRecords: [],
+    leaveRequests: [],
+    overtimeRequests: [],
+    shifts: [],
+    companyNameAr: null,
+    companyNameEn: null,
+    urgentNotice: null,
+    deletedAttendanceKeys: {},
+    deletedEmployeeKeys: {},
+    deletedLeaveKeys: {},
+    lastUpdated: Date.now(),
+  };
+}
 
-serverState.employees = Array.isArray(serverState.employees)
-  ? serverState.employees
-  : [];
+function loadLocalState(): ServerState {
+  if (!fs.existsSync(DATA_FILE)) {
+    return emptyState();
+  }
 
-serverState.shifts = Array.isArray(serverState.shifts)
-  ? serverState.shifts
-  : [];
+  try {
+    const data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
 
-serverState.attendanceRecords = Array.isArray(serverState.attendanceRecords)
-  ? serverState.attendanceRecords
-  : [];
+    return {
+      ...emptyState(),
+      ...data,
+      employees: Array.isArray(data.employees) ? data.employees : [],
+      attendanceRecords: Array.isArray(data.attendanceRecords)
+        ? data.attendanceRecords
+        : [],
+      leaveRequests: Array.isArray(data.leaveRequests)
+        ? data.leaveRequests
+        : [],
+      overtimeRequests: Array.isArray(data.overtimeRequests)
+        ? data.overtimeRequests
+        : [],
+      shifts: Array.isArray(data.shifts) ? data.shifts : [],
+      deletedAttendanceKeys: data.deletedAttendanceKeys || {},
+      deletedEmployeeKeys: data.deletedEmployeeKeys || {},
+      deletedLeaveKeys: data.deletedLeaveKeys || {},
+      lastUpdated: data.lastUpdated || Date.now(),
+    };
+  } catch (error) {
+    console.error('Failed to read server_data.json:', error);
+    return emptyState();
+  }
+}
 
-serverState.leaveRequests = Array.isArray(serverState.leaveRequests)
-  ? serverState.leaveRequests
-  : [];
+let localState = loadLocalState();
 
-serverState.overtimeRequests = Array.isArray(serverState.overtimeRequests)
-  ? serverState.overtimeRequests
-  : [];
+function saveLocalState() {
+  try {
+    if (!fs.existsSync(BACKUP_DIR)) {
+      fs.mkdirSync(BACKUP_DIR, { recursive: true });
+    }
 
-serverState.deletedAttendanceKeys =
-  serverState.deletedAttendanceKeys || {};
+    fs.writeFileSync(
+      DATA_FILE,
+      JSON.stringify(localState, null, 2),
+      'utf8'
+    );
 
-serverState.deletedLeaveKeys =
-  serverState.deletedLeaveKeys || {};
-
-serverState.deletedEmployeeKeys =
-  serverState.deletedEmployeeKeys || {};
+    fs.writeFileSync(
+      path.join(BACKUP_DIR, 'server_data_auto_backup.json'),
+      JSON.stringify(localState, null, 2),
+      'utf8'
+    );
+  } catch (error) {
+    console.error('Failed to save local state:', error);
+  }
+}
 
 function getServerClock() {
   const now = new Date();
@@ -99,273 +139,129 @@ function getServerClock() {
   };
 }
 
-function getTodayServerDate(): string {
-  return getServerClock().date;
-}
-
-function normalizeEmployeeId(value: unknown): string {
-  return String(value || '').trim().toLowerCase();
-}
-
-function normalizeDate(value: unknown): string {
-  return String(value || '').trim();
-}
-
-function parseSecsServer(value: unknown): number {
-  if (!value) return 0;
-
-  let str = String(value).trim();
-
-  const isPM = /PM/i.test(str);
-  const isAM = /AM/i.test(str);
-
-  str = str.replace(/AM|PM/gi, '').trim();
-
-  const parts = str.split(':').map(Number);
-
-  let hours = parts[0] || 0;
-  const minutes = parts[1] || 0;
-  const seconds = parts[2] || 0;
-
-  if (isPM && hours < 12) hours += 12;
-  if (isAM && hours === 12) hours = 0;
-
-  return hours * 3600 + minutes * 60 + seconds;
+function normalizeId(value: unknown): string {
+  return String(value ?? '').trim().toLowerCase();
 }
 
 function parseMinutes(value: unknown): number {
   if (!value) return 0;
 
-  const parts = String(value).trim().split(':');
+  const text = String(value).trim();
+  const parts = text.split(':');
 
-  const hours = Number(parts[0]) || 0;
-  const minutes = Number(parts[1]) || 0;
+  let hour = Number(parts[0] || 0);
+  const minute = Number(parts[1] || 0);
 
-  return hours * 60 + minutes;
-}
-
-function formatHoursMinutes(totalMinutes: number): string {
-  if (!Number.isFinite(totalMinutes) || totalMinutes < 0) {
-    return '00:00';
+  if (/PM/i.test(text) && hour < 12) {
+    hour += 12;
   }
 
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = Math.floor(totalMinutes % 60);
+  if (/AM/i.test(text) && hour === 12) {
+    hour = 0;
+  }
 
-  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+  return hour * 60 + minute;
 }
 
-function calculateWorkHoursServer(
-  checkIn: string,
-  checkOut: string,
-  breakStart?: string,
-  breakEnd?: string
+function calculateWorkMinutes(
+  checkIn?: string | null,
+  checkOut?: string | null,
+  breakStart?: string | null,
+  breakEnd?: string | null
 ): number {
-  const inSeconds = parseSecsServer(checkIn);
-
-  let outSeconds = parseSecsServer(checkOut);
-
-  if (outSeconds < inSeconds) {
-    outSeconds += 24 * 60 * 60;
+  if (!checkIn || !checkOut) {
+    return 0;
   }
 
-  let breakSeconds = 0;
+  let start = parseMinutes(checkIn);
+  let end = parseMinutes(checkOut);
+
+  if (end < start) {
+    end += 1440;
+  }
+
+  let worked = end - start;
 
   if (breakStart) {
-    let breakEndSeconds = breakEnd
-      ? parseSecsServer(breakEnd)
-      : outSeconds;
+    let bs = parseMinutes(breakStart);
+    let be = breakEnd ? parseMinutes(breakEnd) : end;
 
-    const breakStartSeconds = parseSecsServer(breakStart);
-
-    if (breakEndSeconds < breakStartSeconds) {
-      breakEndSeconds += 24 * 60 * 60;
+    if (be < bs) {
+      be += 1440;
     }
 
-    breakSeconds = Math.max(
-      0,
-      breakEndSeconds - breakStartSeconds
-    );
+    worked -= Math.max(0, be - bs);
   }
 
+  return Math.max(0, worked);
+}
+
+function calculateWorkHours(
+  checkIn?: string | null,
+  checkOut?: string | null,
+  breakStart?: string | null,
+  breakEnd?: string | null
+): number {
   return Math.round(
-    (Math.max(0, outSeconds - inSeconds - breakSeconds) / 3600) * 100
+    (calculateWorkMinutes(checkIn, checkOut, breakStart, breakEnd) / 60) *
+      100
   ) / 100;
 }
 
-function loadServerData(): ServerState | null {
-  if (!fs.existsSync(DATA_FILE)) {
-    return null;
-  }
+function getShiftForEmployee(employee: any): any {
+  const shiftId = employee?.shiftId;
 
-  try {
-    const content = fs.readFileSync(DATA_FILE, 'utf-8');
+  const shift = (localState.shifts || []).find(
+    (item: any) => String(item.id) === String(shiftId)
+  );
 
-    if (!content.trim()) {
-      return null;
+  return (
+    shift || {
+      id: 'default',
+      name: 'Default Shift',
+      startTime: '09:00',
+      endTime: '17:00',
+      durationMinutes: 480,
+      breakMinutes: 0,
+      gracePeriodMinutes: 10,
+      overtimeEnabled: true,
+      isOvernight: false,
     }
-
-    return JSON.parse(content);
-  } catch (error) {
-    console.error('Error reading server_data.json:', error);
-    return null;
-  }
-}
-
-async function loadPersistentServerData(): Promise<ServerState | null> {
-  if (!hasKvStorage) {
-    return null;
-  }
-
-  try {
-    const data = await kv.get<ServerState>(KV_STATE_KEY);
-
-    if (data && typeof data === 'object') {
-      return data;
-    }
-  } catch (error) {
-    console.error(
-      'Error reading serverState from Vercel KV:',
-      error
-    );
-  }
-
-  return null;
-}
-
-async function saveServerData(data: ServerState): Promise<void> {
-  const payload: ServerState = {
-    ...data,
-    lastUpdated: Date.now(),
-  };
-
-  serverState = payload;
-
-  try {
-    fs.writeFileSync(
-      DATA_FILE,
-      JSON.stringify(payload, null, 2),
-      'utf-8'
-    );
-
-    if (!fs.existsSync(BACKUP_DIR)) {
-      fs.mkdirSync(BACKUP_DIR, { recursive: true });
-    }
-
-    const autoBackupPath = path.join(
-      BACKUP_DIR,
-      'server_data_auto_backup.json'
-    );
-
-    fs.writeFileSync(
-      autoBackupPath,
-      JSON.stringify(payload, null, 2),
-      'utf-8'
-    );
-  } catch (error) {
-    console.error(
-      'Error writing server_data.json:',
-      error
-    );
-  }
-
-  if (hasKvStorage) {
-    try {
-      await kv.set(KV_STATE_KEY, payload);
-      await kv.set(KV_APP_DATA_KEY, {
-        records: payload.attendanceRecords || [],
-        employees: payload.employees || [],
-        shifts: payload.shifts || [],
-        attendanceRecords: payload.attendanceRecords || [],
-        leaveRequests: payload.leaveRequests || [],
-        overtimeRequests: payload.overtimeRequests || [],
-        companyNameAr: payload.companyNameAr,
-        companyNameEn: payload.companyNameEn,
-        urgentNotice: payload.urgentNotice,
-        lastUpdated: payload.lastUpdated,
-      });
-    } catch (error) {
-      console.error(
-        'Error writing serverState to Vercel KV:',
-        error
-      );
-    }
-  }
-}
-
-function getEmployeesMap(
-  employees: any[] = serverState.employees || []
-): Record<string, any> {
-  const map: Record<string, any> = {};
-
-  for (const employee of employees) {
-    if (!employee?.id) continue;
-
-    map[String(employee.id)] = employee;
-    map[normalizeEmployeeId(employee.id)] = employee;
-  }
-
-  return map;
-}
-
-function getShiftsMap(
-  shifts: any[] = serverState.shifts || []
-): Record<string, any> {
-  const map: Record<string, any> = {};
-
-  for (const shift of shifts) {
-    if (!shift?.id) continue;
-    map[String(shift.id)] = shift;
-  }
-
-  return map;
-}
-
-function getDefaultShift() {
-  return {
-    id: 'default',
-    name: 'Default Shift',
-    startTime: '09:00',
-    endTime: '17:00',
-    durationMinutes: 480,
-    breakMinutes: 0,
-    gracePeriodMinutes: 10,
-    overtimeEnabled: true,
-    isOvernight: false,
-  };
+  );
 }
 
 function calculateAttendanceStatus(
   record: any,
-  shiftConfig: any,
-  checkInMinutes: number,
-  checkOutMinutes: number
-) {
+  shift: any
+): {
+  status: string;
+  lateMinutes: number;
+  earlyLeaveMinutes: number;
+} {
   const isLeave =
     record.status === 'on_leave' ||
     record.status === 'approved_leave' ||
     record.status === 'vacation' ||
     record.status === 'official_holiday' ||
-    Boolean(record.isExcused);
+    record.isExcused === true;
 
   if (isLeave) {
     return {
-      status: record.status,
+      status: record.status || 'on_leave',
       lateMinutes: 0,
       earlyLeaveMinutes: 0,
     };
   }
 
-  const startMin = parseMinutes(shiftConfig.startTime);
-  const endMin = parseMinutes(shiftConfig.endTime);
-  const grace = Number(
-    shiftConfig.gracePeriodMinutes ?? 10
-  );
+  const start = Number(shift?.startTime ? parseMinutes(shift.startTime) : 540);
+  const end = Number(shift?.endTime ? parseMinutes(shift.endTime) : 1020);
+  const grace = Number(shift?.gracePeriodMinutes ?? 10);
 
   let lateMinutes = 0;
+  let earlyLeaveMinutes = 0;
 
-  if (record.checkIn && String(record.checkIn).trim()) {
-    let diff = checkInMinutes - startMin;
+  if (record.checkIn) {
+    let diff = parseMinutes(record.checkIn) - start;
 
     if (diff < -720) {
       diff += 1440;
@@ -376,14 +272,8 @@ function calculateAttendanceStatus(
     }
   }
 
-  let earlyLeaveMinutes = 0;
-
-  if (
-    record.checkOut &&
-    String(record.checkOut).trim() &&
-    !record.isExplicitCancelCheckOut
-  ) {
-    let diff = endMin - checkOutMinutes;
+  if (record.checkOut && !record.isExplicitCancelCheckOut) {
+    let diff = end - parseMinutes(record.checkOut);
 
     if (diff < -720) {
       diff += 1440;
@@ -396,19 +286,18 @@ function calculateAttendanceStatus(
 
   let status = record.status || 'in_progress';
 
-  if (lateMinutes > 0) {
-    status = 'late';
-  } else if (record.checkIn && !record.checkOut) {
-    status = 'in_progress';
-  } else if (record.checkIn && record.checkOut) {
-    status =
-      earlyLeaveMinutes > 0
-        ? 'early_leave'
-        : 'on_time';
-  } else if (!record.checkIn && !record.checkOut) {
-    if (record.status === 'absent') {
-      status = 'absent';
+  if (record.checkIn && record.checkOut) {
+    if (lateMinutes > 0) {
+      status = 'late';
+    } else if (earlyLeaveMinutes > 0) {
+      status = 'early_leave';
+    } else {
+      status = 'on_time';
     }
+  } else if (record.checkIn) {
+    status = lateMinutes > 0 ? 'late' : 'in_progress';
+  } else if (!record.checkIn && !record.checkOut) {
+    status = record.status || 'absent';
   }
 
   return {
@@ -418,351 +307,79 @@ function calculateAttendanceStatus(
   };
 }
 
-function sanitizeRecordServer(
-  record: any,
-  employeesMap?: Record<string, any>,
-  shiftsMap?: Record<string, any>
-): any {
+function sanitizeAttendanceRecord(record: any): any {
   if (!record) return record;
 
-  const employeeMap =
-    employeesMap || getEmployeesMap();
+  const employee = (localState.employees || []).find(
+    (item: any) =>
+      normalizeId(item.id) === normalizeId(record.employeeId)
+  );
 
-  const shiftMap =
-    shiftsMap || getShiftsMap();
+  const shift = getShiftForEmployee(employee);
 
-  const employee =
-    employeeMap[record.employeeId] ||
-    employeeMap[normalizeEmployeeId(record.employeeId)] ||
-    {};
+  const shiftDuration = Number(
+    shift?.durationMinutes || 480
+  );
 
-  const shiftId = employee.shiftId || 'default';
+  const workedMinutes = calculateWorkMinutes(
+    record.checkIn,
+    record.checkOut,
+    record.breakStart,
+    record.breakEnd
+  );
 
-  const shift =
-    shiftMap[shiftId] ||
-    getDefaultShift();
+  let regularMinutes = 0;
+  let overtimeMinutes = 0;
+  let minusMinutes = 0;
 
-  let workHours = 0;
-  let minusHours = 0;
-  let overtimeHours = 0;
+  if (record.checkIn && record.checkOut) {
+    regularMinutes = Math.min(workedMinutes, shiftDuration);
+    overtimeMinutes = Math.max(
+      workedMinutes - shiftDuration,
+      0
+    );
 
-  const shiftDurationMinutes =
-    Number(shift.durationMinutes) || 480;
-
-  let inMinutes = 0;
-  let outMinutes = 0;
+    minusMinutes = Math.max(
+      shiftDuration - workedMinutes,
+      0
+    );
+  }
 
   if (
-    record.checkIn &&
-    typeof record.checkIn === 'string' &&
-    record.checkIn.trim()
+    record.status === 'on_leave' ||
+    record.status === 'approved_leave' ||
+    record.status === 'vacation' ||
+    record.status === 'official_holiday' ||
+    record.isExcused === true
   ) {
-    inMinutes = parseMinutes(record.checkIn);
-
-    if (
-      record.checkOut &&
-      typeof record.checkOut === 'string' &&
-      record.checkOut.trim()
-    ) {
-      outMinutes = parseMinutes(record.checkOut);
-
-      let workedMinutes =
-        outMinutes - inMinutes;
-
-      if (workedMinutes < 0) {
-        workedMinutes += 1440;
-      }
-
-      if (record.breakStart) {
-        const breakStart = parseMinutes(
-          record.breakStart
-        );
-
-        const breakEnd = record.breakEnd
-          ? parseMinutes(record.breakEnd)
-          : outMinutes;
-
-        let breakMinutes =
-          breakEnd - breakStart;
-
-        if (breakMinutes < 0) {
-          breakMinutes += 1440;
-        }
-
-        workedMinutes = Math.max(
-          0,
-          workedMinutes - breakMinutes
-        );
-      }
-
-      const regularMinutes = Math.min(
-        workedMinutes,
-        shiftDurationMinutes
-      );
-
-      const overtimeMinutes = Math.max(
-        workedMinutes - shiftDurationMinutes,
-        0
-      );
-
-      let missingMinutes = Math.max(
-        shiftDurationMinutes - workedMinutes,
-        0
-      );
-
-      const isLeave =
-        record.status === 'on_leave' ||
-        record.status === 'approved_leave' ||
-        record.status === 'vacation' ||
-        record.status === 'official_holiday' ||
-        Boolean(record.isExcused);
-
-      if (isLeave) {
-        missingMinutes = 0;
-      }
-
-      workHours =
-        Math.round((workedMinutes / 60) * 100) / 100;
-
-      overtimeHours =
-        Math.round((overtimeMinutes / 60) * 100) / 100;
-
-      minusHours =
-        Math.round((missingMinutes / 60) * 100) / 100;
-
-      const statusResult =
-        calculateAttendanceStatus(
-          record,
-          shift,
-          inMinutes,
-          outMinutes
-        );
-
-      record.status = statusResult.status;
-      record.lateMinutes =
-        statusResult.lateMinutes;
-      record.earlyLeaveMinutes =
-        statusResult.earlyLeaveMinutes;
-    } else {
-      const statusResult =
-        calculateAttendanceStatus(
-          record,
-          shift,
-          inMinutes,
-          0
-        );
-
-      record.status = statusResult.status;
-      record.lateMinutes =
-        statusResult.lateMinutes;
-      record.earlyLeaveMinutes = 0;
-    }
-  } else if (record.status === 'absent') {
-    minusHours =
-      Math.round(
-        (shiftDurationMinutes / 60) * 100
-      ) / 100;
+    minusMinutes = 0;
   }
+
+  const status = calculateAttendanceStatus(record, shift);
 
   return {
     ...record,
-    workHours,
-    overtimeHours,
-    minusHours,
+    lateMinutes: status.lateMinutes,
+    earlyLeaveMinutes: status.earlyLeaveMinutes,
+    status: status.status,
+    workHours:
+      record.isExplicitCancelCheckOut
+        ? 0
+        : Math.round((workedMinutes / 60) * 100) / 100,
+    overtimeHours:
+      record.isExplicitCancelCheckOut
+        ? 0
+        : Math.round((overtimeMinutes / 60) * 100) / 100,
+    minusHours:
+      Math.round((minusMinutes / 60) * 100) / 100,
+    regularMinutes,
+    updatedAt:
+      record.updatedAt || new Date().toISOString(),
   };
 }
 
-function parseRecordMsServer(record: any): number {
-  if (!record?.updatedAt) return 0;
-
-  const ms = Date.parse(
-    String(record.updatedAt)
-  );
-
-  return Number.isNaN(ms) ? 0 : ms;
-}
-
-function attendanceKey(
-  employeeId: unknown,
-  date: unknown
-): string {
-  return `${normalizeEmployeeId(employeeId)}_${normalizeDate(date)}`;
-}
-
-function ensureApprovedLeaveRecordsServer(
-  records: any[] = [],
-  leaveRequests: any[] = []
-): any[] {
-  const map = new Map<string, any>();
-
-  const deletedKeys =
-    serverState.deletedAttendanceKeys || {};
-
-  for (const record of records) {
-    if (!record) continue;
-
-    const sanitized =
-      sanitizeRecordServer(record);
-
-    const employeeId =
-      normalizeEmployeeId(
-        sanitized.employeeId
-      );
-
-    const date =
-      normalizeDate(sanitized.date);
-
-    if (!employeeId || !date) continue;
-
-    map.set(
-      attendanceKey(employeeId, date),
-      sanitized
-    );
-  }
-
-  const approvedRequests =
-    leaveRequests.filter(
-      request => request?.status === 'approved'
-    );
-
-  for (const request of approvedRequests) {
-    const rawEmployeeId =
-      String(request.employeeId || '').trim();
-
-    const employeeId =
-      normalizeEmployeeId(rawEmployeeId);
-
-    if (
-      !employeeId ||
-      !request.startDate ||
-      !request.endDate
-    ) {
-      continue;
-    }
-
-    const startDate =
-      String(request.startDate) <=
-      String(request.endDate)
-        ? String(request.startDate)
-        : String(request.endDate);
-
-    const endDate =
-      String(request.startDate) <=
-      String(request.endDate)
-        ? String(request.endDate)
-        : String(request.startDate);
-
-    let date =
-      new Date(`${startDate}T00:00:00`);
-
-    const end =
-      new Date(`${endDate}T00:00:00`);
-
-    while (date <= end) {
-      const year =
-        date.getFullYear();
-
-      const month =
-        String(date.getMonth() + 1)
-          .padStart(2, '0');
-
-      const day =
-        String(date.getDate())
-          .padStart(2, '0');
-
-      const dateString =
-        `${year}-${month}-${day}`;
-
-      const key =
-        attendanceKey(
-          employeeId,
-          dateString
-        );
-
-      const deletedAt =
-        deletedKeys[key] || 0;
-
-      const existing =
-        map.get(key);
-
-      const reason =
-        request.reason || '';
-
-      let notes = 'إجازة معتمدة';
-
-      if (request.type === 'permission') {
-        notes = reason
-          ? `إذن: ${reason}`
-          : 'إذن خروج معتمد';
-      } else if (request.type === 'sick') {
-        notes = `إجازة مرضية: ${
-          reason || 'تقرير طبي'
-        }`;
-      } else if (request.type === 'casual') {
-        notes = `إجازة عارضة: ${
-          reason || 'ظرف طارئ'
-        }`;
-      } else if (
-        request.type === 'annual' ||
-        request.type === 'regular'
-      ) {
-        notes = `إجازة اعتيادية: ${
-          reason || 'رصيد سنوي'
-        }`;
-      } else if (reason) {
-        notes =
-          `إجازة (${request.type || 'معتمدة'}): ${reason}`;
-      }
-
-      if (!existing && deletedAt === 0) {
-        map.set(
-          key,
-          sanitizeRecordServer({
-            id:
-              `rec-leave-${employeeId}-${dateString}`,
-            employeeId: rawEmployeeId,
-            date: dateString,
-            status: 'on_leave',
-            leaveType: request.type,
-            workHours: 0,
-            lateMinutes: 0,
-            earlyLeaveMinutes: 0,
-            overtimeHours: 0,
-            notes,
-            verifiedByFace: true,
-            updatedAt:
-              new Date().toISOString(),
-          })
-        );
-      } else if (
-        existing &&
-        !existing.checkIn &&
-        existing.status !== 'on_leave'
-      ) {
-        map.set(
-          key,
-          sanitizeRecordServer({
-            ...existing,
-            status: 'on_leave',
-            leaveType: request.type,
-            notes: existing.notes
-              ? `${existing.notes} | ${notes}`
-              : notes,
-            updatedAt:
-              new Date().toISOString(),
-          })
-        );
-      }
-
-      date.setDate(
-        date.getDate() + 1
-      );
-    }
-  }
-
-  return Array.from(
-    map.values()
-  );
+function attendanceKey(employeeId: unknown, date: unknown): string {
+  return `${normalizeId(employeeId)}_${String(date ?? '').trim()}`;
 }
 
 function mergeAttendanceRecords(
@@ -771,678 +388,269 @@ function mergeAttendanceRecords(
 ): any[] {
   const map = new Map<string, any>();
 
-  const deletedKeys =
-    serverState.deletedAttendanceKeys || {};
+  for (const item of existing) {
+    if (!item?.employeeId || !item?.date) continue;
 
-  const processRecord = (
-    record: any,
-    isIncoming = false
-  ) => {
-    if (!record) return;
+    const key = attendanceKey(item.employeeId, item.date);
 
-    const sanitized =
-      sanitizeRecordServer(record);
+    map.set(key, sanitizeAttendanceRecord({ ...item }));
+  }
 
-    const rawEmployeeId =
-      sanitized.employeeId
-        ? String(
-            sanitized.employeeId
-          ).trim()
-        : '';
+  for (const item of incoming) {
+    if (!item?.employeeId || !item?.date) continue;
 
-    const employeeId =
-      normalizeEmployeeId(rawEmployeeId);
-
-    const date =
-      normalizeDate(sanitized.date);
-
-    const canonicalId =
-      employeeId && date
-        ? `rec-${employeeId}-${date}`
-        : sanitized.id;
-
-    const key =
-      employeeId && date
-        ? attendanceKey(
-            employeeId,
-            date
-          )
-        : canonicalId;
-
-    if (!key) return;
-
-    if (
-      sanitized.checkIn ||
-      sanitized.checkOut ||
-      isIncoming
-    ) {
-      delete deletedKeys[key];
-    } else {
-      const deletedAt =
-        deletedKeys[key] || 0;
-
-      const recordTime =
-        parseRecordMsServer(
-          sanitized
-        );
-
-      if (
-        deletedAt > 0 &&
-        recordTime <= deletedAt
-      ) {
-        return;
-      }
-    }
-
-    const old =
-      map.get(key);
+    const key = attendanceKey(item.employeeId, item.date);
+    const old = map.get(key);
 
     if (!old) {
-      map.set(key, {
-        ...sanitized,
-        id: canonicalId,
-        employeeId:
-          rawEmployeeId ||
-          sanitized.employeeId,
-        updatedAt:
-          sanitized.updatedAt ||
-          new Date().toISOString(),
-      });
-
-      return;
+      map.set(key, sanitizeAttendanceRecord({ ...item }));
+      continue;
     }
 
-    const oldTime =
-      parseRecordMsServer(old);
+    const merged = {
+      ...old,
+      ...item,
+    };
 
-    const newTime =
-      parseRecordMsServer(
-        sanitized
-      );
-
-    const checkIn =
-      sanitized.checkIn &&
-      String(
-        sanitized.checkIn
-      ).trim()
-        ? sanitized.checkIn
-        : old.checkIn;
-
-    const explicitCancel =
-      sanitized.isExplicitCancelCheckOut === true ||
-      old.isExplicitCancelCheckOut === true;
-
-    let checkOut:
-      | string
-      | null
-      | undefined;
-
-    if (explicitCancel) {
-      checkOut = null;
-    } else if (
-      sanitized.checkOut &&
-      String(
-        sanitized.checkOut
-      ).trim()
-    ) {
-      checkOut =
-        sanitized.checkOut;
-    } else {
-      checkOut =
-        old.checkOut;
+    if (!item.checkIn && old.checkIn) {
+      merged.checkIn = old.checkIn;
     }
-
-    const breakStart =
-      sanitized.breakStart !==
-        undefined &&
-      sanitized.breakStart !== null
-        ? sanitized.breakStart
-        : old.breakStart;
-
-    const breakEnd =
-      sanitized.breakEnd !==
-        undefined &&
-      sanitized.breakEnd !== null
-        ? sanitized.breakEnd
-        : old.breakEnd;
-
-    const baseRecord =
-      newTime >= oldTime
-        ? { ...old, ...sanitized }
-        : { ...sanitized, ...old };
-
-    let workHours =
-      explicitCancel
-        ? 0
-        : Number(
-            baseRecord.workHours || 0
-          );
 
     if (
-      checkIn &&
-      checkOut &&
-      workHours === 0
+      item.checkOut === undefined &&
+      old.checkOut
     ) {
-      workHours =
-        calculateWorkHoursServer(
-          String(checkIn),
-          String(checkOut),
-          breakStart
-            ? String(breakStart)
-            : undefined,
-          breakEnd
-            ? String(breakEnd)
-            : undefined
-        );
+      merged.checkOut = old.checkOut;
     }
-
-    const lateMinutes =
-      baseRecord.lateMinutes !==
-        undefined &&
-      baseRecord.lateMinutes !== null
-        ? Number(
-            baseRecord.lateMinutes
-          )
-        : Number(
-            old.lateMinutes || 0
-          );
-
-    const lateSeconds =
-      baseRecord.lateSeconds !==
-        undefined &&
-      baseRecord.lateSeconds !== null
-        ? Number(
-            baseRecord.lateSeconds
-          )
-        : Number(
-            old.lateSeconds || 0
-          );
-
-    const earlyLeaveMinutes =
-      explicitCancel
-        ? 0
-        : baseRecord.earlyLeaveMinutes !==
-            undefined &&
-          baseRecord.earlyLeaveMinutes !==
-            null
-        ? Number(
-            baseRecord.earlyLeaveMinutes
-          )
-        : Number(
-            old.earlyLeaveMinutes || 0
-          );
-
-    const overtimeHours =
-      baseRecord.overtimeHours !==
-        undefined &&
-      baseRecord.overtimeHours !== null
-        ? Number(
-            baseRecord.overtimeHours
-          )
-        : Number(
-            old.overtimeHours || 0
-          );
-
-    const isExcused =
-      sanitized.isExcused !==
-        undefined
-        ? sanitized.isExcused
-        : old.isExcused;
-
-    const excusedReason =
-      isExcused === false
-        ? undefined
-        : sanitized.excusedReason ||
-          old.excusedReason;
-
-    const excusedBy =
-      isExcused === false
-        ? undefined
-        : sanitized.excusedBy ||
-          old.excusedBy;
-
-    const leaveType =
-      sanitized.leaveType ||
-      old.leaveType;
-
-    let notes =
-      old.notes || '';
 
     if (
-      sanitized.notes &&
-      typeof sanitized.notes ===
-        'string'
+      item.breakStart === undefined &&
+      old.breakStart
     ) {
-      const trimmed =
-        sanitized.notes.trim();
-
-      if (
-        trimmed &&
-        !notes.includes(trimmed)
-      ) {
-        notes = notes
-          ? `${notes} | ${trimmed}`
-          : trimmed;
-      }
+      merged.breakStart = old.breakStart;
     }
 
-    let status =
-      baseRecord.status;
-
-    if (explicitCancel) {
-      status =
-        lateMinutes > 0
-          ? 'late'
-          : 'in_progress';
-    } else if (checkOut) {
-      if (
-        !status ||
-        status === 'in_progress' ||
-        status === 'absent' ||
-        status === 'weekend'
-      ) {
-        status =
-          lateMinutes > 0
-            ? 'late'
-            : earlyLeaveMinutes > 0
-            ? 'early_leave'
-            : 'on_time';
-      }
-    } else if (checkIn) {
-      if (
-        !status ||
-        status === 'absent' ||
-        status === 'weekend'
-      ) {
-        status =
-          lateMinutes > 0
-            ? 'late'
-            : 'in_progress';
-      }
+    if (
+      item.breakEnd === undefined &&
+      old.breakEnd
+    ) {
+      merged.breakEnd = old.breakEnd;
     }
 
-    const mergedRecord =
-      sanitizeRecordServer({
-        ...baseRecord,
-        id: canonicalId,
-        employeeId:
-          rawEmployeeId ||
-          old.employeeId,
-        checkIn,
-        checkOut,
-        breakStart,
-        breakEnd,
-        workHours,
-        overtimeHours,
-        lateMinutes,
-        lateSeconds,
-        earlyLeaveMinutes,
-        isExcused,
-        excusedReason,
-        excusedBy,
-        leaveType,
-        notes,
-        status,
-        isExplicitCancelCheckOut:
-          explicitCancel
-            ? true
-            : false,
-        updatedAt:
-          sanitized.updatedAt ||
-          old.updatedAt ||
-          new Date().toISOString(),
-      });
+    if (
+      (!item.avatar || String(item.avatar).trim() === '') &&
+      old.avatar
+    ) {
+      merged.avatar = old.avatar;
+    }
+
+    if (
+      item.notes &&
+      old.notes &&
+      item.notes !== old.notes &&
+      !String(old.notes).includes(String(item.notes))
+    ) {
+      merged.notes = `${old.notes} | ${item.notes}`;
+    }
+
+    merged.updatedAt =
+      item.updatedAt ||
+      old.updatedAt ||
+      new Date().toISOString();
 
     map.set(
       key,
-      mergedRecord
-    );
-  };
-
-  for (const record of existing) {
-    processRecord(
-      record,
-      false
+      sanitizeAttendanceRecord(merged)
     );
   }
 
-  for (const record of incoming) {
-    processRecord(
-      record,
-      true
+  return Array.from(map.values()).sort((a, b) => {
+    const dateCompare = String(b.date).localeCompare(
+      String(a.date)
     );
-  }
 
-  return Array.from(
-    map.values()
-  )
-    .map(record =>
-      sanitizeRecordServer(record)
-    )
-    .sort((a, b) => {
-      if (b.date !== a.date) {
-        return String(b.date || '')
-          .localeCompare(
-            String(a.date || '')
-          );
-      }
+    if (dateCompare !== 0) {
+      return dateCompare;
+    }
 
-      return String(
-        a.employeeId || ''
-      ).localeCompare(
-        String(
-          b.employeeId || ''
-        )
-      );
-    });
+    return String(a.employeeId).localeCompare(
+      String(b.employeeId)
+    );
+  });
 }
 
-function mergeByUniqueId(
+function mergeById(
   existing: any[] = [],
   incoming: any[] = []
 ): any[] {
   const map = new Map<string, any>();
 
-  const deletedKeys =
-    serverState.deletedLeaveKeys || {};
-
   for (const item of existing) {
-    if (
-      item?.id &&
-      !deletedKeys[item.id]
-    ) {
-      map.set(
-        item.id,
-        { ...item }
-      );
+    if (item?.id) {
+      map.set(String(item.id), { ...item });
     }
   }
 
   for (const item of incoming) {
-    if (
-      !item?.id ||
-      deletedKeys[item.id]
-    ) {
-      continue;
-    }
+    if (!item?.id) continue;
 
-    const old =
-      map.get(item.id);
+    const id = String(item.id);
+    const old = map.get(id);
 
     if (!old) {
-      map.set(
-        item.id,
-        { ...item }
-      );
+      map.set(id, { ...item });
       continue;
     }
 
-    const oldTime =
-      old.updatedAt
-        ? Date.parse(
-            old.updatedAt
-          )
-        : 0;
+    const oldTime = old.updatedAt
+      ? Date.parse(old.updatedAt)
+      : 0;
 
-    const incomingTime =
-      item.updatedAt
-        ? Date.parse(
-            item.updatedAt
-          )
-        : 0;
+    const newTime = item.updatedAt
+      ? Date.parse(item.updatedAt)
+      : 0;
 
     if (
       oldTime > 0 &&
-      incomingTime > 0 &&
-      incomingTime < oldTime
+      newTime > 0 &&
+      newTime < oldTime
     ) {
       continue;
     }
 
-    let avatar =
-      item.avatar;
-
-    if (item._isPhotoRemoved) {
-      avatar = '';
-    } else if (
-      (!avatar ||
-        String(avatar).trim() === '') &&
-      old.avatar
-    ) {
-      avatar = old.avatar;
-    }
-
-    map.set(item.id, {
+    map.set(id, {
       ...old,
       ...item,
-      status:
-        item.status ||
-        old.status ||
-        'pending',
-      reviewNotes:
-        item.reviewNotes ??
-        old.reviewNotes,
-      reviewedBy:
-        item.reviewedBy ??
-        old.reviewedBy,
-      attachmentUrl:
-        item.attachmentUrl ??
-        old.attachmentUrl,
-      attachmentName:
-        item.attachmentName ??
-        old.attachmentName,
-      avatar:
-        avatar !== undefined
-          ? avatar
-          : old.avatar || '',
     });
   }
 
-  return Array.from(
-    map.values()
+  return Array.from(map.values());
+}
+
+function ensureNoFutureAttendance(
+  records: any[]
+): any[] {
+  const today = getServerClock().date;
+
+  return records.filter(
+    (record) =>
+      !record?.date ||
+      String(record.date) <= today
   );
 }
 
-function cleanStateForResponse(
-  state: ServerState
-) {
-  const deletedEmployees =
-    state.deletedEmployeeKeys || {};
-
-  const employees =
-    (state.employees || [])
-      .filter(
-        employee =>
-          employee?.id &&
-          !deletedEmployees[
-            employee.id
-          ]
-      );
-
-  const employeeExists =
-    new Set(
-      employees.map(
-        employee =>
-          normalizeEmployeeId(
-            employee.id
-          )
-      )
-    );
-
-  const attendanceRecords =
-    (state.attendanceRecords || [])
-      .filter(record => {
-        const id =
-          normalizeEmployeeId(
-            record.employeeId
-          );
-
-        return (
-          !deletedEmployees[
-            record.employeeId
-          ] &&
-          employeeExists.has(id)
-        );
-      });
-
-  const leaveRequests =
-    (state.leaveRequests || [])
-      .filter(request => {
-        const id =
-          normalizeEmployeeId(
-            request.employeeId
-          );
-
-        return (
-          !deletedEmployees[
-            request.employeeId
-          ] &&
-          employeeExists.has(id)
-        );
-      });
-
-  const overtimeRequests =
-    (state.overtimeRequests || [])
-      .filter(request => {
-        const id =
-          normalizeEmployeeId(
-            request.employeeId
-          );
-
-        return (
-          !deletedEmployees[
-            request.employeeId
-          ] &&
-          employeeExists.has(id)
-        );
-      });
-
+function normalizeDbEmployee(employee: any): any {
   return {
+    ...employee,
+    id: String(employee.id),
+  };
+}
+
+function normalizeDbAttendance(record: any): any {
+  return sanitizeAttendanceRecord({
+    ...record,
+    employeeId: String(record.employeeId),
+  });
+}
+
+async function getDatabaseData() {
+  const [
     employees,
     attendanceRecords,
     leaveRequests,
     overtimeRequests,
-    shifts:
-      state.shifts || [],
-    companyNameAr:
-      state.companyNameAr ||
-      null,
-    companyNameEn:
-      state.companyNameEn ||
-      null,
-    urgentNotice:
-      state.urgentNotice !==
-        undefined
-        ? state.urgentNotice
-        : null,
-    lastUpdated:
-      state.lastUpdated ||
-      Date.now(),
+    shifts,
+    settings,
+  ] = await Promise.all([
+    db.select().from(schema.employees),
+    db.select().from(schema.attendanceRecords),
+    db.select().from(schema.leaveRequests),
+    db.select().from(schema.overtimeRequests),
+    db.select().from(schema.shifts),
+    db.select().from(schema.settings),
+  ]);
+
+  localState.employees = employees.map(normalizeDbEmployee);
+  localState.attendanceRecords =
+    attendanceRecords.map(normalizeDbAttendance);
+  localState.leaveRequests = leaveRequests;
+  localState.overtimeRequests = overtimeRequests;
+  localState.shifts = shifts;
+
+  for (const setting of settings) {
+    if (setting.key === 'companyNameAr') {
+      localState.companyNameAr =
+        typeof setting.value === 'string'
+          ? setting.value
+          : null;
+    }
+
+    if (setting.key === 'companyNameEn') {
+      localState.companyNameEn =
+        typeof setting.value === 'string'
+          ? setting.value
+          : null;
+    }
+
+    if (setting.key === 'urgentNotice') {
+      localState.urgentNotice = setting.value;
+    }
+  }
+
+  return {
+    employees: localState.employees,
+    attendanceRecords: localState.attendanceRecords,
+    leaveRequests: localState.leaveRequests,
+    overtimeRequests: localState.overtimeRequests,
+    shifts: localState.shifts,
+    companyNameAr: localState.companyNameAr,
+    companyNameEn: localState.companyNameEn,
+    urgentNotice: localState.urgentNotice,
+    lastUpdated: Date.now(),
   };
 }
 
-function getAttendanceInsertData(
-  record: any
-): typeof schema.attendanceRecords.$inferInsert {
-  return {
-    id: String(record.id),
-    employeeId: String(
-      record.employeeId
-    ),
-    date: String(record.date),
+async function upsertSetting(
+  key: string,
+  value: any
+) {
+  await db
+    .insert(schema.settings)
+    .values({
+      key,
+      value,
+    })
+    .onConflictDoUpdate({
+      target: schema.settings.key,
+      set: {
+        value,
+      },
+    });
+}
 
-    checkIn:
-      record.checkIn ??
-      null,
+async function deleteAttendanceFromDatabase(
+  employeeId: string,
+  date: string
+) {
+  await db
+    .delete(schema.attendanceRecords)
+    .where(
+      sql`${schema.attendanceRecords.employeeId} = ${employeeId} AND ${schema.attendanceRecords.date} = ${date}`
+    );
+}
 
-    checkOut:
-      record.checkOut ??
-      null,
+async function getAttendanceRecord(
+  employeeId: string,
+  date: string
+) {
+  const rows = await db
+    .select()
+    .from(schema.attendanceRecords)
+    .where(
+      sql`${schema.attendanceRecords.employeeId} = ${employeeId} AND ${schema.attendanceRecords.date} = ${date}`
+    );
 
-    breakStart:
-      record.breakStart ??
-      null,
-
-    breakEnd:
-      record.breakEnd ??
-      null,
-
-    breaks:
-      record.breaks ??
-      null,
-
-    totalBreakSeconds:
-      record.totalBreakSeconds ??
-      null,
-
-    location:
-      record.location ??
-      null,
-
-    deviceInfo:
-      record.deviceInfo ??
-      null,
-
-    lateMinutes:
-      record.lateMinutes ??
-      0,
-
-    lateSeconds:
-      record.lateSeconds ??
-      0,
-
-    earlyLeaveMinutes:
-      record.earlyLeaveMinutes ??
-      0,
-
-    workHours:
-      record.workHours ??
-      0,
-
-    overtimeHours:
-      record.overtimeHours ??
-      0,
-
-    minusHours:
-      record.minusHours ??
-      0,
-
-    status:
-      record.status ??
-      null,
-
-    leaveType:
-      record.leaveType ??
-      null,
-
-    notes:
-      record.notes ??
-      null,
-
-    verifiedByFace:
-      record.verifiedByFace ??
-      false,
-
-    isExcused:
-      record.isExcused ??
-      false,
-
-    excusedBy:
-      record.excusedBy ??
-      null,
-
-    excusedReason:
-      record.excusedReason ??
-      null,
-
-    updatedAt:
-      record.updatedAt ??
-      new Date().toISOString(),
-
-    isExplicitCancelCheckOut:
-      record.isExplicitCancelCheckOut ??
-      false,
-  };
+  return rows[0] || null;
 }
 
 app.disable('x-powered-by');
@@ -1453,1641 +661,1702 @@ app.use(
   })
 );
 
-app.use(
-  '/api',
-  (_req, res, next) => {
-    res.set({
-      'Cache-Control':
-        'no-store, no-cache, must-revalidate, proxy-revalidate',
-      Pragma: 'no-cache',
-      Expires: '0',
+app.use('/api', (_req, res, next) => {
+  res.setHeader(
+    'Cache-Control',
+    'no-store, no-cache, must-revalidate, proxy-revalidate'
+  );
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  next();
+});
+
+app.get('/api/health', async (_req, res) => {
+  let database = false;
+
+  if (USE_DATABASE) {
+    try {
+      await db.execute(sql`select 1`);
+      database = true;
+    } catch {
+      database = false;
+    }
+  }
+
+  res.json({
+    success: true,
+    status: 'ok',
+    database,
+    serverTime: getServerClock(),
+  });
+});
+
+app.get('/api/data', async (_req, res) => {
+  try {
+    if (USE_DATABASE) {
+      const data = await getDatabaseData();
+
+      return res.json({
+        success: true,
+        ...data,
+      });
+    }
+
+    return res.json({
+      success: true,
+      ...localState,
+      lastUpdated: localState.lastUpdated,
     });
+  } catch (error) {
+    console.error('GET /api/data error:', error);
 
-    next();
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to load application data',
+    });
   }
-);
+});
 
-app.get(
-  '/api/data',
-  async (_req, res) => {
-    try {
-      if (hasDatabase) {
-        const [
-          employees,
-          attendanceRecords,
-          leaveRequests,
-          overtimeRequests,
-          shifts,
-        ] = await Promise.all([
-          db
-            .select()
-            .from(schema.employees),
+app.post('/api/data', async (req, res) => {
+  try {
+    const body = req.body || {};
 
-          db
-            .select()
-            .from(
-              schema.attendanceRecords
-            ),
+    if (USE_DATABASE) {
+      if (Array.isArray(body.employees)) {
+        for (const employee of body.employees) {
+          if (!employee?.id) continue;
 
-          db
-            .select()
-            .from(
-              schema.leaveRequests
-            ),
-
-          db
-            .select()
-            .from(
-              schema.overtimeRequests
-            ),
-
-          db
-            .select()
-            .from(schema.shifts),
-        ]);
-
-        return res.json({
-          success: true,
-          employees,
-          attendanceRecords,
-          leaveRequests,
-          overtimeRequests,
-          shifts,
-          companyNameAr:
-            serverState.companyNameAr ||
-            null,
-          companyNameEn:
-            serverState.companyNameEn ||
-            null,
-          urgentNotice:
-            serverState.urgentNotice ??
-            null,
-          lastUpdated:
-            Date.now(),
-        });
-      }
-
-      if (hasKvStorage) {
-        try {
-          const persistent =
-            await kv.get<ServerState>(
-              KV_STATE_KEY
-            );
-
-          if (
-            persistent &&
-            typeof persistent ===
-              'object'
-          ) {
-            serverState = {
-              ...serverState,
-              ...persistent,
-            };
-          }
-        } catch (error) {
-          console.error(
-            'KV data fetch failed:',
-            error
-          );
-        }
-      }
-
-      if (
-        (!serverState.employees ||
-          serverState.employees
-            .length === 0) &&
-        fs.existsSync(DATA_FILE)
-      ) {
-        const fileState =
-          loadServerData();
-
-        if (fileState) {
-          serverState = {
-            ...fileState,
-            ...serverState,
+          const values: typeof schema.employees.$inferInsert = {
+            id: String(employee.id),
+            code: employee.code ?? null,
+            nameAr: String(employee.nameAr ?? ''),
+            nameEn: String(employee.nameEn ?? ''),
+            avatar: employee.avatar ?? null,
+            email: employee.email ?? null,
+            phone: employee.phone ?? null,
+            department: employee.department ?? null,
+            jobTitleAr: employee.jobTitleAr ?? null,
+            jobTitleEn: employee.jobTitleEn ?? null,
+            shiftId: employee.shiftId ?? null,
+            pin: employee.pin ?? null,
+            role: employee.role ?? null,
+            joinedDate: employee.joinedDate ?? null,
+            status: employee.status ?? null,
+            annualLeaveBalance:
+              employee.annualLeaveBalance ?? null,
+            casualLeaveBalance:
+              employee.casualLeaveBalance ?? null,
+            regularLeaveBalance:
+              employee.regularLeaveBalance ?? null,
+            sickLeaveBalance:
+              employee.sickLeaveBalance ?? null,
+            isPhotoRemoved:
+              employee.isPhotoRemoved ?? false,
           };
+
+          await db
+            .insert(schema.employees)
+            .values(values)
+            .onConflictDoUpdate({
+              target: schema.employees.id,
+              set: {
+                code: values.code,
+                nameAr: values.nameAr,
+                nameEn: values.nameEn,
+                avatar: values.avatar,
+                email: values.email,
+                phone: values.phone,
+                department: values.department,
+                jobTitleAr: values.jobTitleAr,
+                jobTitleEn: values.jobTitleEn,
+                shiftId: values.shiftId,
+                pin: values.pin,
+                role: values.role,
+                joinedDate: values.joinedDate,
+                status: values.status,
+                annualLeaveBalance:
+                  values.annualLeaveBalance,
+                casualLeaveBalance:
+                  values.casualLeaveBalance,
+                regularLeaveBalance:
+                  values.regularLeaveBalance,
+                sickLeaveBalance:
+                  values.sickLeaveBalance,
+                isPhotoRemoved:
+                  values.isPhotoRemoved,
+              },
+            });
         }
       }
 
-      if (
-        serverState.leaveRequests &&
-        serverState.attendanceRecords
-      ) {
-        serverState.attendanceRecords =
-          ensureApprovedLeaveRecordsServer(
-            serverState.attendanceRecords,
-            serverState.leaveRequests
-          );
-      }
-
-      return res.json({
-        success: true,
-        ...cleanStateForResponse(
-          serverState
-        ),
-      });
-    } catch (error) {
-      console.error(
-        'GET /api/data error:',
-        error
-      );
-
-      return res.status(500).json({
-        success: false,
-        error: 'Failed to fetch data',
-      });
-    }
-  }
-);
-
-app.post(
-  '/api/data',
-  async (req, res) => {
-    try {
-      const body =
-        req.body || {};
-
-      if (hasKvStorage) {
-        const current =
-          (await kv.get<ServerState>(
-            KV_APP_DATA_KEY
-          )) || serverState;
-
-        serverState = {
-          ...serverState,
-          ...current,
-          ...body,
-          lastUpdated:
-            Date.now(),
-        };
-
-        await saveServerData(
-          serverState
+      if (body.companyNameAr !== undefined) {
+        await upsertSetting(
+          'companyNameAr',
+          body.companyNameAr
         );
-
-        return res.json({
-          success: true,
-          ...cleanStateForResponse(
-            serverState
-          ),
-        });
       }
 
-      serverState = {
-        ...serverState,
-        ...body,
-        lastUpdated:
-          Date.now(),
-      };
+      if (body.companyNameEn !== undefined) {
+        await upsertSetting(
+          'companyNameEn',
+          body.companyNameEn
+        );
+      }
 
-      await saveServerData(
-        serverState
-      );
+      if (body.urgentNotice !== undefined) {
+        await upsertSetting(
+          'urgentNotice',
+          body.urgentNotice
+        );
+      }
+
+      const data = await getDatabaseData();
 
       return res.json({
         success: true,
-        ...cleanStateForResponse(
-          serverState
-        ),
-      });
-    } catch (error) {
-      console.error(
-        'POST /api/data error:',
-        error
-      );
-
-      return res.status(500).json({
-        success: false,
-        error: 'فشل حفظ البيانات',
+        ...data,
       });
     }
+
+    localState = {
+      ...localState,
+      ...body,
+      lastUpdated: Date.now(),
+    };
+
+    saveLocalState();
+
+    return res.json({
+      success: true,
+      ...localState,
+    });
+  } catch (error) {
+    console.error('POST /api/data error:', error);
+
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to save application data',
+    });
   }
-);
+});
 
-app.post(
-  '/api/login',
-  async (req, res) => {
-    try {
-      const {
-        code: loginCode,
-        password,
-      } = req.body || {};
+app.post('/api/login', async (req, res) => {
+  try {
+    const { code: loginCode, password } =
+      req.body || {};
 
-      if (
-        !loginCode ||
-        !password
-      ) {
-        return res.status(400).json({
-          success: false,
-          error:
-            'Missing credentials',
-        });
-      }
+    if (!loginCode || !password) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing credentials',
+      });
+    }
 
-      const cleanInput =
-        String(loginCode)
-          .trim()
-          .toLowerCase();
+    const cleanInput = String(loginCode)
+      .trim()
+      .toLowerCase();
 
-      const rawAlphanumeric =
-        cleanInput.replace(
+    const cleanPassword = String(password)
+      .trim()
+      .toLowerCase();
+
+    const employees = USE_DATABASE
+      ? (await db.select().from(schema.employees))
+      : localState.employees;
+
+    let employee: any;
+
+    if (cleanInput === 'leader') {
+      employee =
+        employees.find(
+          (item: any) =>
+            item.role === 'leader' ||
+            item.code === 'EMP011'
+        ) || employees[0];
+    } else {
+      const rawAlpha = cleanInput.replace(
+        /[^a-z0-9]/g,
+        ''
+      );
+
+      const numericOnly = cleanInput.replace(
+        /\D/g,
+        ''
+      );
+
+      const numericValue = numericOnly
+        ? Number(numericOnly)
+        : null;
+
+      employee = employees.find((item: any) => {
+        if (!item) return false;
+
+        const employeeCode = String(
+          item.code || ''
+        ).toLowerCase();
+
+        const alpha = employeeCode.replace(
           /[^a-z0-9]/g,
           ''
         );
 
-      const numericOnly =
-        cleanInput.replace(
+        const employeeNumeric = employeeCode.replace(
           /\D/g,
           ''
         );
 
-      const numericValue =
-        numericOnly
-          ? parseInt(
-              numericOnly,
-              10
-            )
-          : null;
+        const employeeNumericValue =
+          employeeNumeric
+            ? Number(employeeNumeric)
+            : null;
 
-      const cleanPassword =
-        String(password)
-          .trim()
-          .toLowerCase();
-
-      const employees =
-        hasDatabase
-          ? await db
-              .select()
-              .from(
-                schema.employees
-              )
-          : serverState.employees ||
-            [];
-
-      let employee: any;
-
-      if (
-        cleanInput === 'leader'
-      ) {
-        employee =
-          employees.find(
-            item =>
-              item.role ===
-                'leader' ||
-              item.code ===
-                'EMP011'
-          ) ||
-          employees[0];
-      } else {
-        employee =
-          employees.find(
-            item => {
-              if (!item) {
-                return false;
-              }
-
-              const employeeCode =
-                item.code
-                  ? String(
-                      item.code
-                    ).toLowerCase()
-                  : '';
-
-              const employeeAlpha =
-                employeeCode.replace(
-                  /[^a-z0-9]/g,
-                  ''
-                );
-
-              const employeeNumeric =
-                employeeCode.replace(
-                  /\D/g,
-                  ''
-                );
-
-              const employeeNumber =
-                employeeNumeric
-                  ? parseInt(
-                      employeeNumeric,
-                      10
-                    )
-                  : null;
-
-              if (
-                employeeCode ===
-                cleanInput
-              ) {
-                return true;
-              }
-
-              if (
-                employeeAlpha ===
-                rawAlphanumeric
-              ) {
-                return true;
-              }
-
-              if (
-                numericValue !==
-                  null &&
-                employeeNumber !==
-                  null &&
-                numericValue ===
-                  employeeNumber
-              ) {
-                return true;
-              }
-
-              if (
-                item.email &&
-                String(
-                  item.email
-                ).toLowerCase() ===
-                  cleanInput
-              ) {
-                return true;
-              }
-
-              if (
-                item.phone &&
-                String(
-                  item.phone
-                ).replace(
-                  /\D/g,
-                  ''
-                ) ===
-                  cleanInput.replace(
-                    /\D/g,
-                    ''
-                  )
-              ) {
-                return true;
-              }
-
-              return false;
-            }
-          );
-      }
-
-      if (!employee) {
-        return res.status(401).json({
-          success: false,
-          error:
-            'Invalid login credentials',
-        });
-      }
-
-      const employeeNumber =
-        employee.code
-          ? String(
-              employee.code
-            ).replace(
-              /\D/g,
-              ''
-            )
-          : '';
-
-      const defaultPassword =
-        `emp${employeeNumber}`
-          .toLowerCase();
-
-      const defaultPaddedPassword =
-        `emp${employeeNumber.padStart(
-          3,
-          '0'
-        )}`.toLowerCase();
-
-      let hashedMatch = false;
-
-      if (
-        employee.pin &&
-        String(
-          employee.pin
-        ).length === 64
-      ) {
-        const hashedPassword =
-          crypto
-            .createHash(
-              'sha256'
-            )
-            .update(
-              cleanPassword
-            )
-            .digest('hex');
-
-        hashedMatch =
-          hashedPassword ===
-          employee.pin;
-      }
-
-      const validPassword =
-        hashedMatch ||
-        cleanPassword ===
-          String(
-            employee.pin || ''
-          ).toLowerCase() ||
-        (
-          employee.role ===
-            'leader' &&
-          cleanPassword ===
-            'leader123'
-        ) ||
-        cleanPassword ===
-          defaultPassword ||
-        cleanPassword ===
-          defaultPaddedPassword ||
-        cleanPassword ===
-          '1234' ||
-        cleanPassword ===
-          'tech_123';
-
-      if (!validPassword) {
-        return res.status(401).json({
-          success: false,
-          error:
-            'Invalid login credentials',
-        });
-      }
-
-      if (
-        employee.status ===
-        'inactive'
-      ) {
-        return res.status(403).json({
-          success: false,
-          error:
-            'ACCOUNT_INACTIVE',
-        });
-      }
-
-      const safeEmployee = {
-        ...employee,
-        pin: '***',
-      };
-
-      return res.json({
-        success: true,
-        employee:
-          safeEmployee,
-      });
-    } catch (error) {
-      console.error(
-        'Login error:',
-        error
-      );
-
-      return res.status(500).json({
-        success: false,
-        error: 'Login failed',
-      });
-    }
-  }
-);
-
-app.post(
-  '/api/sync',
-  async (req, res) => {
-    try {
-      const {
-        employees,
-        attendanceRecords,
-        leaveRequests,
-        overtimeRequests,
-        shifts,
-        companyNameAr,
-        companyNameEn,
-        urgentNotice,
-        deletedAttendanceIds,
-        deletedLeaveIds,
-        deletedEmployeeIds,
-        replaceAttendance,
-      } = req.body || {};
-
-      serverState.deletedAttendanceKeys =
-        serverState.deletedAttendanceKeys ||
-        {};
-
-      serverState.deletedLeaveKeys =
-        serverState.deletedLeaveKeys ||
-        {};
-
-      serverState.deletedEmployeeKeys =
-        serverState.deletedEmployeeKeys ||
-        {};
-
-      if (
-        Array.isArray(
-          deletedEmployeeIds
-        )
-      ) {
-        for (
-          const employeeId of deletedEmployeeIds
-        ) {
-          if (!employeeId) continue;
-
-          serverState.deletedEmployeeKeys[
-            String(employeeId)
-          ] = Date.now();
-        }
-      }
-
-      if (
-        Array.isArray(
-          deletedAttendanceIds
-        ) &&
-        deletedAttendanceIds.length
-      ) {
-        const now =
-          Date.now();
-
-        for (
-          const id of deletedAttendanceIds
-        ) {
-          const record =
-            (
-              serverState.attendanceRecords ||
-              []
-            ).find(
-              item =>
-                item.id === id
-            );
-
-          if (
-            record?.employeeId &&
-            record?.date
-          ) {
-            serverState.deletedAttendanceKeys[
-              attendanceKey(
-                record.employeeId,
-                record.date
-              )
-            ] = now;
-          }
+        if (employeeCode === cleanInput) {
+          return true;
         }
 
-        const deleteSet =
-          new Set(
-            deletedAttendanceIds
-          );
-
-        serverState.attendanceRecords =
-          (
-            serverState.attendanceRecords ||
-            []
-          ).filter(
-            record =>
-              !deleteSet.has(
-                record.id
-              )
-          );
-      }
-
-      if (
-        Array.isArray(
-          deletedLeaveIds
-        )
-      ) {
-        for (
-          const id of deletedLeaveIds
-        ) {
-          if (!id) continue;
-
-          serverState.deletedLeaveKeys[
-            String(id)
-          ] = Date.now();
-        }
-
-        const deleteSet =
-          new Set(
-            deletedLeaveIds
-          );
-
-        serverState.leaveRequests =
-          (
-            serverState.leaveRequests ||
-            []
-          ).filter(
-            item =>
-              !deleteSet.has(
-                item.id
-              )
-          );
-      }
-
-      const deletedEmployees =
-        serverState.deletedEmployeeKeys ||
-        {};
-
-      if (
-        Array.isArray(
-          employees
-        )
-      ) {
-        serverState.employees =
-          employees.filter(
-            employee =>
-              employee?.id &&
-              !deletedEmployees[
-                employee.id
-              ]
-          );
-      }
-
-      if (
-        Array.isArray(
-          shifts
-        )
-      ) {
-        serverState.shifts =
-          shifts;
-      }
-
-      if (
-        Array.isArray(
-          attendanceRecords
-        )
-      ) {
-        let incoming =
-          attendanceRecords.filter(
-            record =>
-              record &&
-              !deletedEmployees[
-                record.employeeId
-              ]
-          );
-
-        if (
-          Array.isArray(
-            deletedAttendanceIds
-          )
-        ) {
-          const deleteSet =
-            new Set(
-              deletedAttendanceIds
-            );
-
-          incoming =
-            incoming.filter(
-              record =>
-                !deleteSet.has(
-                  record.id
-                )
-            );
+        if (alpha === rawAlpha) {
+          return true;
         }
 
         if (
-          replaceAttendance ===
-          true
+          numericValue !== null &&
+          employeeNumericValue !== null &&
+          numericValue === employeeNumericValue
         ) {
-          serverState.attendanceRecords =
-            mergeAttendanceRecords(
-              [],
-              incoming
-            );
-        } else {
-          serverState.attendanceRecords =
-            mergeAttendanceRecords(
-              serverState.attendanceRecords ||
-                [],
-              incoming
-            );
-        }
-      }
-
-      if (
-        Array.isArray(
-          leaveRequests
-        )
-      ) {
-        const incomingLeaves =
-          leaveRequests.filter(
-            request =>
-              request &&
-              !deletedEmployees[
-                request.employeeId
-              ]
-          );
-
-        serverState.leaveRequests =
-          mergeByUniqueId(
-            serverState.leaveRequests ||
-              [],
-            incomingLeaves
-          );
-      }
-
-      if (
-        Array.isArray(
-          overtimeRequests
-        )
-      ) {
-        const existing =
-          serverState.overtimeRequests ||
-          [];
-
-        const map =
-          new Map<string, any>();
-
-        for (
-          const item of existing
-        ) {
-          if (item?.id) {
-            map.set(
-              item.id,
-              item
-            );
-          }
+          return true;
         }
 
-        for (
-          const item of overtimeRequests
+        if (
+          item.email &&
+          String(item.email).toLowerCase() ===
+            cleanInput
         ) {
-          if (
-            item?.id &&
-            !deletedEmployees[
-              item.employeeId
-            ]
-          ) {
-            const old =
-              map.get(item.id);
-
-            map.set(
-              item.id,
-              old
-                ? {
-                    ...old,
-                    ...item,
-                  }
-                : {
-                    ...item,
-                  }
-            );
-          }
+          return true;
         }
 
-        serverState.overtimeRequests =
-          Array.from(
-            map.values()
-          );
-      }
+        if (
+          item.phone &&
+          String(item.phone).replace(/\D/g, '') ===
+            cleanInput.replace(/\D/g, '')
+        ) {
+          return true;
+        }
 
-      if (
-        companyNameAr !==
-        undefined
-      ) {
-        serverState.companyNameAr =
-          companyNameAr;
-      }
-
-      if (
-        companyNameEn !==
-        undefined
-      ) {
-        serverState.companyNameEn =
-          companyNameEn;
-      }
-
-      if (
-        urgentNotice !==
-        undefined
-      ) {
-        serverState.urgentNotice =
-          urgentNotice;
-      }
-
-      if (
-        serverState.leaveRequests &&
-        serverState.attendanceRecords
-      ) {
-        serverState.attendanceRecords =
-          ensureApprovedLeaveRecordsServer(
-            serverState.attendanceRecords,
-            serverState.leaveRequests
-          );
-      }
-
-      serverState.lastUpdated =
-        Date.now();
-
-      await saveServerData(
-        serverState
-      );
-
-      return res.json({
-        success: true,
-        lastUpdated:
-          serverState.lastUpdated,
-      });
-    } catch (error) {
-      console.error(
-        'POST /api/sync error:',
-        error
-      );
-
-      return res.status(500).json({
-        success: false,
-        error:
-          'Failed to synchronize data',
+        return false;
       });
     }
+
+    if (!employee) {
+      return res.status(401).json({
+        success: false,
+        error: 'Invalid login credentials',
+      });
+    }
+
+    const employeeCode = String(
+      employee.code || ''
+    );
+
+    const numericCode =
+      employeeCode.replace(/\D/g, '');
+
+    const defaultPassword =
+      `emp${numericCode}`.toLowerCase();
+
+    const paddedPassword =
+      `emp${numericCode.padStart(3, '0')}`.toLowerCase();
+
+    let hashedMatch = false;
+
+    if (
+      employee.pin &&
+      String(employee.pin).length === 64
+    ) {
+      const hash = crypto
+        .createHash('sha256')
+        .update(cleanPassword)
+        .digest('hex');
+
+      hashedMatch =
+        hash === String(employee.pin).toLowerCase();
+    }
+
+    const validPassword =
+      hashedMatch ||
+      cleanPassword ===
+        String(employee.pin || '').toLowerCase() ||
+      (employee.role === 'leader' &&
+        cleanPassword === 'leader123') ||
+      cleanPassword === defaultPassword ||
+      cleanPassword === paddedPassword ||
+      cleanPassword === '1234' ||
+      cleanPassword === 'tech_123';
+
+    if (!validPassword) {
+      return res.status(401).json({
+        success: false,
+        error: 'Invalid login credentials',
+      });
+    }
+
+    if (employee.status === 'inactive') {
+      return res.status(403).json({
+        success: false,
+        error: 'ACCOUNT_INACTIVE',
+      });
+    }
+
+    const safeEmployee = {
+      ...employee,
+      pin: '***',
+    };
+
+    return res.json({
+      success: true,
+      employee: safeEmployee,
+    });
+  } catch (error) {
+    console.error('POST /api/login error:', error);
+
+    return res.status(500).json({
+      success: false,
+      error: 'Login failed',
+    });
   }
-);
+});
 
-app.put(
-  '/api/employees/:id',
-  async (req, res) => {
-    try {
-      const employeeId =
-        String(
-          req.params.id || ''
-        ).trim();
+app.post('/api/punch', async (req, res) => {
+  try {
+    const {
+      employeeId,
+      record,
+      action,
+    } = req.body || {};
 
-      const changes =
-        req.body;
+    if (!employeeId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Employee ID is required',
+      });
+    }
 
-      if (
-        !employeeId ||
-        !changes ||
-        typeof changes !==
-          'object'
-      ) {
-        return res.status(400).json({
-          success: false,
-          error:
-            'Invalid employee update',
-        });
+    const rawEmployeeId = String(employeeId).trim();
+
+    const serverClock = getServerClock();
+
+    const requestedDate =
+      action === 'update' && record?.date
+        ? String(record.date).trim()
+        : serverClock.date;
+
+    const today = serverClock.date;
+
+    if (requestedDate > today) {
+      return res.status(400).json({
+        success: false,
+        error: 'Future attendance dates are not allowed',
+      });
+    }
+
+    const employee = USE_DATABASE
+      ? (
+          await db
+            .select()
+            .from(schema.employees)
+            .where(
+              sql`${schema.employees.id} = ${rawEmployeeId}`
+            )
+        )[0]
+      : localState.employees.find(
+          (item: any) =>
+            normalizeId(item.id) ===
+            normalizeId(rawEmployeeId)
+        );
+
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        error: 'Employee not found',
+      });
+    }
+
+    const existing = USE_DATABASE
+      ? await getAttendanceRecord(
+          rawEmployeeId,
+          requestedDate
+        )
+      : localState.attendanceRecords.find(
+          (item: any) =>
+            normalizeId(item.employeeId) ===
+              normalizeId(rawEmployeeId) &&
+            String(item.date) === requestedDate
+        );
+
+    const baseRecord = {
+      ...(existing || {}),
+      ...(record || {}),
+      id:
+        existing?.id ||
+        record?.id ||
+        `rec-${normalizeId(
+          rawEmployeeId
+        )}-${requestedDate}`,
+      employeeId: rawEmployeeId,
+      date: requestedDate,
+      updatedAt: new Date().toISOString(),
+    };
+
+    if (action === 'check_in') {
+      if (!baseRecord.checkIn) {
+        baseRecord.checkIn = serverClock.time;
       }
 
-      if (hasDatabase) {
-        const allowedFields: Record<
-          string,
-          any
-        > = {
-          code: changes.code,
-          nameAr: changes.nameAr,
-          nameEn: changes.nameEn,
-          avatar: changes.avatar,
-          email: changes.email,
-          phone: changes.phone,
-          department:
-            changes.department,
-          jobTitleAr:
-            changes.jobTitleAr,
-          jobTitleEn:
-            changes.jobTitleEn,
-          shiftId:
-            changes.shiftId,
-          pin: changes.pin,
-          role: changes.role,
-          joinedDate:
-            changes.joinedDate,
+      baseRecord.status =
+        baseRecord.status || 'in_progress';
+    }
+
+    if (action === 'check_out') {
+      baseRecord.checkOut =
+        serverClock.time;
+
+      baseRecord.isExplicitCancelCheckOut =
+        false;
+    }
+
+    if (action === 'break_start') {
+      baseRecord.breakStart =
+        serverClock.time;
+    }
+
+    if (
+      action === 'break_end' ||
+      action === 'force_break_end'
+    ) {
+      baseRecord.breakEnd =
+        serverClock.time;
+    }
+
+    if (
+      action === 'update' &&
+      record
+    ) {
+      if (record.checkIn !== undefined) {
+        baseRecord.checkIn =
+          record.checkIn;
+      }
+
+      if (record.checkOut !== undefined) {
+        baseRecord.checkOut =
+          record.checkOut;
+      }
+
+      if (
+        record.isExplicitCancelCheckOut !==
+        undefined
+      ) {
+        baseRecord.isExplicitCancelCheckOut =
+          Boolean(
+            record.isExplicitCancelCheckOut
+          );
+      }
+
+      if (record.status !== undefined) {
+        baseRecord.status =
+          record.status;
+      }
+
+      if (record.leaveType !== undefined) {
+        baseRecord.leaveType =
+          record.leaveType;
+      }
+
+      if (record.isExcused !== undefined) {
+        baseRecord.isExcused =
+          record.isExcused;
+      }
+
+      if (record.excusedReason !== undefined) {
+        baseRecord.excusedReason =
+          record.excusedReason;
+      }
+
+      if (record.excusedBy !== undefined) {
+        baseRecord.excusedBy =
+          record.excusedBy;
+      }
+
+      if (record.notes !== undefined) {
+        baseRecord.notes =
+          record.notes;
+      }
+    }
+
+    if (
+      baseRecord.isExplicitCancelCheckOut ===
+      true
+    ) {
+      baseRecord.checkOut = null;
+      baseRecord.workHours = 0;
+      baseRecord.overtimeHours = 0;
+      baseRecord.earlyLeaveMinutes = 0;
+    }
+
+    const sanitized =
+      sanitizeAttendanceRecord(
+        baseRecord
+      );
+
+    sanitized.updatedAt =
+      new Date().toISOString();
+
+    if (USE_DATABASE) {
+      const values: typeof schema.attendanceRecords.$inferInsert =
+        {
+          id: String(sanitized.id),
+          employeeId: String(
+            sanitized.employeeId
+          ),
+          date: String(sanitized.date),
+          checkIn:
+            sanitized.checkIn ?? null,
+          checkOut:
+            sanitized.checkOut ?? null,
+          breakStart:
+            sanitized.breakStart ?? null,
+          breakEnd:
+            sanitized.breakEnd ?? null,
+          breaks:
+            sanitized.breaks ?? null,
+          totalBreakSeconds:
+            sanitized.totalBreakSeconds ??
+            null,
+          location:
+            sanitized.location ?? null,
+          deviceInfo:
+            sanitized.deviceInfo ?? null,
+          lateMinutes:
+            Number(
+              sanitized.lateMinutes ?? 0
+            ),
+          lateSeconds:
+            Number(
+              sanitized.lateSeconds ?? 0
+            ),
+          earlyLeaveMinutes:
+            Number(
+              sanitized.earlyLeaveMinutes ?? 0
+            ),
+          workHours:
+            Number(
+              sanitized.workHours ?? 0
+            ),
+          overtimeHours:
+            Number(
+              sanitized.overtimeHours ?? 0
+            ),
+          minusHours:
+            Number(
+              sanitized.minusHours ?? 0
+            ),
           status:
-            changes.status,
-          annualLeaveBalance:
-            changes.annualLeaveBalance,
-          casualLeaveBalance:
-            changes.casualLeaveBalance,
-          regularLeaveBalance:
-            changes.regularLeaveBalance,
-          sickLeaveBalance:
-            changes.sickLeaveBalance,
-          isPhotoRemoved:
-            changes.isPhotoRemoved,
+            sanitized.status ?? null,
+          leaveType:
+            sanitized.leaveType ?? null,
+          notes:
+            sanitized.notes ?? null,
+          verifiedByFace:
+            sanitized.verifiedByFace ??
+            false,
+          isExcused:
+            sanitized.isExcused ??
+            false,
+          excusedBy:
+            sanitized.excusedBy ?? null,
+          excusedReason:
+            sanitized.excusedReason ?? null,
+          updatedAt:
+            sanitized.updatedAt ??
+            new Date().toISOString(),
+          isExplicitCancelCheckOut:
+            sanitized.isExplicitCancelCheckOut ??
+            false,
         };
 
-        const updateData =
-          Object.fromEntries(
-            Object.entries(
-              allowedFields
-            ).filter(
-              ([, value]) =>
-                value !==
-                undefined
-            )
+      await db
+        .insert(schema.attendanceRecords)
+        .values(values)
+        .onConflictDoUpdate({
+          target: [
+            schema.attendanceRecords.employeeId,
+            schema.attendanceRecords.date,
+          ],
+          set: {
+            checkIn: values.checkIn,
+            checkOut: values.checkOut,
+            breakStart: values.breakStart,
+            breakEnd: values.breakEnd,
+            breaks: values.breaks,
+            totalBreakSeconds:
+              values.totalBreakSeconds,
+            location: values.location,
+            deviceInfo: values.deviceInfo,
+            lateMinutes: values.lateMinutes,
+            lateSeconds: values.lateSeconds,
+            earlyLeaveMinutes:
+              values.earlyLeaveMinutes,
+            workHours: values.workHours,
+            overtimeHours:
+              values.overtimeHours,
+            minusHours: values.minusHours,
+            status: values.status,
+            leaveType: values.leaveType,
+            notes: values.notes,
+            verifiedByFace:
+              values.verifiedByFace,
+            isExcused: values.isExcused,
+            excusedBy: values.excusedBy,
+            excusedReason:
+              values.excusedReason,
+            updatedAt: values.updatedAt,
+            isExplicitCancelCheckOut:
+              values.isExplicitCancelCheckOut,
+          },
+        });
+
+      const finalRecord =
+        await getAttendanceRecord(
+          rawEmployeeId,
+          requestedDate
+        );
+
+      return res.json({
+        success: true,
+        record: finalRecord,
+        serverTime: serverClock,
+        lastUpdated: Date.now(),
+      });
+    }
+
+    localState.attendanceRecords =
+      mergeAttendanceRecords(
+        localState.attendanceRecords,
+        [sanitized]
+      );
+
+    localState.lastUpdated =
+      Date.now();
+
+    saveLocalState();
+
+    return res.json({
+      success: true,
+      record: sanitized,
+      attendanceRecords:
+        localState.attendanceRecords,
+      serverTime: serverClock,
+      lastUpdated:
+        localState.lastUpdated,
+    });
+  } catch (error) {
+    console.error('POST /api/punch error:', error);
+
+    return res.status(500).json({
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : 'Punch failed',
+    });
+  }
+});
+
+app.post('/api/attendance', async (req, res) => {
+  try {
+    const record = req.body;
+
+    if (
+      !record ||
+      !record.employeeId ||
+      !record.date
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid attendance record',
+      });
+    }
+
+    const today =
+      getServerClock().date;
+
+    if (String(record.date) > today) {
+      return res.status(400).json({
+        success: false,
+        error: 'Future attendance dates are not allowed',
+      });
+    }
+
+    const sanitized =
+      sanitizeAttendanceRecord({
+        ...record,
+        id:
+          record.id ||
+          `rec-${normalizeId(
+            record.employeeId
+          )}-${record.date}`,
+        updatedAt:
+          new Date().toISOString(),
+      });
+
+    if (USE_DATABASE) {
+      const values: typeof schema.attendanceRecords.$inferInsert =
+        {
+          id: String(sanitized.id),
+          employeeId: String(
+            sanitized.employeeId
+          ),
+          date: String(sanitized.date),
+          checkIn:
+            sanitized.checkIn ?? null,
+          checkOut:
+            sanitized.checkOut ?? null,
+          breakStart:
+            sanitized.breakStart ?? null,
+          breakEnd:
+            sanitized.breakEnd ?? null,
+          breaks:
+            sanitized.breaks ?? null,
+          totalBreakSeconds:
+            sanitized.totalBreakSeconds ??
+            null,
+          location:
+            sanitized.location ?? null,
+          deviceInfo:
+            sanitized.deviceInfo ?? null,
+          lateMinutes:
+            Number(
+              sanitized.lateMinutes ?? 0
+            ),
+          lateSeconds:
+            Number(
+              sanitized.lateSeconds ?? 0
+            ),
+          earlyLeaveMinutes:
+            Number(
+              sanitized.earlyLeaveMinutes ?? 0
+            ),
+          workHours:
+            Number(
+              sanitized.workHours ?? 0
+            ),
+          overtimeHours:
+            Number(
+              sanitized.overtimeHours ?? 0
+            ),
+          minusHours:
+            Number(
+              sanitized.minusHours ?? 0
+            ),
+          status:
+            sanitized.status ?? null,
+          leaveType:
+            sanitized.leaveType ?? null,
+          notes:
+            sanitized.notes ?? null,
+          verifiedByFace:
+            sanitized.verifiedByFace ??
+            false,
+          isExcused:
+            sanitized.isExcused ??
+            false,
+          excusedBy:
+            sanitized.excusedBy ?? null,
+          excusedReason:
+            sanitized.excusedReason ?? null,
+          updatedAt:
+            sanitized.updatedAt ??
+            new Date().toISOString(),
+          isExplicitCancelCheckOut:
+            sanitized.isExplicitCancelCheckOut ??
+            false,
+        };
+
+      await db
+        .insert(schema.attendanceRecords)
+        .values(values)
+        .onConflictDoUpdate({
+          target: [
+            schema.attendanceRecords.employeeId,
+            schema.attendanceRecords.date,
+          ],
+          set: {
+            checkIn: values.checkIn,
+            checkOut: values.checkOut,
+            breakStart: values.breakStart,
+            breakEnd: values.breakEnd,
+            breaks: values.breaks,
+            totalBreakSeconds:
+              values.totalBreakSeconds,
+            location: values.location,
+            deviceInfo: values.deviceInfo,
+            lateMinutes: values.lateMinutes,
+            lateSeconds: values.lateSeconds,
+            earlyLeaveMinutes:
+              values.earlyLeaveMinutes,
+            workHours: values.workHours,
+            overtimeHours:
+              values.overtimeHours,
+            minusHours: values.minusHours,
+            status: values.status,
+            leaveType: values.leaveType,
+            notes: values.notes,
+            verifiedByFace:
+              values.verifiedByFace,
+            isExcused:
+              values.isExcused,
+            excusedBy:
+              values.excusedBy,
+            excusedReason:
+              values.excusedReason,
+            updatedAt:
+              values.updatedAt,
+            isExplicitCancelCheckOut:
+              values.isExplicitCancelCheckOut,
+          },
+        });
+
+      return res.json({
+        success: true,
+        record:
+          await getAttendanceRecord(
+            String(record.employeeId),
+            String(record.date)
+          ),
+        lastUpdated: Date.now(),
+      });
+    }
+
+    localState.attendanceRecords =
+      mergeAttendanceRecords(
+        localState.attendanceRecords,
+        [sanitized]
+      );
+
+    localState.lastUpdated =
+      Date.now();
+
+    saveLocalState();
+
+    return res.json({
+      success: true,
+      attendanceRecords:
+        localState.attendanceRecords,
+      lastUpdated:
+        localState.lastUpdated,
+    });
+  } catch (error) {
+    console.error(
+      'POST /api/attendance error:',
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to save attendance',
+    });
+  }
+});
+
+app.post('/api/sync', async (req, res) => {
+  try {
+    const {
+      employees,
+      attendanceRecords,
+      leaveRequests,
+      overtimeRequests,
+      companyNameAr,
+      companyNameEn,
+      urgentNotice,
+      deletedAttendanceIds,
+    } = req.body || {};
+
+    if (USE_DATABASE) {
+      if (Array.isArray(employees)) {
+        for (const employee of employees) {
+          if (!employee?.id) continue;
+
+          const values: typeof schema.employees.$inferInsert =
+            {
+              id: String(employee.id),
+              code: employee.code ?? null,
+              nameAr:
+                String(employee.nameAr ?? ''),
+              nameEn:
+                String(employee.nameEn ?? ''),
+              avatar:
+                employee.avatar ?? null,
+              email:
+                employee.email ?? null,
+              phone:
+                employee.phone ?? null,
+              department:
+                employee.department ?? null,
+              jobTitleAr:
+                employee.jobTitleAr ?? null,
+              jobTitleEn:
+                employee.jobTitleEn ?? null,
+              shiftId:
+                employee.shiftId ?? null,
+              pin:
+                employee.pin ?? null,
+              role:
+                employee.role ?? null,
+              joinedDate:
+                employee.joinedDate ?? null,
+              status:
+                employee.status ?? null,
+              annualLeaveBalance:
+                employee.annualLeaveBalance ??
+                null,
+              casualLeaveBalance:
+                employee.casualLeaveBalance ??
+                null,
+              regularLeaveBalance:
+                employee.regularLeaveBalance ??
+                null,
+              sickLeaveBalance:
+                employee.sickLeaveBalance ??
+                null,
+              isPhotoRemoved:
+                employee.isPhotoRemoved ??
+                false,
+            };
+
+          await db
+            .insert(schema.employees)
+            .values(values)
+            .onConflictDoUpdate({
+              target: schema.employees.id,
+              set: {
+                code: values.code,
+                nameAr: values.nameAr,
+                nameEn: values.nameEn,
+                avatar: values.avatar,
+                email: values.email,
+                phone: values.phone,
+                department: values.department,
+                jobTitleAr:
+                  values.jobTitleAr,
+                jobTitleEn:
+                  values.jobTitleEn,
+                shiftId: values.shiftId,
+                pin: values.pin,
+                role: values.role,
+                joinedDate:
+                  values.joinedDate,
+                status: values.status,
+                annualLeaveBalance:
+                  values.annualLeaveBalance,
+                casualLeaveBalance:
+                  values.casualLeaveBalance,
+                regularLeaveBalance:
+                  values.regularLeaveBalance,
+                sickLeaveBalance:
+                  values.sickLeaveBalance,
+                isPhotoRemoved:
+                  values.isPhotoRemoved,
+              },
+            });
+        }
+      }
+
+      if (Array.isArray(attendanceRecords)) {
+        const records =
+          ensureNoFutureAttendance(
+            attendanceRecords
           );
 
-        if (
-          !changes._isPhotoRemoved &&
-          (
-            !changes.avatar ||
-            String(
-              changes.avatar
-            ).trim() === ''
-          )
-        ) {
-          delete updateData.avatar;
-        }
+        for (const record of records) {
+          if (
+            !record?.employeeId ||
+            !record?.date
+          ) {
+            continue;
+          }
 
-        const updatedRows =
+          const sanitized =
+            sanitizeAttendanceRecord({
+              ...record,
+              id:
+                record.id ||
+                `rec-${normalizeId(
+                  record.employeeId
+                )}-${record.date}`,
+              updatedAt:
+                record.updatedAt ||
+                new Date().toISOString(),
+            });
+
+          const values: typeof schema.attendanceRecords.$inferInsert =
+            {
+              id: String(sanitized.id),
+              employeeId: String(
+                sanitized.employeeId
+              ),
+              date: String(
+                sanitized.date
+              ),
+              checkIn:
+                sanitized.checkIn ??
+                null,
+              checkOut:
+                sanitized.checkOut ??
+                null,
+              breakStart:
+                sanitized.breakStart ??
+                null,
+              breakEnd:
+                sanitized.breakEnd ??
+                null,
+              breaks:
+                sanitized.breaks ??
+                null,
+              totalBreakSeconds:
+                sanitized.totalBreakSeconds ??
+                null,
+              location:
+                sanitized.location ??
+                null,
+              deviceInfo:
+                sanitized.deviceInfo ??
+                null,
+              lateMinutes:
+                Number(
+                  sanitized.lateMinutes ??
+                    0
+                ),
+              lateSeconds:
+                Number(
+                  sanitized.lateSeconds ??
+                    0
+                ),
+              earlyLeaveMinutes:
+                Number(
+                  sanitized.earlyLeaveMinutes ??
+                    0
+                ),
+              workHours:
+                Number(
+                  sanitized.workHours ??
+                    0
+                ),
+              overtimeHours:
+                Number(
+                  sanitized.overtimeHours ??
+                    0
+                ),
+              minusHours:
+                Number(
+                  sanitized.minusHours ??
+                    0
+                ),
+              status:
+                sanitized.status ??
+                null,
+              leaveType:
+                sanitized.leaveType ??
+                null,
+              notes:
+                sanitized.notes ??
+                null,
+              verifiedByFace:
+                sanitized.verifiedByFace ??
+                false,
+              isExcused:
+                sanitized.isExcused ??
+                false,
+              excusedBy:
+                sanitized.excusedBy ??
+                null,
+              excusedReason:
+                sanitized.excusedReason ??
+                null,
+              updatedAt:
+                sanitized.updatedAt ??
+                new Date().toISOString(),
+              isExplicitCancelCheckOut:
+                sanitized.isExplicitCancelCheckOut ??
+                false,
+            };
+
           await db
-            .update(
-              schema.employees
-            )
-            .set(updateData)
-            .where(
-              sql`id = ${employeeId}`
-            )
-            .returning();
-
-        if (
-          !updatedRows.length
-        ) {
-          return res.status(404).json({
-            success: false,
-            error:
-              'Employee not found',
-          });
+            .insert(schema.attendanceRecords)
+            .values(values)
+            .onConflictDoUpdate({
+              target: [
+                schema.attendanceRecords
+                  .employeeId,
+                schema.attendanceRecords
+                  .date,
+              ],
+              set: {
+                checkIn:
+                  values.checkIn,
+                checkOut:
+                  values.checkOut,
+                breakStart:
+                  values.breakStart,
+                breakEnd:
+                  values.breakEnd,
+                breaks:
+                  values.breaks,
+                totalBreakSeconds:
+                  values.totalBreakSeconds,
+                location:
+                  values.location,
+                deviceInfo:
+                  values.deviceInfo,
+                lateMinutes:
+                  values.lateMinutes,
+                lateSeconds:
+                  values.lateSeconds,
+                earlyLeaveMinutes:
+                  values.earlyLeaveMinutes,
+                workHours:
+                  values.workHours,
+                overtimeHours:
+                  values.overtimeHours,
+                minusHours:
+                  values.minusHours,
+                status:
+                  values.status,
+                leaveType:
+                  values.leaveType,
+                notes:
+                  values.notes,
+                verifiedByFace:
+                  values.verifiedByFace,
+                isExcused:
+                  values.isExcused,
+                excusedBy:
+                  values.excusedBy,
+                excusedReason:
+                  values.excusedReason,
+                updatedAt:
+                  values.updatedAt,
+                isExplicitCancelCheckOut:
+                  values.isExplicitCancelCheckOut,
+              },
+            });
         }
-
-        return res.json({
-          success: true,
-          employee:
-            updatedRows[0],
-          lastUpdated:
-            Date.now(),
-        });
       }
 
-      const employees =
-        serverState.employees ||
-        [];
+      if (Array.isArray(leaveRequests)) {
+        for (const leave of leaveRequests) {
+          if (!leave?.id || !leave?.employeeId) {
+            continue;
+          }
 
-      const index =
-        employees.findIndex(
-          employee =>
-            String(
-              employee.id
-            ).toLowerCase() ===
-            employeeId.toLowerCase()
-        );
+          const values: typeof schema.leaveRequests.$inferInsert =
+            {
+              id: String(leave.id),
+              employeeId: String(
+                leave.employeeId
+              ),
+              type: leave.type ?? null,
+              startDate:
+                leave.startDate ?? null,
+              endDate:
+                leave.endDate ?? null,
+              reason:
+                leave.reason ?? null,
+              status:
+                leave.status ?? null,
+              createdAt:
+                leave.createdAt ??
+                new Date().toISOString(),
+              hours:
+                leave.hours !== undefined &&
+                leave.hours !== null
+                  ? Number(leave.hours)
+                  : null,
+              permissionSlot:
+                leave.permissionSlot ??
+                null,
+              attachmentUrl:
+                leave.attachmentUrl ??
+                null,
+              attachmentName:
+                leave.attachmentName ??
+                null,
+              reviewedBy:
+                leave.reviewedBy ??
+                null,
+              reviewNotes:
+                leave.reviewNotes ??
+                null,
+            };
 
-      if (index < 0) {
-        return res.status(404).json({
-          success: false,
-          error:
-            'Employee not found',
-        });
+          await db
+            .insert(schema.leaveRequests)
+            .values(values)
+            .onConflictDoUpdate({
+              target:
+                schema.leaveRequests.id,
+              set: {
+                type: values.type,
+                startDate:
+                  values.startDate,
+                endDate:
+                  values.endDate,
+                reason:
+                  values.reason,
+                status:
+                  values.status,
+                createdAt:
+                  values.createdAt,
+                hours:
+                  values.hours,
+                permissionSlot:
+                  values.permissionSlot,
+                attachmentUrl:
+                  values.attachmentUrl,
+                attachmentName:
+                  values.attachmentName,
+                reviewedBy:
+                  values.reviewedBy,
+                reviewNotes:
+                  values.reviewNotes,
+              },
+            });
+        }
       }
 
-      const current =
-        employees[index];
+      if (Array.isArray(overtimeRequests)) {
+        for (const overtime of overtimeRequests) {
+          if (
+            !overtime?.id ||
+            !overtime?.employeeId ||
+            !overtime?.date
+          ) {
+            continue;
+          }
 
-      const updated = {
-        ...current,
-        ...changes,
-        id: current.id,
-      };
+          const values: typeof schema.overtimeRequests.$inferInsert =
+            {
+              id: String(overtime.id),
+              employeeId: String(
+                overtime.employeeId
+              ),
+              date: String(overtime.date),
+              type: String(
+                overtime.type ||
+                  'overtime'
+              ),
+              durationSeconds:
+                Number(
+                  overtime.durationSeconds ||
+                    0
+                ),
+              reason:
+                overtime.reason ??
+                null,
+              status:
+                overtime.status ??
+                'pending',
+              reviewedBy:
+                overtime.reviewedBy ??
+                null,
+              reviewNotes:
+                overtime.reviewNotes ??
+                null,
+              createdAt:
+                overtime.createdAt ??
+                new Date().toISOString(),
+              updatedAt:
+                overtime.updatedAt ??
+                new Date().toISOString(),
+            };
+
+          await db
+            .insert(schema.overtimeRequests)
+            .values(values)
+            .onConflictDoUpdate({
+              target:
+                schema.overtimeRequests.id,
+              set: {
+                employeeId:
+                  values.employeeId,
+                date: values.date,
+                type: values.type,
+                durationSeconds:
+                  values.durationSeconds,
+                reason:
+                  values.reason,
+                status:
+                  values.status,
+                reviewedBy:
+                  values.reviewedBy,
+                reviewNotes:
+                  values.reviewNotes,
+                updatedAt:
+                  values.updatedAt,
+              },
+            });
+        }
+      }
 
       if (
-        !changes._isPhotoRemoved &&
-        (
-          !changes.avatar ||
-          String(
-            changes.avatar
-          ).trim() === ''
-        )
+        Array.isArray(deletedAttendanceIds)
       ) {
-        updated.avatar =
-          current.avatar || '';
+        for (const id of deletedAttendanceIds) {
+          if (!id) continue;
+
+          await db
+            .delete(schema.attendanceRecords)
+            .where(
+              sql`${schema.attendanceRecords.id} = ${String(id)}`
+            );
+        }
       }
 
-      serverState.employees =
-        employees.map(
-          (
-            employee,
-            employeeIndex
-          ) =>
-            employeeIndex ===
-            index
-              ? updated
-              : employee
+      if (companyNameAr !== undefined) {
+        await upsertSetting(
+          'companyNameAr',
+          companyNameAr
+        );
+      }
+
+      if (companyNameEn !== undefined) {
+        await upsertSetting(
+          'companyNameEn',
+          companyNameEn
+        );
+      }
+
+      if (urgentNotice !== undefined) {
+        await upsertSetting(
+          'urgentNotice',
+          urgentNotice
+        );
+      }
+
+      const data =
+        await getDatabaseData();
+
+      return res.json({
+        success: true,
+        ...data,
+      });
+    }
+
+    if (Array.isArray(employees)) {
+      localState.employees =
+        employees;
+    }
+
+    if (Array.isArray(attendanceRecords)) {
+      localState.attendanceRecords =
+        mergeAttendanceRecords(
+          localState.attendanceRecords,
+          ensureNoFutureAttendance(
+            attendanceRecords
+          )
+        );
+    }
+
+    if (Array.isArray(leaveRequests)) {
+      localState.leaveRequests =
+        mergeById(
+          localState.leaveRequests,
+          leaveRequests
+        );
+    }
+
+    if (Array.isArray(overtimeRequests)) {
+      localState.overtimeRequests =
+        mergeById(
+          localState.overtimeRequests,
+          overtimeRequests
+        );
+    }
+
+    if (companyNameAr !== undefined) {
+      localState.companyNameAr =
+        companyNameAr;
+    }
+
+    if (companyNameEn !== undefined) {
+      localState.companyNameEn =
+        companyNameEn;
+    }
+
+    if (urgentNotice !== undefined) {
+      localState.urgentNotice =
+        urgentNotice;
+    }
+
+    if (
+      Array.isArray(deletedAttendanceIds)
+    ) {
+      const deleteSet =
+        new Set(
+          deletedAttendanceIds.map(
+            String
+          )
         );
 
-      serverState.lastUpdated =
-        Date.now();
+      localState.attendanceRecords =
+        localState.attendanceRecords.filter(
+          (item: any) =>
+            !deleteSet.has(
+              String(item.id)
+            )
+        );
+    }
 
-      await saveServerData(
-        serverState
-      );
+    localState.lastUpdated =
+      Date.now();
+
+    saveLocalState();
+
+    return res.json({
+      success: true,
+      ...localState,
+    });
+  } catch (error) {
+    console.error('POST /api/sync error:', error);
+
+    return res.status(500).json({
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : 'Sync failed',
+    });
+  }
+});
+
+app.put('/api/employees/:id', async (req, res) => {
+  try {
+    const employeeId =
+      String(req.params.id || '').trim();
+
+    const changes = req.body || {};
+
+    if (!employeeId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid employee ID',
+      });
+    }
+
+    if (USE_DATABASE) {
+      const existing = (
+        await db
+          .select()
+          .from(schema.employees)
+          .where(
+            sql`${schema.employees.id} = ${employeeId}`
+          )
+      )[0];
+
+      if (!existing) {
+        return res.status(404).json({
+          success: false,
+          error: 'Employee not found',
+        });
+      }
+
+      const update: any = {
+        ...changes,
+      };
+
+      delete update.id;
+
+      if (
+        !update.avatar &&
+        existing.avatar &&
+        !update.isPhotoRemoved
+      ) {
+        update.avatar =
+          existing.avatar;
+      }
+
+      const [updated] =
+        await db
+          .update(schema.employees)
+          .set(update)
+          .where(
+            sql`${schema.employees.id} = ${employeeId}`
+          )
+          .returning();
 
       return res.json({
         success: true,
         employee: updated,
-        lastUpdated:
-          serverState.lastUpdated,
-      });
-    } catch (error) {
-      console.error(
-        'Employee update error:',
-        error
-      );
-
-      return res.status(500).json({
-        success: false,
-        error:
-          'Failed to update employee',
+        lastUpdated: Date.now(),
       });
     }
-  }
-);
 
-app.delete(
-  '/api/shifts/:id',
-  async (req, res) => {
-    try {
-      const id =
-        String(
-          req.params.id || ''
-        ).trim();
-
-      if (!id) {
-        return res.status(400).json({
-          success: false,
-          error:
-            'Shift ID is required',
-        });
-      }
-
-      if (hasDatabase) {
-        await db
-          .delete(schema.shifts)
-          .where(
-            sql`id = ${id}`
-          );
-
-        return res.json({
-          success: true,
-        });
-      }
-
-      serverState.shifts =
-        (
-          serverState.shifts ||
-          []
-        ).filter(
-          shift =>
-            shift.id !== id
-        );
-
-      serverState.lastUpdated =
-        Date.now();
-
-      await saveServerData(
-        serverState
+    const index =
+      localState.employees.findIndex(
+        (employee: any) =>
+          normalizeId(employee.id) ===
+          normalizeId(employeeId)
       );
+
+    if (index < 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Employee not found',
+      });
+    }
+
+    const current =
+      localState.employees[index];
+
+    const updated = {
+      ...current,
+      ...changes,
+      id: current.id,
+    };
+
+    if (
+      !changes.isPhotoRemoved &&
+      !changes.avatar &&
+      current.avatar
+    ) {
+      updated.avatar =
+        current.avatar;
+    }
+
+    localState.employees[index] =
+      updated;
+
+    localState.lastUpdated =
+      Date.now();
+
+    saveLocalState();
+
+    return res.json({
+      success: true,
+      employee: updated,
+      lastUpdated:
+        localState.lastUpdated,
+    });
+  } catch (error) {
+    console.error(
+      'PUT /api/employees/:id error:',
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to update employee',
+    });
+  }
+});
+
+app.delete('/api/shifts/:id', async (req, res) => {
+  try {
+    const shiftId =
+      String(req.params.id);
+
+    if (USE_DATABASE) {
+      await db
+        .delete(schema.shifts)
+        .where(
+          sql`${schema.shifts.id} = ${shiftId}`
+        );
 
       return res.json({
         success: true,
       });
-    } catch (error) {
-      console.error(
-        'Delete shift error:',
-        error
-      );
-
-      return res.status(500).json({
-        success: false,
-        error:
-          'Failed to delete shift',
-      });
     }
+
+    localState.shifts =
+      localState.shifts.filter(
+        (shift: any) =>
+          String(shift.id) !==
+          shiftId
+      );
+
+    localState.lastUpdated =
+      Date.now();
+
+    saveLocalState();
+
+    return res.json({
+      success: true,
+    });
+  } catch (error) {
+    console.error(
+      'DELETE /api/shifts error:',
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to delete shift',
+    });
   }
-);
-
-app.post(
-  '/api/punch',
-  async (req, res) => {
-    try {
-      const {
-        employeeId,
-        record,
-        action,
-      } = req.body || {};
-
-      if (!employeeId) {
-        return res.status(400).json({
-          success: false,
-          error:
-            'Employee ID is required',
-        });
-      }
-
-      const rawEmployeeId =
-        String(
-          employeeId
-        ).trim();
-
-      const normalizedEmployeeId =
-        normalizeEmployeeId(
-          rawEmployeeId
-        );
-
-      const serverClock =
-        getServerClock();
-
-      const requestedDate =
-        action === 'update' &&
-        record?.date
-          ? String(
-              record.date
-            ).trim()
-          : serverClock.date;
-
-      const todayDate =
-        requestedDate ||
-        serverClock.date;
-
-      const canonicalId =
-        `rec-${normalizedEmployeeId}-${todayDate}`;
-
-      const timeValue =
-        action === 'update'
-          ? (
-              record?.checkIn ||
-              record?.checkOut ||
-              serverClock.time
-            )
-          : serverClock.time;
-
-      if (hasDatabase) {
-        const existingRows =
-          await db
-            .select()
-            .from(
-              schema.attendanceRecords
-            )
-            .where(
-              sql`employee_id = ${rawEmployeeId} AND date = ${todayDate}`
-            );
-
-        const existing =
-          existingRows[0];
-
-        const newRecord: any =
-          existing
-            ? { ...existing }
-            : {
-                id: canonicalId,
-                employeeId:
-                  rawEmployeeId,
-                date:
-                  todayDate,
-                updatedAt:
-                  new Date().toISOString(),
-              };
-
-        if (
-          action ===
-          'check_in'
-        ) {
-          if (!newRecord.checkIn) {
-            newRecord.checkIn =
-              timeValue;
-          }
-        } else if (
-          action ===
-          'check_out'
-        ) {
-          newRecord.checkOut =
-            timeValue;
-
-          newRecord.isExplicitCancelCheckOut =
-            false;
-        } else if (
-          action ===
-          'break_start'
-        ) {
-          newRecord.breakStart =
-            timeValue;
-        } else if (
-          action ===
-            'break_end' ||
-          action ===
-            'force_break_end'
-        ) {
-          newRecord.breakEnd =
-            timeValue;
-        } else if (
-          action === 'update' &&
-          record
-        ) {
-          const editableFields = [
-            'checkIn',
-            'checkOut',
-            'breakStart',
-            'breakEnd',
-            'breaks',
-            'totalBreakSeconds',
-            'location',
-            'deviceInfo',
-            'status',
-            'leaveType',
-            'notes',
-            'verifiedByFace',
-            'isExcused',
-            'excusedBy',
-            'excusedReason',
-            'isExplicitCancelCheckOut',
-          ];
-
-          for (
-            const field of editableFields
-          ) {
-            if (
-              record[field] !==
-              undefined
-            ) {
-              newRecord[field] =
-                record[field];
-            }
-          }
-        }
-
-        if (
-          newRecord.checkOut ===
-            null ||
-          newRecord.isExplicitCancelCheckOut ===
-            true
-        ) {
-          newRecord.checkOut =
-            null;
-
-          newRecord.workHours =
-            0;
-
-          newRecord.overtimeHours =
-            0;
-
-          newRecord.earlyLeaveMinutes =
-            0;
-        }
-
-        const calculated =
-          sanitizeRecordServer(
-            newRecord
-          );
-
-        calculated.updatedAt =
-          new Date().toISOString();
-
-        const insertData =
-          getAttendanceInsertData(
-            calculated
-          );
-
-        await db
-          .insert(
-            schema.attendanceRecords
-          )
-          .values(
-            insertData
-          )
-          .onConflictDoUpdate({
-            target: [
-              schema.attendanceRecords
-                .employeeId,
-              schema.attendanceRecords
-                .date,
-            ],
-            set: insertData,
-          });
-
-        const finalRecords =
-          await db
-            .select()
-            .from(
-              schema.attendanceRecords
-            );
-
-        const finalRecord =
-          finalRecords.find(
-            item =>
-              normalizeEmployeeId(
-                item.employeeId
-              ) ===
-                normalizedEmployeeId &&
-              String(
-                item.date
-              ) === todayDate
-          );
-
-        return res.json({
-          success: true,
-          record:
-            finalRecord ||
-            calculated,
-          attendanceRecords:
-            finalRecords,
-          lastUpdated:
-            Date.now(),
-          serverTime:
-            serverClock,
-        });
-      }
-
-      if (
-        !serverState.attendanceRecords
-      ) {
-        serverState.attendanceRecords =
-          [];
-      }
-
-      let targetRecord =
-        serverState.attendanceRecords.find(
-          item =>
-            normalizeEmployeeId(
-              item.employeeId
-            ) ===
-              normalizedEmployeeId &&
-            String(
-              item.date
-            ) === todayDate
-        );
-
-      if (!targetRecord) {
-        targetRecord = {
-          id: canonicalId,
-          employeeId:
-            rawEmployeeId,
-          date: todayDate,
-          status:
-            'in_progress',
-          updatedAt:
-            new Date().toISOString(),
-        };
-
-        serverState.attendanceRecords.push(
-          targetRecord
-        );
-      }
-
-      if (
-        action ===
-        'check_in'
-      ) {
-        if (
-          !targetRecord.checkIn
-        ) {
-          targetRecord.checkIn =
-            timeValue;
-        }
-      } else if (
-        action ===
-        'check_out'
-      ) {
-        targetRecord.checkOut =
-          timeValue;
-
-        targetRecord.isExplicitCancelCheckOut =
-          false;
-      } else if (
-        action ===
-        'break_start'
-      ) {
-        targetRecord.breakStart =
-          timeValue;
-      } else if (
-        action ===
-          'break_end' ||
-        action ===
-          'force_break_end'
-      ) {
-        targetRecord.breakEnd =
-          timeValue;
-      } else if (
-        action === 'update' &&
-        record
-      ) {
-        const updated =
-          mergeAttendanceRecords(
-            [targetRecord],
-            [record]
-          )[0];
-
-        if (updated) {
-          targetRecord =
-            updated;
-
-          const index =
-            serverState.attendanceRecords.findIndex(
-              item =>
-                item.id ===
-                canonicalId
-            );
-
-          if (index >= 0) {
-            serverState.attendanceRecords[
-              index
-            ] =
-              targetRecord;
-          }
-        }
-      } else if (
-        record &&
-        action !== 'update'
-      ) {
-        const allowedFields = [
-          'location',
-          'notes',
-          'lateMinutes',
-          'lateSeconds',
-          'earlyLeaveMinutes',
-          'workHours',
-          'overtimeHours',
-          'minusHours',
-          'status',
-          'verifiedByFace',
-          'isExcused',
-          'excusedReason',
-          'excusedBy',
-          'leaveType',
-        ];
-
-        for (
-          const field of allowedFields
-        ) {
-          if (
-            record[field] !==
-            undefined
-          ) {
-            targetRecord[field] =
-              record[field];
-          }
-        }
-      }
-
-      const sanitized =
-        sanitizeRecordServer(
-          targetRecord
-        );
-
-      Object.assign(
-        targetRecord,
-        sanitized
-      );
-
-      targetRecord.updatedAt =
-        new Date().toISOString();
-
-      serverState.lastUpdated =
-        Date.now();
-
-      await saveServerData(
-        serverState
-      );
-
-      return res.json({
-        success: true,
-        lastUpdated:
-          serverState.lastUpdated,
-        record:
-          targetRecord,
-        serverTime:
-          serverClock,
-        attendanceRecords:
-          cleanStateForResponse(
-            serverState
-          ).attendanceRecords,
-      });
-    } catch (error) {
-      console.error(
-        'Punch error:',
-        error
-      );
-
-      return res.status(500).json({
-        success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : 'Punch failed',
-      });
-    }
-  }
-);
-
-app.post(
-  '/api/attendance',
-  async (req, res) => {
-    try {
-      const record =
-        req.body;
-
-      if (
-        !record ||
-        (!record.id &&
-          !record.employeeId)
-      ) {
-        return res.status(400).json({
-          success: false,
-          error:
-            'Invalid attendance record',
-        });
-      }
-
-      serverState.attendanceRecords =
-        mergeAttendanceRecords(
-          serverState.attendanceRecords ||
-            [],
-          [record]
-        );
-
-      serverState.lastUpdated =
-        Date.now();
-
-      await saveServerData(
-        serverState
-      );
-
-      return res.json({
-        success: true,
-        attendanceRecords:
-          serverState.attendanceRecords,
-        lastUpdated:
-          serverState.lastUpdated,
-      });
-    } catch (error) {
-      console.error(
-        'Attendance save error:',
-        error
-      );
-
-      return res.status(500).json({
-        success: false,
-        error:
-          'Failed to save attendance',
-      });
-    }
-  }
-);
+});
 
 app.post(
   '/api/attendance/clear-today',
   async (req, res) => {
     try {
-      const dateString =
+      const date =
         String(
           req.body?.date ||
-            getTodayServerDate()
-        ).trim();
-
-      const now =
-        Date.now();
-
-      serverState.deletedAttendanceKeys =
-        serverState.deletedAttendanceKeys ||
-        {};
-
-      const records =
-        serverState.attendanceRecords ||
-        [];
-
-      for (
-        const record of records
-      ) {
-        if (
-          String(
-            record.date
-          ) === dateString
-        ) {
-          if (
-            record.employeeId
-          ) {
-            serverState.deletedAttendanceKeys[
-              attendanceKey(
-                record.employeeId,
-                dateString
-              )
-            ] = now;
-          }
-        }
-      }
-
-      serverState.attendanceRecords =
-        records.filter(
-          record =>
-            String(
-              record.date
-            ) !== dateString
+            getServerClock().date
         );
 
-      serverState.lastUpdated =
+      if (USE_DATABASE) {
+        await db
+          .delete(schema.attendanceRecords)
+          .where(
+            sql`${schema.attendanceRecords.date} = ${date}`
+          );
+
+        const records =
+          await db
+            .select()
+            .from(
+              schema.attendanceRecords
+            );
+
+        return res.json({
+          success: true,
+          attendanceRecords:
+            records.map(
+              normalizeDbAttendance
+            ),
+          lastUpdated: Date.now(),
+        });
+      }
+
+      localState.attendanceRecords =
+        localState.attendanceRecords.filter(
+          (item: any) =>
+            String(item.date) !== date
+        );
+
+      localState.lastUpdated =
         Date.now();
 
-      await saveServerData(
-        serverState
-      );
+      saveLocalState();
 
       return res.json({
         success: true,
         attendanceRecords:
-          serverState.attendanceRecords,
+          localState.attendanceRecords,
         lastUpdated:
-          serverState.lastUpdated,
+          localState.lastUpdated,
       });
     } catch (error) {
       console.error(
-        'Clear attendance error:',
+        'clear-today error:',
         error
       );
 
@@ -3107,255 +2376,317 @@ app.post(
       const cutoffDate =
         String(
           req.body?.todayDate ||
-            getTodayServerDate()
-        ).trim();
-
-      const records =
-        serverState.attendanceRecords ||
-        [];
-
-      const futureRecords =
-        records.filter(
-          record =>
-            record?.date &&
-            String(
-              record.date
-            ) > cutoffDate
+            getServerClock().date
         );
 
-      const validRecords =
-        records.filter(
-          record =>
-            !record?.date ||
-            String(
-              record.date
-            ) <= cutoffDate
-        );
-
-      let backupFileName =
-        '';
-
-      if (
-        futureRecords.length
-      ) {
-        try {
-          if (
-            !fs.existsSync(
-              BACKUP_DIR
+      if (USE_DATABASE) {
+        const futureRecords =
+          await db
+            .select()
+            .from(
+              schema.attendanceRecords
             )
+            .where(
+              sql`${schema.attendanceRecords.date} > ${cutoffDate}`
+            );
+
+        if (futureRecords.length > 0) {
+          if (
+            !fs.existsSync(BACKUP_DIR)
           ) {
             fs.mkdirSync(
               BACKUP_DIR,
               {
-                recursive:
-                  true,
+                recursive: true,
               }
             );
           }
 
-          const timestamp =
-            new Date()
-              .toISOString()
-              .replace(
-                /[:.]/g,
-                '-'
-              );
-
-          backupFileName =
-            `future_attendance_backup_${timestamp}.json`;
-
-          const backupPath =
-            path.join(
-              BACKUP_DIR,
-              backupFileName
-            );
+          const backupName =
+            `future_attendance_${Date.now()}.json`;
 
           fs.writeFileSync(
-            backupPath,
+            path.join(
+              BACKUP_DIR,
+              backupName
+            ),
             JSON.stringify(
               {
                 cutoffDate,
-                deletedCount:
-                  futureRecords.length,
-                deletedAt:
+                records:
+                  futureRecords,
+                createdAt:
                   new Date().toISOString(),
-                futureRecords,
-                fullState:
-                  serverState,
               },
               null,
               2
-            ),
-            'utf-8'
-          );
-        } catch (error) {
-          console.error(
-            'Future attendance backup error:',
-            error
+            )
           );
         }
+
+        await db
+          .delete(
+            schema.attendanceRecords
+          )
+          .where(
+            sql`${schema.attendanceRecords.date} > ${cutoffDate}`
+          );
+
+        return res.json({
+          success: true,
+          deletedCount:
+            futureRecords.length,
+          cutoffDate,
+          lastUpdated: Date.now(),
+        });
       }
 
-      serverState.attendanceRecords =
-        validRecords;
+      const futureRecords =
+        localState.attendanceRecords.filter(
+          (item: any) =>
+            item?.date &&
+            String(item.date) >
+              cutoffDate
+        );
 
-      serverState.lastUpdated =
+      localState.attendanceRecords =
+        localState.attendanceRecords.filter(
+          (item: any) =>
+            !item?.date ||
+            String(item.date) <=
+              cutoffDate
+        );
+
+      localState.lastUpdated =
         Date.now();
 
-      await saveServerData(
-        serverState
-      );
-
-      const remainingFuture =
-        (
-          serverState.attendanceRecords ||
-          []
-        ).filter(
-          record =>
-            record?.date &&
-            String(
-              record.date
-            ) > cutoffDate
-        );
+      saveLocalState();
 
       return res.json({
         success: true,
         deletedCount:
           futureRecords.length,
-        remainingFutureCount:
-          remainingFuture.length,
         cutoffDate,
-        backupFile:
-          backupFileName,
-        attendanceRecords:
-          serverState.attendanceRecords,
         lastUpdated:
-          serverState.lastUpdated,
+          localState.lastUpdated,
       });
     } catch (error) {
       console.error(
-        'Delete future attendance error:',
+        'delete-future error:',
         error
       );
 
       return res.status(500).json({
         success: false,
         error:
-          'Failed to delete future attendance',
+          'Failed to delete future records',
       });
     }
   }
 );
 
-app.post(
-  '/api/leaves',
-  async (req, res) => {
-    try {
-      const leaveRequest =
-        req.body;
+app.post('/api/leaves', async (req, res) => {
+  try {
+    const leave = req.body;
 
-      if (
-        !leaveRequest ||
-        !leaveRequest.id ||
-        !leaveRequest.employeeId
-      ) {
-        return res.status(400).json({
-          success: false,
-          error:
-            'Invalid leave request',
+    if (
+      !leave?.id ||
+      !leave?.employeeId
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid leave request',
+      });
+    }
+
+    if (USE_DATABASE) {
+      const values: typeof schema.leaveRequests.$inferInsert =
+        {
+          id: String(leave.id),
+          employeeId: String(
+            leave.employeeId
+          ),
+          type:
+            leave.type ?? null,
+          startDate:
+            leave.startDate ?? null,
+          endDate:
+            leave.endDate ?? null,
+          reason:
+            leave.reason ?? null,
+          status:
+            leave.status ?? 'pending',
+          createdAt:
+            leave.createdAt ??
+            new Date().toISOString(),
+          hours:
+            leave.hours !== undefined &&
+            leave.hours !== null
+              ? Number(leave.hours)
+              : null,
+          permissionSlot:
+            leave.permissionSlot ??
+            null,
+          attachmentUrl:
+            leave.attachmentUrl ??
+            null,
+          attachmentName:
+            leave.attachmentName ??
+            null,
+          reviewedBy:
+            leave.reviewedBy ??
+            null,
+          reviewNotes:
+            leave.reviewNotes ??
+            null,
+        };
+
+      await db
+        .insert(schema.leaveRequests)
+        .values(values)
+        .onConflictDoUpdate({
+          target:
+            schema.leaveRequests.id,
+          set: {
+            type: values.type,
+            startDate:
+              values.startDate,
+            endDate:
+              values.endDate,
+            reason:
+              values.reason,
+            status:
+              values.status,
+            hours:
+              values.hours,
+            permissionSlot:
+              values.permissionSlot,
+            attachmentUrl:
+              values.attachmentUrl,
+            attachmentName:
+              values.attachmentName,
+            reviewedBy:
+              values.reviewedBy,
+            reviewNotes:
+              values.reviewNotes,
+          },
         });
-      }
 
-      serverState.leaveRequests =
-        mergeByUniqueId(
-          serverState.leaveRequests ||
-            [],
-          [leaveRequest]
-        );
-
-      serverState.lastUpdated =
-        Date.now();
-
-      await saveServerData(
-        serverState
-      );
+      const leaves =
+        await db
+          .select()
+          .from(
+            schema.leaveRequests
+          );
 
       return res.json({
         success: true,
-        leaveRequests:
-          serverState.leaveRequests,
-        lastUpdated:
-          serverState.lastUpdated,
-      });
-    } catch (error) {
-      console.error(
-        'Leave request error:',
-        error
-      );
-
-      return res.status(500).json({
-        success: false,
-        error:
-          'Failed to save leave request',
+        leaveRequests: leaves,
+        lastUpdated: Date.now(),
       });
     }
+
+    localState.leaveRequests =
+      mergeById(
+        localState.leaveRequests,
+        [leave]
+      );
+
+    localState.lastUpdated =
+      Date.now();
+
+    saveLocalState();
+
+    return res.json({
+      success: true,
+      leaveRequests:
+        localState.leaveRequests,
+      lastUpdated:
+        localState.lastUpdated,
+    });
+  } catch (error) {
+    console.error(
+      'POST /api/leaves error:',
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to save leave',
+    });
   }
-);
+});
 
 app.put(
   '/api/leaves/:id/status',
   async (req, res) => {
     try {
       const id =
-        String(
-          req.params.id
-        ).trim();
+        String(req.params.id);
 
       const {
         status,
         reviewNotes,
         reviewedBy,
-      } =
-        req.body || {};
+      } = req.body || {};
 
-      const leaves =
-        serverState.leaveRequests ||
-        [];
+      if (USE_DATABASE) {
+        const existing = (
+          await db
+            .select()
+            .from(
+              schema.leaveRequests
+            )
+            .where(
+              sql`${schema.leaveRequests.id} = ${id}`
+            )
+        )[0];
 
-      let found = false;
+        if (!existing) {
+          return res.status(404).json({
+            success: false,
+            error:
+              'Leave request not found',
+          });
+        }
 
-      serverState.leaveRequests =
-        leaves.map(
-          leave => {
-            if (
-              leave.id !==
-              id
-            ) {
-              return leave;
-            }
-
-            found = true;
-
-            return {
-              ...leave,
+        const [updated] =
+          await db
+            .update(
+              schema.leaveRequests
+            )
+            .set({
               status:
                 status ??
-                leave.status,
+                existing.status,
               reviewNotes:
-                reviewNotes !==
-                undefined
+                reviewNotes !== undefined
                   ? reviewNotes
-                  : leave.reviewNotes,
+                  : existing.reviewNotes,
               reviewedBy:
                 reviewedBy ??
-                leave.reviewedBy,
-              updatedAt:
-                new Date().toISOString(),
-            };
-          }
+                existing.reviewedBy,
+            })
+            .where(
+              sql`${schema.leaveRequests.id} = ${id}`
+            )
+            .returning();
+
+        return res.json({
+          success: true,
+          leaveRequest:
+            updated,
+          lastUpdated: Date.now(),
+        });
+      }
+
+      const index =
+        localState.leaveRequests.findIndex(
+          (item: any) =>
+            String(item.id) === id
         );
 
-      if (!found) {
+      if (index < 0) {
         return res.status(404).json({
           success: false,
           error:
@@ -3363,36 +2694,46 @@ app.put(
         });
       }
 
-      if (
-        serverState.leaveRequests &&
-        serverState.attendanceRecords
-      ) {
-        serverState.attendanceRecords =
-          ensureApprovedLeaveRecordsServer(
-            serverState.attendanceRecords,
-            serverState.leaveRequests
-          );
-      }
+      localState.leaveRequests[
+        index
+      ] = {
+        ...localState
+          .leaveRequests[index],
+        status:
+          status ??
+          localState.leaveRequests[
+            index
+          ].status,
+        reviewNotes:
+          reviewNotes !== undefined
+            ? reviewNotes
+            : localState.leaveRequests[
+                index
+              ].reviewNotes,
+        reviewedBy:
+          reviewedBy ??
+          localState.leaveRequests[
+            index
+          ].reviewedBy,
+      };
 
-      serverState.lastUpdated =
+      localState.lastUpdated =
         Date.now();
 
-      await saveServerData(
-        serverState
-      );
+      saveLocalState();
 
       return res.json({
         success: true,
-        leaveRequests:
-          serverState.leaveRequests,
-        attendanceRecords:
-          serverState.attendanceRecords,
+        leaveRequest:
+          localState.leaveRequests[
+            index
+          ],
         lastUpdated:
-          serverState.lastUpdated,
+          localState.lastUpdated,
       });
     } catch (error) {
       console.error(
-        'Leave status error:',
+        'leave status error:',
         error
       );
 
@@ -3413,10 +2754,9 @@ app.post(
         req.body;
 
       if (
-        !overtime ||
-        !overtime.id ||
-        !overtime.employeeId ||
-        !overtime.date
+        !overtime?.id ||
+        !overtime?.employeeId ||
+        !overtime?.date
       ) {
         return res.status(400).json({
           success: false,
@@ -3425,69 +2765,119 @@ app.post(
         });
       }
 
-      if (
-        !serverState.overtimeRequests
-      ) {
-        serverState.overtimeRequests =
-          [];
-      }
-
-      const index =
-        serverState.overtimeRequests.findIndex(
-          item =>
-            item.id ===
-            overtime.id
-        );
-
-      if (index >= 0) {
-        serverState.overtimeRequests[
-          index
-        ] = {
-          ...serverState
-            .overtimeRequests[
-            index
-          ],
-          ...overtime,
-          updatedAt:
-            new Date().toISOString(),
-        };
-      } else {
-        serverState.overtimeRequests.push(
+      if (USE_DATABASE) {
+        const values: typeof schema.overtimeRequests.$inferInsert =
           {
-            ...overtime,
+            id: String(overtime.id),
+            employeeId: String(
+              overtime.employeeId
+            ),
+            date: String(
+              overtime.date
+            ),
+            type: String(
+              overtime.type ||
+                'overtime'
+            ),
+            durationSeconds:
+              Number(
+                overtime.durationSeconds ||
+                  0
+              ),
+            reason:
+              overtime.reason ??
+              null,
+            status:
+              overtime.status ??
+              'pending',
+            reviewedBy:
+              overtime.reviewedBy ??
+              null,
+            reviewNotes:
+              overtime.reviewNotes ??
+              null,
             createdAt:
-              overtime.createdAt ||
+              overtime.createdAt ??
               new Date().toISOString(),
             updatedAt:
+              overtime.updatedAt ??
               new Date().toISOString(),
-          }
-        );
+          };
+
+        await db
+          .insert(
+            schema.overtimeRequests
+          )
+          .values(values)
+          .onConflictDoUpdate({
+            target:
+              schema.overtimeRequests.id,
+            set: {
+              employeeId:
+                values.employeeId,
+              date:
+                values.date,
+              type:
+                values.type,
+              durationSeconds:
+                values.durationSeconds,
+              reason:
+                values.reason,
+              status:
+                values.status,
+              reviewedBy:
+                values.reviewedBy,
+              reviewNotes:
+                values.reviewNotes,
+              updatedAt:
+                values.updatedAt,
+            },
+          });
+
+        const rows =
+          await db
+            .select()
+            .from(
+              schema.overtimeRequests
+            );
+
+        return res.json({
+          success: true,
+          overtimeRequests:
+            rows,
+          lastUpdated:
+            Date.now(),
+        });
       }
 
-      serverState.lastUpdated =
+      localState.overtimeRequests =
+        mergeById(
+          localState.overtimeRequests,
+          [overtime]
+        );
+
+      localState.lastUpdated =
         Date.now();
 
-      await saveServerData(
-        serverState
-      );
+      saveLocalState();
 
       return res.json({
         success: true,
         overtimeRequests:
-          serverState.overtimeRequests,
+          localState.overtimeRequests,
         lastUpdated:
-          serverState.lastUpdated,
+          localState.lastUpdated,
       });
     } catch (error) {
       console.error(
-        'Overtime create error:',
+        'POST /api/overtime error:',
         error
       );
 
       return res.status(500).json({
         success: false,
         error:
-          'Failed to save overtime request',
+          'Failed to save overtime',
       });
     }
   }
@@ -3498,29 +2888,71 @@ app.put(
   async (req, res) => {
     try {
       const id =
-        String(
-          req.params.id
-        ).trim();
+        String(req.params.id);
 
       const {
         status,
         reviewNotes,
         reviewedBy,
-      } =
-        req.body || {};
+      } = req.body || {};
 
-      if (
-        !serverState.overtimeRequests
-      ) {
-        serverState.overtimeRequests =
-          [];
+      if (USE_DATABASE) {
+        const existing = (
+          await db
+            .select()
+            .from(
+              schema.overtimeRequests
+            )
+            .where(
+              sql`${schema.overtimeRequests.id} = ${id}`
+            )
+        )[0];
+
+        if (!existing) {
+          return res.status(404).json({
+            success: false,
+            error:
+              'Overtime request not found',
+          });
+        }
+
+        const [updated] =
+          await db
+            .update(
+              schema.overtimeRequests
+            )
+            .set({
+              status:
+                status ??
+                existing.status,
+              reviewNotes:
+                reviewNotes !== undefined
+                  ? reviewNotes
+                  : existing.reviewNotes,
+              reviewedBy:
+                reviewedBy ??
+                existing.reviewedBy,
+              updatedAt:
+                new Date().toISOString(),
+            })
+            .where(
+              sql`${schema.overtimeRequests.id} = ${id}`
+            )
+            .returning();
+
+        return res.json({
+          success: true,
+          overtimeRequest:
+            updated,
+          lastUpdated:
+            Date.now(),
+        });
       }
 
       const index =
-        serverState.overtimeRequests.findIndex(
-          item =>
-            item.id ===
-            id
+        localState.overtimeRequests.findIndex(
+          (item: any) =>
+            String(item.id) === id
         );
 
       if (index < 0) {
@@ -3531,48 +2963,48 @@ app.put(
         });
       }
 
-      const current =
-        serverState
-          .overtimeRequests[
-          index
-        ];
-
-      serverState.overtimeRequests[
+      localState.overtimeRequests[
         index
       ] = {
-        ...current,
+        ...localState
+          .overtimeRequests[index],
         status:
           status ??
-          current.status,
+          localState.overtimeRequests[
+            index
+          ].status,
         reviewNotes:
-          reviewNotes !==
-          undefined
+          reviewNotes !== undefined
             ? reviewNotes
-            : current.reviewNotes,
+            : localState.overtimeRequests[
+                index
+              ].reviewNotes,
         reviewedBy:
           reviewedBy ??
-          current.reviewedBy,
+          localState.overtimeRequests[
+            index
+          ].reviewedBy,
         updatedAt:
           new Date().toISOString(),
       };
 
-      serverState.lastUpdated =
+      localState.lastUpdated =
         Date.now();
 
-      await saveServerData(
-        serverState
-      );
+      saveLocalState();
 
       return res.json({
         success: true,
-        overtimeRequests:
-          serverState.overtimeRequests,
+        overtimeRequest:
+          localState.overtimeRequests[
+            index
+          ],
         lastUpdated:
-          serverState.lastUpdated,
+          localState.lastUpdated,
       });
     } catch (error) {
       console.error(
-        'Overtime status error:',
+        'overtime status error:',
         error
       );
 
@@ -3585,91 +3017,78 @@ app.put(
   }
 );
 
-app.get(
-  '/api/backup',
-  (_req, res) => {
-    try {
-      if (
-        !fs.existsSync(
-          BACKUP_DIR
-        )
-      ) {
-        fs.mkdirSync(
-          BACKUP_DIR,
-          {
-            recursive:
-              true,
-          }
-        );
-      }
+app.get('/api/backup', async (_req, res) => {
+  try {
+    let data: any;
 
-      const timestamp =
-        new Date()
-          .toISOString()
-          .replace(
-            /[:.]/g,
-            '-'
-          );
-
-      const fileName =
-        `server_data_backup_${timestamp}.json`;
-
-      const filePath =
-        path.join(
-          BACKUP_DIR,
-          fileName
-        );
-
-      const backupData = {
-        ...serverState,
-        backupTimestamp:
-          new Date().toISOString(),
-        version: '2.0',
+    if (USE_DATABASE) {
+      data = await getDatabaseData();
+    } else {
+      data = {
+        ...localState,
       };
-
-      fs.writeFileSync(
-        filePath,
-        JSON.stringify(
-          backupData,
-          null,
-          2
-        ),
-        'utf-8'
-      );
-
-      res.setHeader(
-        'Content-Type',
-        'application/json'
-      );
-
-      res.setHeader(
-        'Content-Disposition',
-        `attachment; filename="${fileName}"`
-      );
-
-      return res.send(
-        JSON.stringify(
-          backupData,
-          null,
-          2
-        )
-      );
-    } catch (error) {
-      console.error(
-        'Backup error:',
-        error
-      );
-
-      return res.status(500).json({
-        success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : 'Failed to create backup',
-      });
     }
+
+    const backup = {
+      ...data,
+      backupTimestamp:
+        new Date().toISOString(),
+      version: '2.0',
+    };
+
+    if (!fs.existsSync(BACKUP_DIR)) {
+      fs.mkdirSync(
+        BACKUP_DIR,
+        { recursive: true }
+      );
+    }
+
+    const filename =
+      `server_data_backup_${Date.now()}.json`;
+
+    fs.writeFileSync(
+      path.join(
+        BACKUP_DIR,
+        filename
+      ),
+      JSON.stringify(
+        backup,
+        null,
+        2
+      ),
+      'utf8'
+    );
+
+    res.setHeader(
+      'Content-Type',
+      'application/json'
+    );
+
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${filename}"`
+    );
+
+    return res.send(
+      JSON.stringify(
+        backup,
+        null,
+        2
+      )
+    );
+  } catch (error) {
+    console.error(
+      'Backup error:',
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      error:
+        'Failed to create backup',
+    });
   }
-);
+});
 
 app.post(
   '/api/backup/restore',
@@ -3687,115 +3106,436 @@ app.post(
         return res.status(400).json({
           success: false,
           error:
-            'Invalid backup file payload',
+            'Invalid backup payload',
         });
       }
 
-      if (
-        !fs.existsSync(
-          BACKUP_DIR
-        )
-      ) {
-        fs.mkdirSync(
-          BACKUP_DIR,
-          {
-            recursive:
-              true,
-          }
-        );
-      }
+      if (USE_DATABASE) {
+        for (const employee of backup.employees) {
+          if (!employee?.id) continue;
 
-      const preRestorePath =
-        path.join(
-          BACKUP_DIR,
-          `server_data_prerestore_${Date.now()}.json`
-        );
+          const values: typeof schema.employees.$inferInsert =
+            {
+              id: String(employee.id),
+              code: employee.code ?? null,
+              nameAr:
+                String(
+                  employee.nameAr ?? ''
+                ),
+              nameEn:
+                String(
+                  employee.nameEn ?? ''
+                ),
+              avatar:
+                employee.avatar ?? null,
+              email:
+                employee.email ?? null,
+              phone:
+                employee.phone ?? null,
+              department:
+                employee.department ?? null,
+              jobTitleAr:
+                employee.jobTitleAr ??
+                null,
+              jobTitleEn:
+                employee.jobTitleEn ??
+                null,
+              shiftId:
+                employee.shiftId ??
+                null,
+              pin:
+                employee.pin ?? null,
+              role:
+                employee.role ?? null,
+              joinedDate:
+                employee.joinedDate ??
+                null,
+              status:
+                employee.status ?? null,
+              annualLeaveBalance:
+                employee.annualLeaveBalance ??
+                null,
+              casualLeaveBalance:
+                employee.casualLeaveBalance ??
+                null,
+              regularLeaveBalance:
+                employee.regularLeaveBalance ??
+                null,
+              sickLeaveBalance:
+                employee.sickLeaveBalance ??
+                null,
+              isPhotoRemoved:
+                employee.isPhotoRemoved ??
+                false,
+            };
 
-      fs.writeFileSync(
-        preRestorePath,
-        JSON.stringify(
-          serverState,
-          null,
-          2
-        ),
-        'utf-8'
-      );
+          await db
+            .insert(schema.employees)
+            .values(values)
+            .onConflictDoUpdate({
+              target:
+                schema.employees.id,
+              set: {
+                code:
+                  values.code,
+                nameAr:
+                  values.nameAr,
+                nameEn:
+                  values.nameEn,
+                avatar:
+                  values.avatar,
+                email:
+                  values.email,
+                phone:
+                  values.phone,
+                department:
+                  values.department,
+                jobTitleAr:
+                  values.jobTitleAr,
+                jobTitleEn:
+                  values.jobTitleEn,
+                shiftId:
+                  values.shiftId,
+                pin:
+                  values.pin,
+                role:
+                  values.role,
+                joinedDate:
+                  values.joinedDate,
+                status:
+                  values.status,
+                annualLeaveBalance:
+                  values.annualLeaveBalance,
+                casualLeaveBalance:
+                  values.casualLeaveBalance,
+                regularLeaveBalance:
+                  values.regularLeaveBalance,
+                sickLeaveBalance:
+                  values.sickLeaveBalance,
+                isPhotoRemoved:
+                  values.isPhotoRemoved,
+              },
+            });
+        }
 
-      serverState = {
-        employees:
-          backup.employees ||
-          [],
-        shifts:
-          Array.isArray(
-            backup.shifts
-          )
-            ? backup.shifts
-            : [],
-        attendanceRecords:
+        if (
           Array.isArray(
             backup.attendanceRecords
           )
-            ? backup.attendanceRecords
-            : [],
-        leaveRequests:
+        ) {
+          for (const record of ensureNoFutureAttendance(
+            backup.attendanceRecords
+          )) {
+            if (
+              !record?.employeeId ||
+              !record?.date
+            ) {
+              continue;
+            }
+
+            const sanitized =
+              sanitizeAttendanceRecord(
+                record
+              );
+
+            const values: typeof schema.attendanceRecords.$inferInsert =
+              {
+                id: String(
+                  sanitized.id ||
+                    `rec-${normalizeId(
+                      sanitized.employeeId
+                    )}-${sanitized.date}`
+                ),
+                employeeId: String(
+                  sanitized.employeeId
+                ),
+                date: String(
+                  sanitized.date
+                ),
+                checkIn:
+                  sanitized.checkIn ??
+                  null,
+                checkOut:
+                  sanitized.checkOut ??
+                  null,
+                breakStart:
+                  sanitized.breakStart ??
+                  null,
+                breakEnd:
+                  sanitized.breakEnd ??
+                  null,
+                breaks:
+                  sanitized.breaks ??
+                  null,
+                totalBreakSeconds:
+                  sanitized.totalBreakSeconds ??
+                  null,
+                location:
+                  sanitized.location ??
+                  null,
+                deviceInfo:
+                  sanitized.deviceInfo ??
+                  null,
+                lateMinutes:
+                  Number(
+                    sanitized.lateMinutes ??
+                      0
+                  ),
+                lateSeconds:
+                  Number(
+                    sanitized.lateSeconds ??
+                      0
+                  ),
+                earlyLeaveMinutes:
+                  Number(
+                    sanitized.earlyLeaveMinutes ??
+                      0
+                  ),
+                workHours:
+                  Number(
+                    sanitized.workHours ??
+                      0
+                  ),
+                overtimeHours:
+                  Number(
+                    sanitized.overtimeHours ??
+                      0
+                  ),
+                minusHours:
+                  Number(
+                    sanitized.minusHours ??
+                      0
+                  ),
+                status:
+                  sanitized.status ??
+                  null,
+                leaveType:
+                  sanitized.leaveType ??
+                  null,
+                notes:
+                  sanitized.notes ??
+                  null,
+                verifiedByFace:
+                  sanitized.verifiedByFace ??
+                  false,
+                isExcused:
+                  sanitized.isExcused ??
+                  false,
+                excusedBy:
+                  sanitized.excusedBy ??
+                  null,
+                excusedReason:
+                  sanitized.excusedReason ??
+                  null,
+                updatedAt:
+                  sanitized.updatedAt ??
+                  new Date().toISOString(),
+                isExplicitCancelCheckOut:
+                  sanitized.isExplicitCancelCheckOut ??
+                  false,
+              };
+
+            await db
+              .insert(
+                schema.attendanceRecords
+              )
+              .values(values)
+              .onConflictDoUpdate({
+                target: [
+                  schema.attendanceRecords
+                    .employeeId,
+                  schema.attendanceRecords
+                    .date,
+                ],
+                set: {
+                  checkIn:
+                    values.checkIn,
+                  checkOut:
+                    values.checkOut,
+                  breakStart:
+                    values.breakStart,
+                  breakEnd:
+                    values.breakEnd,
+                  breaks:
+                    values.breaks,
+                  totalBreakSeconds:
+                    values.totalBreakSeconds,
+                  location:
+                    values.location,
+                  deviceInfo:
+                    values.deviceInfo,
+                  lateMinutes:
+                    values.lateMinutes,
+                  lateSeconds:
+                    values.lateSeconds,
+                  earlyLeaveMinutes:
+                    values.earlyLeaveMinutes,
+                  workHours:
+                    values.workHours,
+                  overtimeHours:
+                    values.overtimeHours,
+                  minusHours:
+                    values.minusHours,
+                  status:
+                    values.status,
+                  leaveType:
+                    values.leaveType,
+                  notes:
+                    values.notes,
+                  verifiedByFace:
+                    values.verifiedByFace,
+                  isExcused:
+                    values.isExcused,
+                  excusedBy:
+                    values.excusedBy,
+                  excusedReason:
+                    values.excusedReason,
+                  updatedAt:
+                    values.updatedAt,
+                  isExplicitCancelCheckOut:
+                    values.isExplicitCancelCheckOut,
+                },
+              });
+          }
+        }
+
+        if (
           Array.isArray(
             backup.leaveRequests
           )
-            ? backup.leaveRequests
-            : [],
+        ) {
+          for (const leave of backup.leaveRequests) {
+            if (
+              !leave?.id ||
+              !leave?.employeeId
+            ) {
+              continue;
+            }
+
+            const values: typeof schema.leaveRequests.$inferInsert =
+              {
+                id: String(
+                  leave.id
+                ),
+                employeeId:
+                  String(
+                    leave.employeeId
+                  ),
+                type:
+                  leave.type ??
+                  null,
+                startDate:
+                  leave.startDate ??
+                  null,
+                endDate:
+                  leave.endDate ??
+                  null,
+                reason:
+                  leave.reason ??
+                  null,
+                status:
+                  leave.status ??
+                  null,
+                createdAt:
+                  leave.createdAt ??
+                  new Date().toISOString(),
+                hours:
+                  leave.hours != null
+                    ? Number(
+                        leave.hours
+                      )
+                    : null,
+                permissionSlot:
+                  leave.permissionSlot ??
+                  null,
+                attachmentUrl:
+                  leave.attachmentUrl ??
+                  null,
+                attachmentName:
+                  leave.attachmentName ??
+                  null,
+                reviewedBy:
+                  leave.reviewedBy ??
+                  null,
+                reviewNotes:
+                  leave.reviewNotes ??
+                  null,
+              };
+
+            await db
+              .insert(
+                schema.leaveRequests
+              )
+              .values(values)
+              .onConflictDoUpdate({
+                target:
+                  schema.leaveRequests.id,
+                set: {
+                  type:
+                    values.type,
+                  startDate:
+                    values.startDate,
+                  endDate:
+                    values.endDate,
+                  reason:
+                    values.reason,
+                  status:
+                    values.status,
+                  createdAt:
+                    values.createdAt,
+                  hours:
+                    values.hours,
+                  permissionSlot:
+                    values.permissionSlot,
+                  attachmentUrl:
+                    values.attachmentUrl,
+                  attachmentName:
+                    values.attachmentName,
+                  reviewedBy:
+                    values.reviewedBy,
+                  reviewNotes:
+                    values.reviewNotes,
+                },
+              });
+          }
+        }
+
+        const data =
+          await getDatabaseData();
+
+        return res.json({
+          success: true,
+          ...data,
+        });
+      }
+
+      localState = {
+        ...emptyState(),
+        ...backup,
+        employees:
+          backup.employees || [],
+        attendanceRecords:
+          ensureNoFutureAttendance(
+            backup.attendanceRecords ||
+              []
+          ),
+        leaveRequests:
+          backup.leaveRequests ||
+          [],
         overtimeRequests:
-          Array.isArray(
-            backup.overtimeRequests
-          )
-            ? backup.overtimeRequests
-            : [],
-        companyNameAr:
-          backup.companyNameAr,
-        companyNameEn:
-          backup.companyNameEn,
-        urgentNotice:
-          backup.urgentNotice,
-        deletedAttendanceKeys:
-          backup.deletedAttendanceKeys ||
-          {},
-        deletedLeaveKeys:
-          backup.deletedLeaveKeys ||
-          {},
-        deletedEmployeeKeys:
-          backup.deletedEmployeeKeys ||
-          {},
+          backup.overtimeRequests ||
+          [],
+        shifts:
+          backup.shifts || [],
         lastUpdated:
           Date.now(),
       };
 
-      if (
-        serverState.leaveRequests &&
-        serverState.attendanceRecords
-      ) {
-        serverState.attendanceRecords =
-          ensureApprovedLeaveRecordsServer(
-            serverState.attendanceRecords,
-            serverState.leaveRequests
-          );
-      }
-
-      await saveServerData(
-        serverState
-      );
+      saveLocalState();
 
       return res.json({
         success: true,
-        message:
-          'Database successfully restored from backup',
-        lastUpdated:
-          serverState.lastUpdated,
-        employeesCount:
-          serverState.employees
-            ?.length || 0,
-        attendanceRecordsCount:
-          serverState
-            .attendanceRecords
-            ?.length || 0,
+        ...localState,
       });
     } catch (error) {
       console.error(
@@ -3806,162 +3546,95 @@ app.post(
       return res.status(500).json({
         success: false,
         error:
-          error instanceof Error
-            ? error.message
-            : 'Restore failed',
+          'Failed to restore backup',
       });
     }
   }
 );
 
-app.get(
-  '/api/health',
-  (_req, res) => {
-    return res.json({
-      status: 'ok',
-      database:
-        hasDatabase,
-      kv:
-        hasKvStorage,
-      serverTime:
-        getServerClock(),
-    });
-  }
-);
-
 async function startServer() {
-  try {
-    const persistentState =
-      await loadPersistentServerData();
-
-    if (
-      persistentState &&
-      typeof persistentState ===
-        'object'
-    ) {
-      serverState = {
-        ...serverState,
-        ...persistentState,
-      };
-    }
-
-    serverState.employees =
-      Array.isArray(
-        serverState.employees
-      )
-        ? serverState.employees
-        : [];
-
-    serverState.shifts =
-      Array.isArray(
-        serverState.shifts
-      )
-        ? serverState.shifts
-        : [];
-
-    serverState.attendanceRecords =
-      Array.isArray(
-        serverState.attendanceRecords
-      )
-        ? serverState.attendanceRecords
-        : [];
-
-    serverState.leaveRequests =
-      Array.isArray(
-        serverState.leaveRequests
-      )
-        ? serverState.leaveRequests
-        : [];
-
-    serverState.overtimeRequests =
-      Array.isArray(
-        serverState.overtimeRequests
-      )
-        ? serverState.overtimeRequests
-        : [];
-
-    serverState.deletedAttendanceKeys =
-      serverState.deletedAttendanceKeys ||
-      {};
-
-    serverState.deletedLeaveKeys =
-      serverState.deletedLeaveKeys ||
-      {};
-
-    serverState.deletedEmployeeKeys =
-      serverState.deletedEmployeeKeys ||
-      {};
-
-    if (
-      serverState.leaveRequests &&
-      serverState.attendanceRecords
-    ) {
-      serverState.attendanceRecords =
-        ensureApprovedLeaveRecordsServer(
-          serverState.attendanceRecords,
-          serverState.leaveRequests
-        );
-    }
-
-    if (
-      process.env.NODE_ENV !==
-      'production'
-    ) {
-      const vite =
-        await createViteServer({
-          server: {
-            middlewareMode:
-              true,
-          },
-          appType: 'spa',
-        });
-
-      app.use(
-        vite.middlewares
-      );
-    } else {
-      const distPath =
-        path.join(
-          process.cwd(),
-          'dist'
-        );
-
-      app.use(
-        express.static(
-          distPath
-        )
+  if (USE_DATABASE) {
+    try {
+      await db.execute(
+        sql`select 1`
       );
 
-      app.get(
-        '*',
-        (_req, res) => {
-          res.sendFile(
-            path.join(
-              distPath,
-              'index.html'
-            )
-          );
-        }
+      console.log(
+        'Database connection successful.'
+      );
+    } catch (error) {
+      console.error(
+        'Database connection failed:',
+        error
       );
     }
+  } else {
+    console.warn(
+      'SUPABASE_DB_URL is not set. Local JSON storage is being used.'
+    );
+  }
 
-    app.listen(
-      PORT,
-      '0.0.0.0',
-      () => {
-        console.log(
-          `Server running on http://0.0.0.0:${PORT}`
+  if (
+    process.env.NODE_ENV !==
+    'production'
+  ) {
+    const vite =
+      await createViteServer({
+        server: {
+          middlewareMode: true,
+        },
+        appType: 'spa',
+      });
+
+    app.use(vite.middlewares);
+  } else {
+    const distPath =
+      path.join(
+        process.cwd(),
+        'dist'
+      );
+
+    app.use(
+      express.static(
+        distPath
+      )
+    );
+
+    app.get(
+      '*',
+      (_req, res) => {
+        res.sendFile(
+          path.join(
+            distPath,
+            'index.html'
+          )
         );
       }
     );
-  } catch (error) {
-    console.error(
-      'Server startup error:',
-      error
-    );
-
-    process.exit(1);
   }
+
+  app.listen(
+    PORT,
+    '0.0.0.0',
+    () => {
+      console.log(
+        `Server running on port ${PORT}`
+      );
+      console.log(
+        `Database mode: ${
+          USE_DATABASE
+            ? 'SUPABASE'
+            : 'LOCAL JSON'
+        }`
+      );
+    }
+  );
 }
 
-startServer();
+startServer().catch((error) => {
+  console.error(
+    'Server startup failed:',
+    error
+  );
+  process.exit(1);
+});
