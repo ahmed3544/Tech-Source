@@ -597,7 +597,7 @@ export default function App() {
 
       const evaluated = evaluatePunch(
         updated.checkIn || nowTimeStr, 
-        updated.checkOut, 
+        updated.checkOut || undefined,
         shift, 
         todayStr, 
         permSlot, 
@@ -1611,7 +1611,7 @@ export default function App() {
         onImportAttendance={handleImportAttendance}
         employeesCount={employees.length}
         lang={lang}
-        initialTab={importModalTab}
+        initialTab="employees"
       />
 
       {/* Official Company Rules & Regulations Modal */}

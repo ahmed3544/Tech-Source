@@ -55,10 +55,12 @@ export interface Employee {
   role?: Role;
   joinedDate: string;
   status: 'active' | 'inactive';
-  annualLeaveBalance?: number; // Total annual leave balance in days (default 15)
-  casualLeaveBalance?: number; // Casual leave days balance (default 7)
-  regularLeaveBalance?: number; // Regular leave days balance (default 8)
-  sickLeaveBalance?: number; // Sick leave days balance per year (default 30)
+  teamLeaderId?: string;
+  teamId?: string;
+  annualLeaveBalance?: number;
+  casualLeaveBalance?: number;
+  regularLeaveBalance?: number;
+  sickLeaveBalance?: number;
   _isPhotoRemoved?: boolean;
 }
 
