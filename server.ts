@@ -3,120 +3,28 @@ import express from 'express';
 import path from 'path';
 import fs from 'fs';
 import { kv } from '@vercel/kv';
-
+import { createServer as createViteServer } from 'vite';
 import { db } from './src/db/index.js';
 import * as schema from './src/db/schema.js';
 import { sql } from 'drizzle-orm';
 
-import { createServer as createViteServer } from 'vite';
-
 const app = express();
-const PORT = 3000;
+const PORT = Number(process.env.PORT || 3000);
 const SERVER_TIME_ZONE = process.env.SERVER_TIME_ZONE || 'Africa/Cairo';
 
-function getServerClock() {
-  const now = new Date();
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: SERVER_TIME_ZONE,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hourCycle: 'h23',
-  }).formatToParts(now).reduce<Record<string, string>>((result, part) => {
-    if (part.type !== 'literal') result[part.type] = part.value;
-    return result;
-  }, {});
-
-  return {
-    date: `${parts.year}-${parts.month}-${parts.day}`,
-    time: `${parts.hour}:${parts.minute}:${parts.second}`,
-    iso: now.toISOString(),
-    timeZone: SERVER_TIME_ZONE,
-  };
-}
-
-app.use(express.json({ limit: '50mb' }));
-app.use('/api', (req, res, next) => {
-  res.set({
-    'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
-    Pragma: 'no-cache',
-    Expires: '0',
-  });
-  next();
-});
-
 const DATA_FILE = path.join(process.cwd(), 'server_data.json');
-const KV_STATE_KEY = 'techsource:serverState';
-const hasKvStorage = Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
-
-// Helper to load stored data
-function loadServerData() {
-  if (fs.existsSync(DATA_FILE)) {
-    try {
-      const content = fs.readFileSync(DATA_FILE, 'utf-8');
-      return JSON.parse(content);
-    } catch (err) {
-      console.error('Error reading server_data.json:', err);
-    }
-  }
-  return null;
-}
-
-async function loadPersistentServerData() {
-  if (!hasKvStorage) return null;
-  try {
-    return await kv.get<typeof serverState>(KV_STATE_KEY);
-  } catch (err) {
-    console.error('Error reading serverState from Vercel KV:', err);
-    return null;
-  }
-}
-
 const BACKUP_DIR = path.join(process.cwd(), 'backups');
+const KV_STATE_KEY = 'techsource:serverState';
+const KV_APP_DATA_KEY = 'app_data';
 
-// Helper to save server data with automatic rolling backup
-async function saveServerData(data: any) {
-  try {
-    fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), 'utf-8');
-    
-    // Auto backup strategy
-    if (!fs.existsSync(BACKUP_DIR)) {
-      fs.mkdirSync(BACKUP_DIR, { recursive: true });
-    }
-    const autoBackupPath = path.join(BACKUP_DIR, 'server_data_auto_backup.json');
-    fs.writeFileSync(autoBackupPath, JSON.stringify(data, null, 2), 'utf-8');
-  } catch (err) {
-    console.error('Error writing server_data.json:', err);
-  }
+const hasKvStorage = Boolean(
+  process.env.KV_REST_API_URL &&
+  process.env.KV_REST_API_TOKEN
+);
 
-  if (hasKvStorage) {
-    await kv.set(KV_STATE_KEY, data).catch((err) => {
-      console.error('Error writing serverState to Vercel KV:', err);
-    });
-  }
-}
+const hasDatabase = Boolean(process.env.SUPABASE_DB_URL);
 
-function calculateWorkHoursServer(checkIn: string, checkOut: string, breakStart?: string, breakEnd?: string): number {
-  const inSeconds = parseSecsServer(checkIn);
-  let outSeconds = parseSecsServer(checkOut);
-  if (outSeconds < inSeconds) outSeconds += 24 * 60 * 60;
-
-  let breakSeconds = 0;
-  if (breakStart) {
-    let breakEndSeconds = breakEnd ? parseSecsServer(breakEnd) : outSeconds;
-    const breakStartSeconds = parseSecsServer(breakStart);
-    if (breakEndSeconds < breakStartSeconds) breakEndSeconds += 24 * 60 * 60;
-    breakSeconds = Math.max(0, breakEndSeconds - breakStartSeconds);
-  }
-
-  return Math.round((Math.max(0, outSeconds - inSeconds - breakSeconds) / 3600) * 10) / 10;
-}
-
-// Global server state cache
-let serverState: {
+type ServerState = {
   employees?: any[];
   shifts?: any[];
   attendanceRecords?: any[];
@@ -129,114 +37,292 @@ let serverState: {
   deletedLeaveKeys?: Record<string, number>;
   deletedEmployeeKeys?: Record<string, number>;
   lastUpdated?: number;
-} = loadServerData() || {};
+};
 
-// Clean any stale attendance deletion tombstones so they never block user punches
-serverState.deletedAttendanceKeys = {};
+let serverState: ServerState = loadServerData() || {};
 
-if (!serverState.deletedLeaveKeys) {
-  serverState.deletedLeaveKeys = {};
+serverState.employees = Array.isArray(serverState.employees)
+  ? serverState.employees
+  : [];
+
+serverState.shifts = Array.isArray(serverState.shifts)
+  ? serverState.shifts
+  : [];
+
+serverState.attendanceRecords = Array.isArray(serverState.attendanceRecords)
+  ? serverState.attendanceRecords
+  : [];
+
+serverState.leaveRequests = Array.isArray(serverState.leaveRequests)
+  ? serverState.leaveRequests
+  : [];
+
+serverState.overtimeRequests = Array.isArray(serverState.overtimeRequests)
+  ? serverState.overtimeRequests
+  : [];
+
+serverState.deletedAttendanceKeys =
+  serverState.deletedAttendanceKeys || {};
+
+serverState.deletedLeaveKeys =
+  serverState.deletedLeaveKeys || {};
+
+serverState.deletedEmployeeKeys =
+  serverState.deletedEmployeeKeys || {};
+
+function getServerClock() {
+  const now = new Date();
+
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: SERVER_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  })
+    .formatToParts(now)
+    .reduce<Record<string, string>>((result, part) => {
+      if (part.type !== 'literal') {
+        result[part.type] = part.value;
+      }
+      return result;
+    }, {});
+
+  return {
+    date: `${parts.year}-${parts.month}-${parts.day}`,
+    time: `${parts.hour}:${parts.minute}:${parts.second}`,
+    iso: now.toISOString(),
+    timeZone: SERVER_TIME_ZONE,
+  };
 }
-if (!serverState.deletedEmployeeKeys) {
-  serverState.deletedEmployeeKeys = {};
+
+function getTodayServerDate(): string {
+  return getServerClock().date;
 }
 
-// Ensure approved leave requests generate attendance records on initial load
-if (serverState.leaveRequests && serverState.attendanceRecords) {
-  serverState.attendanceRecords = ensureApprovedLeaveRecordsServer(serverState.attendanceRecords, serverState.leaveRequests);
+function normalizeEmployeeId(value: unknown): string {
+  return String(value || '').trim().toLowerCase();
 }
 
-function parseSecsServer(str: string): number {
-  if (!str) return 0;
-  let s = String(str).trim();
-  let isPM = s.toUpperCase().includes('PM');
-  let isAM = s.toUpperCase().includes('AM');
-  s = s.replace(/AM|PM/gi, '').trim();
-  const parts = s.split(':').map(Number);
-  let h = parts[0] || 0;
-  const m = parts[1] || 0;
-  const sec = parts[2] || 0;
-  if (isPM && h < 12) h += 12;
-  if (isAM && h === 12) h = 0;
-  return h * 3600 + m * 60 + sec;
+function normalizeDate(value: unknown): string {
+  return String(value || '').trim();
 }
 
+function parseSecsServer(value: unknown): number {
+  if (!value) return 0;
 
-// Parses HH:MM or HH:MM:SS string to total minutes
-function parseMinutes(timeStr: string): number {
-  if (!timeStr) return 0;
-  const parts = timeStr.split(':');
-  return parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
+  let str = String(value).trim();
+
+  const isPM = /PM/i.test(str);
+  const isAM = /AM/i.test(str);
+
+  str = str.replace(/AM|PM/gi, '').trim();
+
+  const parts = str.split(':').map(Number);
+
+  let hours = parts[0] || 0;
+  const minutes = parts[1] || 0;
+  const seconds = parts[2] || 0;
+
+  if (isPM && hours < 12) hours += 12;
+  if (isAM && hours === 12) hours = 0;
+
+  return hours * 3600 + minutes * 60 + seconds;
 }
 
-// Format minutes to HH:MM format (without using raw decimal/fraction like 11.1)
+function parseMinutes(value: unknown): number {
+  if (!value) return 0;
+
+  const parts = String(value).trim().split(':');
+
+  const hours = Number(parts[0]) || 0;
+  const minutes = Number(parts[1]) || 0;
+
+  return hours * 60 + minutes;
+}
+
 function formatHoursMinutes(totalMinutes: number): string {
-  if (isNaN(totalMinutes) || totalMinutes < 0) return '00:00';
-  const h = Math.floor(totalMinutes / 60);
-  const m = Math.floor(totalMinutes % 60);
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  if (!Number.isFinite(totalMinutes) || totalMinutes < 0) {
+    return '00:00';
+  }
+
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = Math.floor(totalMinutes % 60);
+
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
 }
 
-function calculateAttendanceStatus(r: any, shiftConfig: any, checkInMinutes: number, checkOutMinutes: number) {
-  const isLeave = r.status === 'on_leave' || r.status === 'approved_leave' || r.status === 'vacation' || r.status === 'official_holiday' || r.isExcused;
-  if (isLeave) return { status: r.status, lateMinutes: 0, earlyLeaveMinutes: 0 };
+function calculateWorkHoursServer(
+  checkIn: string,
+  checkOut: string,
+  breakStart?: string,
+  breakEnd?: string
+): number {
+  const inSeconds = parseSecsServer(checkIn);
 
-  const startMin = parseMinutes(shiftConfig.startTime);
-  const endMin = parseMinutes(shiftConfig.endTime);
-  const grace = 10;
-  
-  let lateMinutes = 0;
-  if (r.checkIn && r.checkIn.trim()) {
-    let diff = checkInMinutes - startMin;
-    // Handle overnight shift late check (e.g. start is 22:00, checkIn is 00:00 (1440 min shift?))
-    if (diff < -720) diff += 1440; // Crossed midnight
-    
-    if (diff > grace) {
-      lateMinutes = diff;
+  let outSeconds = parseSecsServer(checkOut);
+
+  if (outSeconds < inSeconds) {
+    outSeconds += 24 * 60 * 60;
+  }
+
+  let breakSeconds = 0;
+
+  if (breakStart) {
+    let breakEndSeconds = breakEnd
+      ? parseSecsServer(breakEnd)
+      : outSeconds;
+
+    const breakStartSeconds = parseSecsServer(breakStart);
+
+    if (breakEndSeconds < breakStartSeconds) {
+      breakEndSeconds += 24 * 60 * 60;
     }
+
+    breakSeconds = Math.max(
+      0,
+      breakEndSeconds - breakStartSeconds
+    );
   }
 
-  let earlyLeaveMinutes = 0;
-  if (r.checkOut && r.checkOut.trim() && !r.isExplicitCancelCheckOut) {
-    let diff = endMin - checkOutMinutes;
-    if (diff < -720) diff += 1440;
-    if (diff > 0) {
-      earlyLeaveMinutes = diff;
-    }
-  }
-
-  let finalStatus = r.status || 'in_progress';
-  if (lateMinutes > 0) {
-    finalStatus = 'late';
-  } else if (r.checkIn && !r.checkOut) {
-    finalStatus = 'in_progress';
-  } else if (r.checkIn && r.checkOut) {
-    if (earlyLeaveMinutes > 0) finalStatus = 'early_leave';
-    else finalStatus = 'on_time';
-  } else if (!r.checkIn && !r.checkOut) {
-     if (r.status === 'absent') finalStatus = 'absent';
-  }
-
-  return { status: finalStatus, lateMinutes, earlyLeaveMinutes };
+  return Math.round(
+    (Math.max(0, outSeconds - inSeconds - breakSeconds) / 3600) * 100
+  ) / 100;
 }
 
-function sanitizeRecordServer(r: any, employeesMap: Record<string, any> = {}, shiftsMap: Record<string, any> = {}) {
-  if (!employeesMap && serverState.employees) {
-    employeesMap = {};
-    serverState.employees.forEach(e => { employeesMap[e.id] = e; });
+function loadServerData(): ServerState | null {
+  if (!fs.existsSync(DATA_FILE)) {
+    return null;
   }
-  if (!shiftsMap && serverState.shifts) {
-    shiftsMap = {};
-    serverState.shifts.forEach(s => { shiftsMap[s.id] = s; });
-  }
-  employeesMap = employeesMap || {};
-  shiftsMap = shiftsMap || {};
 
-  if (!r) return r;
-  
-  const emp = employeesMap[r.employeeId] || {};
-  const shiftId = emp.shiftId || 'default';
-  const shift = shiftsMap[shiftId] || {
+  try {
+    const content = fs.readFileSync(DATA_FILE, 'utf-8');
+
+    if (!content.trim()) {
+      return null;
+    }
+
+    return JSON.parse(content);
+  } catch (error) {
+    console.error('Error reading server_data.json:', error);
+    return null;
+  }
+}
+
+async function loadPersistentServerData(): Promise<ServerState | null> {
+  if (!hasKvStorage) {
+    return null;
+  }
+
+  try {
+    const data = await kv.get<ServerState>(KV_STATE_KEY);
+
+    if (data && typeof data === 'object') {
+      return data;
+    }
+  } catch (error) {
+    console.error(
+      'Error reading serverState from Vercel KV:',
+      error
+    );
+  }
+
+  return null;
+}
+
+async function saveServerData(data: ServerState): Promise<void> {
+  const payload: ServerState = {
+    ...data,
+    lastUpdated: Date.now(),
+  };
+
+  serverState = payload;
+
+  try {
+    fs.writeFileSync(
+      DATA_FILE,
+      JSON.stringify(payload, null, 2),
+      'utf-8'
+    );
+
+    if (!fs.existsSync(BACKUP_DIR)) {
+      fs.mkdirSync(BACKUP_DIR, { recursive: true });
+    }
+
+    const autoBackupPath = path.join(
+      BACKUP_DIR,
+      'server_data_auto_backup.json'
+    );
+
+    fs.writeFileSync(
+      autoBackupPath,
+      JSON.stringify(payload, null, 2),
+      'utf-8'
+    );
+  } catch (error) {
+    console.error(
+      'Error writing server_data.json:',
+      error
+    );
+  }
+
+  if (hasKvStorage) {
+    try {
+      await kv.set(KV_STATE_KEY, payload);
+      await kv.set(KV_APP_DATA_KEY, {
+        records: payload.attendanceRecords || [],
+        employees: payload.employees || [],
+        shifts: payload.shifts || [],
+        attendanceRecords: payload.attendanceRecords || [],
+        leaveRequests: payload.leaveRequests || [],
+        overtimeRequests: payload.overtimeRequests || [],
+        companyNameAr: payload.companyNameAr,
+        companyNameEn: payload.companyNameEn,
+        urgentNotice: payload.urgentNotice,
+        lastUpdated: payload.lastUpdated,
+      });
+    } catch (error) {
+      console.error(
+        'Error writing serverState to Vercel KV:',
+        error
+      );
+    }
+  }
+}
+
+function getEmployeesMap(
+  employees: any[] = serverState.employees || []
+): Record<string, any> {
+  const map: Record<string, any> = {};
+
+  for (const employee of employees) {
+    if (!employee?.id) continue;
+
+    map[String(employee.id)] = employee;
+    map[normalizeEmployeeId(employee.id)] = employee;
+  }
+
+  return map;
+}
+
+function getShiftsMap(
+  shifts: any[] = serverState.shifts || []
+): Record<string, any> {
+  const map: Record<string, any> = {};
+
+  for (const shift of shifts) {
+    if (!shift?.id) continue;
+    map[String(shift.id)] = shift;
+  }
+
+  return map;
+}
+
+function getDefaultShift() {
+  return {
     id: 'default',
     name: 'Default Shift',
     startTime: '09:00',
@@ -245,274 +331,743 @@ function sanitizeRecordServer(r: any, employeesMap: Record<string, any> = {}, sh
     breakMinutes: 0,
     gracePeriodMinutes: 10,
     overtimeEnabled: true,
-    isOvernight: false
+    isOvernight: false,
   };
+}
 
-  let workHours = 0; // Total worked fraction (keep for legacy compatibility, but we use formatted now)
-  let minusHours = 0;
-  let overtimeHours = 0;
-  let regularMinutes = 0;
-  let minusMinutes = 0;
-  let overtimeMinutes = 0;
-  
-  const shiftDurationMinutes = shift.durationMinutes || 480;
-  
-  let inMin = 0, outMin = 0;
+function calculateAttendanceStatus(
+  record: any,
+  shiftConfig: any,
+  checkInMinutes: number,
+  checkOutMinutes: number
+) {
+  const isLeave =
+    record.status === 'on_leave' ||
+    record.status === 'approved_leave' ||
+    record.status === 'vacation' ||
+    record.status === 'official_holiday' ||
+    Boolean(record.isExcused);
 
-  if (r.checkIn && typeof r.checkIn === 'string' && r.checkIn.trim() !== '') {
-    inMin = parseMinutes(r.checkIn);
-    
-    if (r.checkOut && typeof r.checkOut === 'string' && r.checkOut.trim() !== '') {
-      outMin = parseMinutes(r.checkOut);
-      
-      let diffSecs = outMin - inMin;
-      if (diffSecs < 0) {
-         // Crossed midnight
-         diffSecs += 1440; 
-      }
-      
-      let workedMinutes = diffSecs;
-      
-      // Breaks
-      if (r.breakStart && typeof r.breakStart === 'string') {
-        const bs = parseMinutes(r.breakStart);
-        const be = (r.breakEnd && typeof r.breakEnd === 'string') ? parseMinutes(r.breakEnd) : outMin;
-        let breakSecs = be - bs;
-        if (breakSecs < 0) breakSecs += 1440;
-        workedMinutes = Math.max(0, workedMinutes - breakSecs);
-      }
+  if (isLeave) {
+    return {
+      status: record.status,
+      lateMinutes: 0,
+      earlyLeaveMinutes: 0,
+    };
+  }
 
-      regularMinutes = Math.min(workedMinutes, shiftDurationMinutes);
-      overtimeMinutes = Math.max(workedMinutes - shiftDurationMinutes, 0);
-      minusMinutes = Math.max(shiftDurationMinutes - workedMinutes, 0);
-      
-      // If leave/excused, we zero out minusMinutes
-      if (r.status === 'on_leave' || r.status === 'approved_leave' || r.status === 'vacation' || r.status === 'official_holiday' || r.isExcused) {
-        minusMinutes = 0;
-      }
-      
-      workHours = Math.round((workedMinutes / 60) * 100) / 100;
-      overtimeHours = Math.round((overtimeMinutes / 60) * 100) / 100;
-      minusHours = Math.round((minusMinutes / 60) * 100) / 100;
+  const startMin = parseMinutes(shiftConfig.startTime);
+  const endMin = parseMinutes(shiftConfig.endTime);
+  const grace = Number(
+    shiftConfig.gracePeriodMinutes ?? 10
+  );
 
-      // Status
-      const st = calculateAttendanceStatus(r, shift, inMin, outMin);
-      r.status = st.status;
-      r.lateMinutes = st.lateMinutes;
-      r.earlyLeaveMinutes = st.earlyLeaveMinutes;
+  let lateMinutes = 0;
 
-    } else {
-       // Only checked in, no checkout
-       // Status check for check-in
-       const st = calculateAttendanceStatus(r, shift, inMin, 0);
-       r.status = st.status;
-       r.lateMinutes = st.lateMinutes;
-       r.earlyLeaveMinutes = 0;
-       
-       workHours = 0;
-       overtimeHours = 0;
-       minusHours = 0;
+  if (record.checkIn && String(record.checkIn).trim()) {
+    let diff = checkInMinutes - startMin;
+
+    if (diff < -720) {
+      diff += 1440;
     }
-  } else {
-    // No checkin
-    if (r.status === 'absent') {
-       minusMinutes = shiftDurationMinutes;
-       minusHours = Math.round((minusMinutes / 60) * 100) / 100;
+
+    if (diff > grace) {
+      lateMinutes = diff;
     }
   }
 
-  return { ...r, workHours, overtimeHours, minusHours: minusHours || 0 };
-}
+  let earlyLeaveMinutes = 0;
 
+  if (
+    record.checkOut &&
+    String(record.checkOut).trim() &&
+    !record.isExplicitCancelCheckOut
+  ) {
+    let diff = endMin - checkOutMinutes;
 
-function parseRecordMsServer(rec: any): number {
-  if (!rec || !rec.updatedAt) return 0;
-  const ms = Date.parse(rec.updatedAt);
-  return isNaN(ms) ? 0 : ms;
-}
-
-function ensureApprovedLeaveRecordsServer(records: any[] = [], leaveRequests: any[] = []): any[] {
-  const map = new Map<string, any>();
-  const deletedKeys = serverState.deletedAttendanceKeys || {};
-
-  records.forEach(r => {
-    if (!r) return;
-    const sanitized = sanitizeRecordServer(r);
-    const normEmp = (sanitized.employeeId || "").trim().toLowerCase();
-    const dt = (sanitized.date || "").trim();
-    if (normEmp && dt) {
-      map.set(`${normEmp}_${dt}`, sanitized);
+    if (diff < -720) {
+      diff += 1440;
     }
-  });
 
-  const approved = (leaveRequests || []).filter(l => l.status === "approved");
+    if (diff > 0) {
+      earlyLeaveMinutes = diff;
+    }
+  }
 
-  approved.forEach(req => {
-    const rawEmp = (req.employeeId || "").trim();
-    const normEmp = rawEmp.toLowerCase();
-    if (!normEmp || !req.startDate || !req.endDate) return;
+  let status = record.status || 'in_progress';
 
-    const startStr = req.startDate <= req.endDate ? req.startDate : req.endDate;
-    const endStr = req.startDate <= req.endDate ? req.endDate : req.startDate;
+  if (lateMinutes > 0) {
+    status = 'late';
+  } else if (record.checkIn && !record.checkOut) {
+    status = 'in_progress';
+  } else if (record.checkIn && record.checkOut) {
+    status =
+      earlyLeaveMinutes > 0
+        ? 'early_leave'
+        : 'on_time';
+  } else if (!record.checkIn && !record.checkOut) {
+    if (record.status === 'absent') {
+      status = 'absent';
+    }
+  }
 
-    let d = new Date(startStr + "T00:00:00");
-    const end = new Date(endStr + "T00:00:00");
+  return {
+    status,
+    lateMinutes,
+    earlyLeaveMinutes,
+  };
+}
 
-    while (d <= end) {
-      const yyyy = d.getFullYear();
-      const mm = String(d.getMonth() + 1).padStart(2, "0");
-      const dd = String(d.getDate()).padStart(2, "0");
-      const dateStr = `${yyyy}-${mm}-${dd}`;
-      const key = `${normEmp}_${dateStr}`;
+function sanitizeRecordServer(
+  record: any,
+  employeesMap?: Record<string, any>,
+  shiftsMap?: Record<string, any>
+): any {
+  if (!record) return record;
 
-      // Respect tombstones if record was deleted by admin
-      const delTime = deletedKeys[key] || 0;
+  const employeeMap =
+    employeesMap || getEmployeesMap();
 
-      const existing = map.get(key);
-      const notesText = req.type === "permission"
-        ? (req.reason ? `إذن: ${req.reason}` : "إذن خروج معتمد")
-        : req.type === "sick"
-        ? `إجازة مرضية: ${req.reason || "تقرير طبي"}`
-        : req.type === "casual"
-        ? `إجازة عارضة: ${req.reason || "ظرف طارئ"}`
-        : req.type === "annual" || req.type === "regular"
-        ? `إجازة اعتيادية: ${req.reason || "رصيد سنوي"}`
-        : (req.reason ? `إجازة (${req.type}): ${req.reason}` : "إجازة معتمدة");
+  const shiftMap =
+    shiftsMap || getShiftsMap();
 
-      if (!existing && delTime === 0) {
-        map.set(key, sanitizeRecordServer({
-          id: `rec-leave-${normEmp}-${dateStr}`,
-          employeeId: rawEmp,
-          date: dateStr,
-          status: "on_leave",
-          leaveType: req.type,
-          workHours: 0,
-          lateMinutes: 0,
-          earlyLeaveMinutes: 0,
-          overtimeHours: 0,
-          notes: notesText,
-          verifiedByFace: true,
-          updatedAt: new Date().toISOString()
-        }));
-      } else if (existing && !existing.checkIn && existing.status !== "on_leave") {
-        map.set(key, sanitizeRecordServer({
-          ...existing,
-          status: "on_leave",
-          leaveType: req.type,
-          notes: existing.notes ? `${existing.notes} | ${notesText}` : notesText,
-          updatedAt: new Date().toISOString()
-        }));
+  const employee =
+    employeeMap[record.employeeId] ||
+    employeeMap[normalizeEmployeeId(record.employeeId)] ||
+    {};
+
+  const shiftId = employee.shiftId || 'default';
+
+  const shift =
+    shiftMap[shiftId] ||
+    getDefaultShift();
+
+  let workHours = 0;
+  let minusHours = 0;
+  let overtimeHours = 0;
+
+  const shiftDurationMinutes =
+    Number(shift.durationMinutes) || 480;
+
+  let inMinutes = 0;
+  let outMinutes = 0;
+
+  if (
+    record.checkIn &&
+    typeof record.checkIn === 'string' &&
+    record.checkIn.trim()
+  ) {
+    inMinutes = parseMinutes(record.checkIn);
+
+    if (
+      record.checkOut &&
+      typeof record.checkOut === 'string' &&
+      record.checkOut.trim()
+    ) {
+      outMinutes = parseMinutes(record.checkOut);
+
+      let workedMinutes =
+        outMinutes - inMinutes;
+
+      if (workedMinutes < 0) {
+        workedMinutes += 1440;
       }
 
-      d.setDate(d.getDate() + 1);
-    }
-  });
+      if (record.breakStart) {
+        const breakStart = parseMinutes(
+          record.breakStart
+        );
 
-  return Array.from(map.values());
+        const breakEnd = record.breakEnd
+          ? parseMinutes(record.breakEnd)
+          : outMinutes;
+
+        let breakMinutes =
+          breakEnd - breakStart;
+
+        if (breakMinutes < 0) {
+          breakMinutes += 1440;
+        }
+
+        workedMinutes = Math.max(
+          0,
+          workedMinutes - breakMinutes
+        );
+      }
+
+      const regularMinutes = Math.min(
+        workedMinutes,
+        shiftDurationMinutes
+      );
+
+      const overtimeMinutes = Math.max(
+        workedMinutes - shiftDurationMinutes,
+        0
+      );
+
+      let missingMinutes = Math.max(
+        shiftDurationMinutes - workedMinutes,
+        0
+      );
+
+      const isLeave =
+        record.status === 'on_leave' ||
+        record.status === 'approved_leave' ||
+        record.status === 'vacation' ||
+        record.status === 'official_holiday' ||
+        Boolean(record.isExcused);
+
+      if (isLeave) {
+        missingMinutes = 0;
+      }
+
+      workHours =
+        Math.round((workedMinutes / 60) * 100) / 100;
+
+      overtimeHours =
+        Math.round((overtimeMinutes / 60) * 100) / 100;
+
+      minusHours =
+        Math.round((missingMinutes / 60) * 100) / 100;
+
+      const statusResult =
+        calculateAttendanceStatus(
+          record,
+          shift,
+          inMinutes,
+          outMinutes
+        );
+
+      record.status = statusResult.status;
+      record.lateMinutes =
+        statusResult.lateMinutes;
+      record.earlyLeaveMinutes =
+        statusResult.earlyLeaveMinutes;
+    } else {
+      const statusResult =
+        calculateAttendanceStatus(
+          record,
+          shift,
+          inMinutes,
+          0
+        );
+
+      record.status = statusResult.status;
+      record.lateMinutes =
+        statusResult.lateMinutes;
+      record.earlyLeaveMinutes = 0;
+    }
+  } else if (record.status === 'absent') {
+    minusHours =
+      Math.round(
+        (shiftDurationMinutes / 60) * 100
+      ) / 100;
+  }
+
+  return {
+    ...record,
+    workHours,
+    overtimeHours,
+    minusHours,
+  };
 }
 
-// Helper to merge attendance records without dropping or overwriting existing history, strictly enforcing 1 record per employee per date
-function mergeAttendanceRecords(existing: any[] = [], incoming: any[] = []): any[] {
-  const map = new Map<string, any>();
-  const deletedKeys = serverState.deletedAttendanceKeys || {};
+function parseRecordMsServer(record: any): number {
+  if (!record?.updatedAt) return 0;
 
-  const processRecord = (r: any, isFromIncoming = false) => {
-    if (!r) return;
-    const sanitized = sanitizeRecordServer(r);
-    const rawEmpId = sanitized.employeeId ? String(sanitized.employeeId).trim() : '';
-    const normEmpId = rawEmpId.toLowerCase();
-    const date = sanitized.date ? String(sanitized.date).trim() : '';
-    const canonicalId = (normEmpId && date) ? `rec-${normEmpId}-${date}` : sanitized.id;
-    const key = (normEmpId && date) ? `${normEmpId}_${date}` : canonicalId;
+  const ms = Date.parse(
+    String(record.updatedAt)
+  );
+
+  return Number.isNaN(ms) ? 0 : ms;
+}
+
+function attendanceKey(
+  employeeId: unknown,
+  date: unknown
+): string {
+  return `${normalizeEmployeeId(employeeId)}_${normalizeDate(date)}`;
+}
+
+function ensureApprovedLeaveRecordsServer(
+  records: any[] = [],
+  leaveRequests: any[] = []
+): any[] {
+  const map = new Map<string, any>();
+
+  const deletedKeys =
+    serverState.deletedAttendanceKeys || {};
+
+  for (const record of records) {
+    if (!record) continue;
+
+    const sanitized =
+      sanitizeRecordServer(record);
+
+    const employeeId =
+      normalizeEmployeeId(
+        sanitized.employeeId
+      );
+
+    const date =
+      normalizeDate(sanitized.date);
+
+    if (!employeeId || !date) continue;
+
+    map.set(
+      attendanceKey(employeeId, date),
+      sanitized
+    );
+  }
+
+  const approvedRequests =
+    leaveRequests.filter(
+      request => request?.status === 'approved'
+    );
+
+  for (const request of approvedRequests) {
+    const rawEmployeeId =
+      String(request.employeeId || '').trim();
+
+    const employeeId =
+      normalizeEmployeeId(rawEmployeeId);
+
+    if (
+      !employeeId ||
+      !request.startDate ||
+      !request.endDate
+    ) {
+      continue;
+    }
+
+    const startDate =
+      String(request.startDate) <=
+      String(request.endDate)
+        ? String(request.startDate)
+        : String(request.endDate);
+
+    const endDate =
+      String(request.startDate) <=
+      String(request.endDate)
+        ? String(request.endDate)
+        : String(request.startDate);
+
+    let date =
+      new Date(`${startDate}T00:00:00`);
+
+    const end =
+      new Date(`${endDate}T00:00:00`);
+
+    while (date <= end) {
+      const year =
+        date.getFullYear();
+
+      const month =
+        String(date.getMonth() + 1)
+          .padStart(2, '0');
+
+      const day =
+        String(date.getDate())
+          .padStart(2, '0');
+
+      const dateString =
+        `${year}-${month}-${day}`;
+
+      const key =
+        attendanceKey(
+          employeeId,
+          dateString
+        );
+
+      const deletedAt =
+        deletedKeys[key] || 0;
+
+      const existing =
+        map.get(key);
+
+      const reason =
+        request.reason || '';
+
+      let notes = 'إجازة معتمدة';
+
+      if (request.type === 'permission') {
+        notes = reason
+          ? `إذن: ${reason}`
+          : 'إذن خروج معتمد';
+      } else if (request.type === 'sick') {
+        notes = `إجازة مرضية: ${
+          reason || 'تقرير طبي'
+        }`;
+      } else if (request.type === 'casual') {
+        notes = `إجازة عارضة: ${
+          reason || 'ظرف طارئ'
+        }`;
+      } else if (
+        request.type === 'annual' ||
+        request.type === 'regular'
+      ) {
+        notes = `إجازة اعتيادية: ${
+          reason || 'رصيد سنوي'
+        }`;
+      } else if (reason) {
+        notes =
+          `إجازة (${request.type || 'معتمدة'}): ${reason}`;
+      }
+
+      if (!existing && deletedAt === 0) {
+        map.set(
+          key,
+          sanitizeRecordServer({
+            id:
+              `rec-leave-${employeeId}-${dateString}`,
+            employeeId: rawEmployeeId,
+            date: dateString,
+            status: 'on_leave',
+            leaveType: request.type,
+            workHours: 0,
+            lateMinutes: 0,
+            earlyLeaveMinutes: 0,
+            overtimeHours: 0,
+            notes,
+            verifiedByFace: true,
+            updatedAt:
+              new Date().toISOString(),
+          })
+        );
+      } else if (
+        existing &&
+        !existing.checkIn &&
+        existing.status !== 'on_leave'
+      ) {
+        map.set(
+          key,
+          sanitizeRecordServer({
+            ...existing,
+            status: 'on_leave',
+            leaveType: request.type,
+            notes: existing.notes
+              ? `${existing.notes} | ${notes}`
+              : notes,
+            updatedAt:
+              new Date().toISOString(),
+          })
+        );
+      }
+
+      date.setDate(
+        date.getDate() + 1
+      );
+    }
+  }
+
+  return Array.from(
+    map.values()
+  );
+}
+
+function mergeAttendanceRecords(
+  existing: any[] = [],
+  incoming: any[] = []
+): any[] {
+  const map = new Map<string, any>();
+
+  const deletedKeys =
+    serverState.deletedAttendanceKeys || {};
+
+  const processRecord = (
+    record: any,
+    isIncoming = false
+  ) => {
+    if (!record) return;
+
+    const sanitized =
+      sanitizeRecordServer(record);
+
+    const rawEmployeeId =
+      sanitized.employeeId
+        ? String(
+            sanitized.employeeId
+          ).trim()
+        : '';
+
+    const employeeId =
+      normalizeEmployeeId(rawEmployeeId);
+
+    const date =
+      normalizeDate(sanitized.date);
+
+    const canonicalId =
+      employeeId && date
+        ? `rec-${employeeId}-${date}`
+        : sanitized.id;
+
+    const key =
+      employeeId && date
+        ? attendanceKey(
+            employeeId,
+            date
+          )
+        : canonicalId;
+
     if (!key) return;
 
-    // Active punches or direct incoming modifications always unblock and clear tombstones
-    if (sanitized.checkIn || sanitized.checkOut || isFromIncoming) {
-      if (deletedKeys[key]) {
-        delete deletedKeys[key];
-      }
+    if (
+      sanitized.checkIn ||
+      sanitized.checkOut ||
+      isIncoming
+    ) {
+      delete deletedKeys[key];
     } else {
-      // Check tombstone for deletions ONLY for unpunched empty records
-      const delTime = deletedKeys[key] || 0;
-      const recTime = parseRecordMsServer(sanitized);
-      if (delTime > 0 && recTime <= delTime) {
+      const deletedAt =
+        deletedKeys[key] || 0;
+
+      const recordTime =
+        parseRecordMsServer(
+          sanitized
+        );
+
+      if (
+        deletedAt > 0 &&
+        recordTime <= deletedAt
+      ) {
         return;
       }
     }
 
-    const old = map.get(key);
+    const old =
+      map.get(key);
+
     if (!old) {
       map.set(key, {
         ...sanitized,
         id: canonicalId,
-        employeeId: rawEmpId || sanitized.employeeId,
-        updatedAt: sanitized.updatedAt || new Date().toISOString()
+        employeeId:
+          rawEmployeeId ||
+          sanitized.employeeId,
+        updatedAt:
+          sanitized.updatedAt ||
+          new Date().toISOString(),
       });
-    } else {
-      const oldTime = parseRecordMsServer(old);
-      const newTime = parseRecordMsServer(sanitized);
 
-      // Check-in preservation: Never lose checkIn
-      const checkIn = (sanitized.checkIn && typeof sanitized.checkIn === 'string' && sanitized.checkIn.trim() !== '')
+      return;
+    }
+
+    const oldTime =
+      parseRecordMsServer(old);
+
+    const newTime =
+      parseRecordMsServer(
+        sanitized
+      );
+
+    const checkIn =
+      sanitized.checkIn &&
+      String(
+        sanitized.checkIn
+      ).trim()
         ? sanitized.checkIn
-        : (old.checkIn || undefined);
+        : old.checkIn;
 
-      // Check-out preservation: If either has checkout, preserve it unless explicitly cancelled
-      const isExplicitCancel = sanitized._isExplicitCancelCheckOut === true || old._isExplicitCancelCheckOut === true;
-      let checkOut: string | undefined = undefined;
-      if (!isExplicitCancel) {
-        if (sanitized.checkOut && typeof sanitized.checkOut === 'string' && sanitized.checkOut.trim() !== '') {
-          checkOut = sanitized.checkOut;
-        } else if (old.checkOut && typeof old.checkOut === 'string' && old.checkOut.trim() !== '') {
-          checkOut = old.checkOut;
-        }
+    const explicitCancel =
+      sanitized.isExplicitCancelCheckOut === true ||
+      old.isExplicitCancelCheckOut === true;
+
+    let checkOut:
+      | string
+      | null
+      | undefined;
+
+    if (explicitCancel) {
+      checkOut = null;
+    } else if (
+      sanitized.checkOut &&
+      String(
+        sanitized.checkOut
+      ).trim()
+    ) {
+      checkOut =
+        sanitized.checkOut;
+    } else {
+      checkOut =
+        old.checkOut;
+    }
+
+    const breakStart =
+      sanitized.breakStart !==
+        undefined &&
+      sanitized.breakStart !== null
+        ? sanitized.breakStart
+        : old.breakStart;
+
+    const breakEnd =
+      sanitized.breakEnd !==
+        undefined &&
+      sanitized.breakEnd !== null
+        ? sanitized.breakEnd
+        : old.breakEnd;
+
+    const baseRecord =
+      newTime >= oldTime
+        ? { ...old, ...sanitized }
+        : { ...sanitized, ...old };
+
+    let workHours =
+      explicitCancel
+        ? 0
+        : Number(
+            baseRecord.workHours || 0
+          );
+
+    if (
+      checkIn &&
+      checkOut &&
+      workHours === 0
+    ) {
+      workHours =
+        calculateWorkHoursServer(
+          String(checkIn),
+          String(checkOut),
+          breakStart
+            ? String(breakStart)
+            : undefined,
+          breakEnd
+            ? String(breakEnd)
+            : undefined
+        );
+    }
+
+    const lateMinutes =
+      baseRecord.lateMinutes !==
+        undefined &&
+      baseRecord.lateMinutes !== null
+        ? Number(
+            baseRecord.lateMinutes
+          )
+        : Number(
+            old.lateMinutes || 0
+          );
+
+    const lateSeconds =
+      baseRecord.lateSeconds !==
+        undefined &&
+      baseRecord.lateSeconds !== null
+        ? Number(
+            baseRecord.lateSeconds
+          )
+        : Number(
+            old.lateSeconds || 0
+          );
+
+    const earlyLeaveMinutes =
+      explicitCancel
+        ? 0
+        : baseRecord.earlyLeaveMinutes !==
+            undefined &&
+          baseRecord.earlyLeaveMinutes !==
+            null
+        ? Number(
+            baseRecord.earlyLeaveMinutes
+          )
+        : Number(
+            old.earlyLeaveMinutes || 0
+          );
+
+    const overtimeHours =
+      baseRecord.overtimeHours !==
+        undefined &&
+      baseRecord.overtimeHours !== null
+        ? Number(
+            baseRecord.overtimeHours
+          )
+        : Number(
+            old.overtimeHours || 0
+          );
+
+    const isExcused =
+      sanitized.isExcused !==
+        undefined
+        ? sanitized.isExcused
+        : old.isExcused;
+
+    const excusedReason =
+      isExcused === false
+        ? undefined
+        : sanitized.excusedReason ||
+          old.excusedReason;
+
+    const excusedBy =
+      isExcused === false
+        ? undefined
+        : sanitized.excusedBy ||
+          old.excusedBy;
+
+    const leaveType =
+      sanitized.leaveType ||
+      old.leaveType;
+
+    let notes =
+      old.notes || '';
+
+    if (
+      sanitized.notes &&
+      typeof sanitized.notes ===
+        'string'
+    ) {
+      const trimmed =
+        sanitized.notes.trim();
+
+      if (
+        trimmed &&
+        !notes.includes(trimmed)
+      ) {
+        notes = notes
+          ? `${notes} | ${trimmed}`
+          : trimmed;
       }
+    }
 
-      const breakStart = sanitized.breakStart !== undefined && sanitized.breakStart !== null ? sanitized.breakStart : old.breakStart;
-      const breakEnd = sanitized.breakEnd !== undefined && sanitized.breakEnd !== null ? sanitized.breakEnd : old.breakEnd;
+    let status =
+      baseRecord.status;
 
-      const baseRec = newTime >= oldTime ? { ...old, ...sanitized } : { ...sanitized, ...old };
-
-      let workHours = isExplicitCancel ? 0 : (baseRec.workHours || 0);
-      if (checkIn && checkOut && (!workHours || workHours === 0)) {
-        workHours = calculateWorkHoursServer(checkIn, checkOut, breakStart, breakEnd);
+    if (explicitCancel) {
+      status =
+        lateMinutes > 0
+          ? 'late'
+          : 'in_progress';
+    } else if (checkOut) {
+      if (
+        !status ||
+        status === 'in_progress' ||
+        status === 'absent' ||
+        status === 'weekend'
+      ) {
+        status =
+          lateMinutes > 0
+            ? 'late'
+            : earlyLeaveMinutes > 0
+            ? 'early_leave'
+            : 'on_time';
       }
-
-      const lateMinutes = baseRec.lateMinutes !== undefined && baseRec.lateMinutes !== null ? baseRec.lateMinutes : (old.lateMinutes || 0);
-      const lateSeconds = baseRec.lateSeconds !== undefined && baseRec.lateSeconds !== null ? baseRec.lateSeconds : (old.lateSeconds || 0);
-      const earlyLeaveMinutes = isExplicitCancel ? 0 : (baseRec.earlyLeaveMinutes !== undefined && baseRec.earlyLeaveMinutes !== null ? baseRec.earlyLeaveMinutes : (old.earlyLeaveMinutes || 0));
-      const overtimeHours = baseRec.overtimeHours !== undefined && baseRec.overtimeHours !== null ? baseRec.overtimeHours : (old.overtimeHours || 0);
-
-      const isExcused = sanitized.isExcused !== undefined ? sanitized.isExcused : old.isExcused;
-      const excusedReason = isExcused === false ? undefined : (sanitized.excusedReason || old.excusedReason);
-      const excusedBy = isExcused === false ? undefined : (sanitized.excusedBy || old.excusedBy);
-      const leaveType = sanitized.leaveType || old.leaveType;
-
-      let notes = old.notes || '';
-      if (sanitized.notes && typeof sanitized.notes === 'string') {
-        const trimmed = sanitized.notes.trim();
-        if (trimmed && !notes.includes(trimmed)) {
-          notes = notes ? `${notes} | ${trimmed}` : trimmed;
-        }
+    } else if (checkIn) {
+      if (
+        !status ||
+        status === 'absent' ||
+        status === 'weekend'
+      ) {
+        status =
+          lateMinutes > 0
+            ? 'late'
+            : 'in_progress';
       }
+    }
 
-      let status = baseRec.status;
-      if (isExplicitCancel) {
-        status = (lateMinutes > 0) ? 'late' : 'in_progress';
-      } else if (checkOut) {
-        if (!status || status === 'in_progress' || status === 'absent' || status === 'weekend') {
-          status = (lateMinutes > 0) ? 'late' : (earlyLeaveMinutes > 0 ? 'early_leave' : 'on_time');
-        }
-      } else if (checkIn) {
-        if (!status || status === 'absent' || status === 'weekend') {
-          status = (lateMinutes > 0) ? 'late' : 'in_progress';
-        }
-      }
-
-      const mergedRec = sanitizeRecordServer({
-        ...baseRec,
+    const mergedRecord =
+      sanitizeRecordServer({
+        ...baseRecord,
         id: canonicalId,
-        employeeId: rawEmpId || old.employeeId,
+        employeeId:
+          rawEmployeeId ||
+          old.employeeId,
         checkIn,
         checkOut,
         breakStart,
@@ -528,867 +1083,2885 @@ function mergeAttendanceRecords(existing: any[] = [], incoming: any[] = []): any
         leaveType,
         notes,
         status,
-        _isExplicitCancelCheckOut: isExplicitCancel ? true : undefined,
-        updatedAt: sanitized.updatedAt || old.updatedAt || new Date().toISOString()
+        isExplicitCancelCheckOut:
+          explicitCancel
+            ? true
+            : false,
+        updatedAt:
+          sanitized.updatedAt ||
+          old.updatedAt ||
+          new Date().toISOString(),
       });
 
-      map.set(key, mergedRec);
-    }
+    map.set(
+      key,
+      mergedRecord
+    );
   };
 
-  for (const r of existing) processRecord(r, false);
-  for (const r of incoming) processRecord(r, true);
+  for (const record of existing) {
+    processRecord(
+      record,
+      false
+    );
+  }
 
-  return Array.from(map.values()).map(record => sanitizeRecordServer(record)).sort((a, b) => {
-    if (b.date !== a.date) return (b.date || '').localeCompare(a.date || '');
-    return (a.employeeId || '').localeCompare(b.employeeId || '');
-  });
+  for (const record of incoming) {
+    processRecord(
+      record,
+      true
+    );
+  }
+
+  return Array.from(
+    map.values()
+  )
+    .map(record =>
+      sanitizeRecordServer(record)
+    )
+    .sort((a, b) => {
+      if (b.date !== a.date) {
+        return String(b.date || '')
+          .localeCompare(
+            String(a.date || '')
+          );
+      }
+
+      return String(
+        a.employeeId || ''
+      ).localeCompare(
+        String(
+          b.employeeId || ''
+        )
+      );
+    });
 }
 
-function mergeByUniqueId(existing: any[] = [], incoming: any[] = []): any[] {
+function mergeByUniqueId(
+  existing: any[] = [],
+  incoming: any[] = []
+): any[] {
   const map = new Map<string, any>();
-  const deletedLeaveKeys = serverState.deletedLeaveKeys || {};
+
+  const deletedKeys =
+    serverState.deletedLeaveKeys || {};
 
   for (const item of existing) {
-    if (item && item.id && !deletedLeaveKeys[item.id]) map.set(item.id, { ...item });
-  }
-  for (const item of incoming) {
-    if (item && item.id && !deletedLeaveKeys[item.id]) {
-      const old = map.get(item.id);
-      if (!old) {
-        map.set(item.id, { ...item });
-      } else {
-        const oldUpdatedAt = old.updatedAt ? Date.parse(old.updatedAt) : 0;
-        const incomingUpdatedAt = item.updatedAt ? Date.parse(item.updatedAt) : 0;
-        if (oldUpdatedAt > 0 && incomingUpdatedAt > 0 && incomingUpdatedAt < oldUpdatedAt) {
-          continue;
-        }
-        const updatedStatus = item.status ? item.status : (old.status || 'pending');
-
-        let avatar = item.avatar;
-        if (item._isPhotoRemoved) {
-          avatar = '';
-        } else if ((!avatar || avatar.trim() === '') && old.avatar && old.avatar.trim() !== '') {
-          avatar = old.avatar;
-        }
-
-        map.set(item.id, {
-          ...old,
-          ...item,
-          status: updatedStatus,
-          reviewNotes: item.reviewNotes || old.reviewNotes,
-          reviewedBy: item.reviewedBy || old.reviewedBy,
-          attachmentUrl: item.attachmentUrl || old.attachmentUrl,
-          attachmentName: item.attachmentName || old.attachmentName,
-          avatar: avatar !== undefined ? avatar : (old.avatar || ''),
-        });
-      }
+    if (
+      item?.id &&
+      !deletedKeys[item.id]
+    ) {
+      map.set(
+        item.id,
+        { ...item }
+      );
     }
   }
-  return Array.from(map.values());
+
+  for (const item of incoming) {
+    if (
+      !item?.id ||
+      deletedKeys[item.id]
+    ) {
+      continue;
+    }
+
+    const old =
+      map.get(item.id);
+
+    if (!old) {
+      map.set(
+        item.id,
+        { ...item }
+      );
+      continue;
+    }
+
+    const oldTime =
+      old.updatedAt
+        ? Date.parse(
+            old.updatedAt
+          )
+        : 0;
+
+    const incomingTime =
+      item.updatedAt
+        ? Date.parse(
+            item.updatedAt
+          )
+        : 0;
+
+    if (
+      oldTime > 0 &&
+      incomingTime > 0 &&
+      incomingTime < oldTime
+    ) {
+      continue;
+    }
+
+    let avatar =
+      item.avatar;
+
+    if (item._isPhotoRemoved) {
+      avatar = '';
+    } else if (
+      (!avatar ||
+        String(avatar).trim() === '') &&
+      old.avatar
+    ) {
+      avatar = old.avatar;
+    }
+
+    map.set(item.id, {
+      ...old,
+      ...item,
+      status:
+        item.status ||
+        old.status ||
+        'pending',
+      reviewNotes:
+        item.reviewNotes ??
+        old.reviewNotes,
+      reviewedBy:
+        item.reviewedBy ??
+        old.reviewedBy,
+      attachmentUrl:
+        item.attachmentUrl ??
+        old.attachmentUrl,
+      attachmentName:
+        item.attachmentName ??
+        old.attachmentName,
+      avatar:
+        avatar !== undefined
+          ? avatar
+          : old.avatar || '',
+    });
+  }
+
+  return Array.from(
+    map.values()
+  );
 }
 
-// API Routes
+function cleanStateForResponse(
+  state: ServerState
+) {
+  const deletedEmployees =
+    state.deletedEmployeeKeys || {};
 
-// GET /api/data - Fetch current central state for sync
+  const employees =
+    (state.employees || [])
+      .filter(
+        employee =>
+          employee?.id &&
+          !deletedEmployees[
+            employee.id
+          ]
+      );
 
-// متغيرة الذاكرة الاحتياطية
-let localServerState = { records: [], employees: [], shifts: [] };
+  const employeeExists =
+    new Set(
+      employees.map(
+        employee =>
+          normalizeEmployeeId(
+            employee.id
+          )
+      )
+    );
 
-// 1. مسار جلب البيانات الموحد
-app.get('/api/data', async (req, res) => {
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-  try {
-    if (process.env.REDIS_URL || process.env.KV_REST_API_URL) {
-      const data = (await kv.get('app_data')) || localServerState;
-      return res.json({ success: true, ...data });
-    }
-    return res.json({ success: true, ...localServerState });
-  } catch (err) {
-    return res.json({ success: true, ...localServerState });
-  }
-});
+  const attendanceRecords =
+    (state.attendanceRecords || [])
+      .filter(record => {
+        const id =
+          normalizeEmployeeId(
+            record.employeeId
+          );
 
-// 2. مسار حفظ البيانات الموحد
-app.post('/api/data', async (req, res) => {
-  try {
-    const body = req.body || {};
-    if (process.env.REDIS_URL || process.env.KV_REST_API_URL) {
-      const currentData: any = (await kv.get('app_data')) || localServerState;
-      const updatedData = { ...currentData, ...body };
-      await kv.set('app_data', updatedData);
-      localServerState = updatedData;
-      return res.json({ success: true, ...updatedData });
-    } else {
-      localServerState = { ...localServerState, ...body };
-      return res.json({ success: true, ...localServerState });
-    }
-  } catch (err) {
-    return res.status(500).json({ success: false, error: 'فشل حفظ البيانات' });
-  }
-});
-
-app.delete('/api/shifts/:id', async (req, res) => {
-  if (process.env.SUPABASE_DB_URL) {
-    await db.delete(schema.shifts).where(sql`id = ${req.params.id}`);
-  } else {
-    serverState.shifts = (serverState.shifts || []).filter(s => s.id !== req.params.id);
-  }
-  return res.json({ success: true });
-});
-
-app.get('/api/data', async (req, res) => {
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-  res.setHeader('Pragma', 'no-cache');
-  res.setHeader('Expires', '0');
-
-  if (process.env.SUPABASE_DB_URL) {
-    try {
-      const dbEmployees = await db.select().from(schema.employees);
-      const dbAttendance = await db.select().from(schema.attendanceRecords);
-      const dbLeaves = await db.select().from(schema.leaveRequests);
-      const dbOvertime = await db.select().from(schema.overtimeRequests);
-      const dbShifts = await db.select().from(schema.shifts);
-      
-      return res.json({
-        success: true,
-        employees: dbEmployees,
-        attendanceRecords: dbAttendance,
-        leaveRequests: dbLeaves,
-        overtimeRequests: dbOvertime,
-        shifts: dbShifts,
-        companyNameAr: serverState.companyNameAr || null,
-        companyNameEn: serverState.companyNameEn || null,
-        urgentNotice: serverState.urgentNotice !== undefined ? serverState.urgentNotice : null,
-        lastUpdated: Date.now()
+        return (
+          !deletedEmployees[
+            record.employeeId
+          ] &&
+          employeeExists.has(id)
+        );
       });
-    } catch (err) {
-      console.error("Supabase Data Fetch Error:", err);
-      return res.status(500).json({ success: false, error: "Database error" });
-    }
-  }
 
-  if (hasKvStorage) {
-    try {
-      const kvState = await kv.get<typeof serverState>(KV_STATE_KEY);
-      if (kvState && typeof kvState === 'object') {
-        serverState = { ...serverState, ...kvState };
-      }
-    } catch (err) {
-      console.error('Vercel KV data fetch failed, using in-memory state:', err);
-    }
-  }
+  const leaveRequests =
+    (state.leaveRequests || [])
+      .filter(request => {
+        const id =
+          normalizeEmployeeId(
+            request.employeeId
+          );
 
-  if (!serverState.employees || serverState.employees.length === 0) {
-    const current = loadServerData();
-    if (current) {
-      serverState = { ...current, ...serverState };
-    }
-  }
-  if (serverState.leaveRequests && serverState.attendanceRecords) {
-    serverState.attendanceRecords = ensureApprovedLeaveRecordsServer(serverState.attendanceRecords, serverState.leaveRequests);
-  }
-  const deletedEmpKeys = serverState.deletedEmployeeKeys || {};
-  const cleanEmployees = (serverState.employees || []).filter(e => e && e.id && !deletedEmpKeys[e.id]);
-  const cleanRecords = Array.isArray(serverState.attendanceRecords)
-    ? serverState.attendanceRecords.filter(r => !deletedEmpKeys[r.employeeId])
-    : [];
-  const cleanLeaves = Array.isArray(serverState.leaveRequests)
-    ? serverState.leaveRequests.filter(l => !deletedEmpKeys[l.employeeId])
-    : [];
-  const cleanOvertime = Array.isArray(serverState.overtimeRequests)
-    ? serverState.overtimeRequests.filter(o => !deletedEmpKeys[o.employeeId])
-    : [];
-  res.json({
-    success: true,
-    employees: cleanEmployees,
-    attendanceRecords: cleanRecords,
-    leaveRequests: cleanLeaves,
-    overtimeRequests: cleanOvertime,
-    companyNameAr: serverState.companyNameAr || null,
-    companyNameEn: serverState.companyNameEn || null,
-    urgentNotice: serverState.urgentNotice !== undefined ? serverState.urgentNotice : null,
-    lastUpdated: serverState.lastUpdated || Date.now(),
-  });
-});
+        return (
+          !deletedEmployees[
+            request.employeeId
+          ] &&
+          employeeExists.has(id)
+        );
+      });
 
-// POST /api/sync - Full or partial state update from client
+  const overtimeRequests =
+    (state.overtimeRequests || [])
+      .filter(request => {
+        const id =
+          normalizeEmployeeId(
+            request.employeeId
+          );
 
-// POST /api/login - Authenticate employee safely
-app.post('/api/login', async (req, res) => {
-  const { code: loginCode, password } = req.body;
-  
-  if (!loginCode || !password) {
-    return res.status(400).json({ success: false, error: 'Missing credentials' });
-  }
+        return (
+          !deletedEmployees[
+            request.employeeId
+          ] &&
+          employeeExists.has(id)
+        );
+      });
 
-  const cleanInput = String(loginCode).trim().toLowerCase();
-  const rawAlphanumeric = cleanInput.replace(/[^a-z0-9]/g, '');
-  const numericOnly = cleanInput.replace(/\D/g, '');
-  const numericValue = numericOnly ? parseInt(numericOnly, 10) : null;
-  const cleanPass = String(password).trim().toLowerCase();
+  return {
+    employees,
+    attendanceRecords,
+    leaveRequests,
+    overtimeRequests,
+    shifts:
+      state.shifts || [],
+    companyNameAr:
+      state.companyNameAr ||
+      null,
+    companyNameEn:
+      state.companyNameEn ||
+      null,
+    urgentNotice:
+      state.urgentNotice !==
+        undefined
+        ? state.urgentNotice
+        : null,
+    lastUpdated:
+      state.lastUpdated ||
+      Date.now(),
+  };
+}
 
-  const emps = process.env.SUPABASE_DB_URL ? await db.select().from(schema.employees) : serverState.employees || [];
-  
-  let emp;
-  if (cleanInput === 'leader') {
-    emp = emps.find(e => e.role === 'leader' || e.code === 'EMP011') || emps[0];
-  } else {
-    emp = emps.find(e => {
-      if (!e) return false;
-      const eCodeLower = e.code ? e.code.toLowerCase() : '';
-      const eAlphanumeric = eCodeLower.replace(/[^a-z0-9]/g, '');
-      const eNumericOnly = eCodeLower.replace(/\D/g, '');
-      const eNumericValue = eNumericOnly ? parseInt(eNumericOnly, 10) : null;
+function getAttendanceInsertData(
+  record: any
+): typeof schema.attendanceRecords.$inferInsert {
+  return {
+    id: String(record.id),
+    employeeId: String(
+      record.employeeId
+    ),
+    date: String(record.date),
 
-      if (eCodeLower === cleanInput) return true;
-      if (eAlphanumeric === rawAlphanumeric) return true;
-      if (numericValue !== null && eNumericValue !== null && numericValue === eNumericValue) return true;
-      if (e.email && e.email.toLowerCase() === cleanInput) return true;
-      if (e.phone && e.phone.replace(/\D/g, '') === cleanInput.replace(/\D/g, '')) return true;
-      return false;
+    checkIn:
+      record.checkIn ??
+      null,
+
+    checkOut:
+      record.checkOut ??
+      null,
+
+    breakStart:
+      record.breakStart ??
+      null,
+
+    breakEnd:
+      record.breakEnd ??
+      null,
+
+    breaks:
+      record.breaks ??
+      null,
+
+    totalBreakSeconds:
+      record.totalBreakSeconds ??
+      null,
+
+    location:
+      record.location ??
+      null,
+
+    deviceInfo:
+      record.deviceInfo ??
+      null,
+
+    lateMinutes:
+      record.lateMinutes ??
+      0,
+
+    lateSeconds:
+      record.lateSeconds ??
+      0,
+
+    earlyLeaveMinutes:
+      record.earlyLeaveMinutes ??
+      0,
+
+    workHours:
+      record.workHours ??
+      0,
+
+    overtimeHours:
+      record.overtimeHours ??
+      0,
+
+    minusHours:
+      record.minusHours ??
+      0,
+
+    status:
+      record.status ??
+      null,
+
+    leaveType:
+      record.leaveType ??
+      null,
+
+    notes:
+      record.notes ??
+      null,
+
+    verifiedByFace:
+      record.verifiedByFace ??
+      false,
+
+    isExcused:
+      record.isExcused ??
+      false,
+
+    excusedBy:
+      record.excusedBy ??
+      null,
+
+    excusedReason:
+      record.excusedReason ??
+      null,
+
+    updatedAt:
+      record.updatedAt ??
+      new Date().toISOString(),
+
+    isExplicitCancelCheckOut:
+      record.isExplicitCancelCheckOut ??
+      false,
+  };
+}
+
+app.disable('x-powered-by');
+
+app.use(
+  express.json({
+    limit: '50mb',
+  })
+);
+
+app.use(
+  '/api',
+  (_req, res, next) => {
+    res.set({
+      'Cache-Control':
+        'no-store, no-cache, must-revalidate, proxy-revalidate',
+      Pragma: 'no-cache',
+      Expires: '0',
     });
-  }
 
-  if (!emp) {
-    return res.status(401).json({ success: false, error: 'Invalid login credentials' });
+    next();
   }
+);
 
-  // Validate PIN/Password safely
-  const empNumStr = emp.code ? emp.code.replace(/\D/g, '') : '';
-  const defaultEmpPass = `emp${empNumStr}`.toLowerCase();
-  const defaultPaddedPass = `emp${empNumStr.padStart(3, '0')}`.toLowerCase();
-
-  // If pin is a 64-char hex, it's SHA-256 hashed
-  let isHashedMatch = false;
-  
-  if (emp.pin && emp.pin.length === 64) {
-    const hashedPass = crypto.createHash('sha256').update(cleanPass).digest('hex');
-    if (hashedPass === emp.pin) {
-      isHashedMatch = true;
-    }
-  }
-
-  const isValidPass = 
-    isHashedMatch ||
-    cleanPass === (emp.pin || '').toLowerCase() ||
-    (emp.role === 'leader' && cleanPass === 'leader123') ||
-    cleanPass === defaultEmpPass ||
-    cleanPass === defaultPaddedPass ||
-    cleanPass === '1234' ||
-    cleanPass === 'tech_123';
-
-  if (!isValidPass) {
-    return res.status(401).json({ success: false, error: 'Invalid login credentials' });
-  }
-
-  if (emp.status === 'inactive') {
-    return res.status(403).json({ success: false, error: 'ACCOUNT_INACTIVE' });
-  }
-
-  // Hide the PIN before returning
-  const safeEmp = { ...emp };
-  safeEmp.pin = '***'; // Do not send back the password hash
-  
-  return res.json({ success: true, employee: safeEmp });
-});
-
-app.post('/api/sync', async (req, res) => {
-  const { employees, attendanceRecords, leaveRequests, companyNameAr, companyNameEn, urgentNotice, deletedAttendanceIds } = req.body;
-  if (!serverState.deletedAttendanceKeys) serverState.deletedAttendanceKeys = {};
-
-  if (Array.isArray(deletedAttendanceIds) && deletedAttendanceIds.length > 0) {
-    const now = Date.now();
-    deletedAttendanceIds.forEach(id => {
-      const r = (serverState.attendanceRecords || []).find((rec: any) => rec.id === id);
-      if (r && r.employeeId && r.date) {
-        const empId = String(r.employeeId).trim().toLowerCase();
-        serverState.deletedAttendanceKeys![`${empId}_${r.date}`] = now;
-      }
-    });
-    const deleteSet = new Set(deletedAttendanceIds);
-    serverState.attendanceRecords = (serverState.attendanceRecords || []).filter((r: any) => !deleteSet.has(r.id));
-  }
-  const deletedEmpKeys = serverState.deletedEmployeeKeys || {};
-  if (Array.isArray(employees)) {
-    serverState.employees = employees.filter(e => e && e.id && !deletedEmpKeys[e.id]);
-  }
-  if (Array.isArray(attendanceRecords)) {
-    let cleanIncoming = attendanceRecords.filter(r => !deletedEmpKeys[r.employeeId]);
-    if (Array.isArray(deletedAttendanceIds) && deletedAttendanceIds.length > 0) {
-      const deleteSet = new Set(deletedAttendanceIds);
-      cleanIncoming = cleanIncoming.filter(r => !deleteSet.has(r.id));
-    }
-    if (req.body.replaceAttendance) {
-      serverState.attendanceRecords = cleanIncoming;
-    } else {
-      serverState.attendanceRecords = mergeAttendanceRecords(serverState.attendanceRecords || [], cleanIncoming);
-    }
-  }
-  if (Array.isArray(leaveRequests)) {
-    const incomingLeaves = leaveRequests.filter(l => !deletedEmpKeys[l.employeeId]);
-    serverState.leaveRequests = mergeByUniqueId(serverState.leaveRequests || [], incomingLeaves);
-  }
-  if (companyNameAr !== undefined) serverState.companyNameAr = companyNameAr;
-  if (companyNameEn !== undefined) serverState.companyNameEn = companyNameEn;
-  if (urgentNotice !== undefined) serverState.urgentNotice = urgentNotice;
-  
-  if (serverState.leaveRequests && serverState.attendanceRecords) {
-    serverState.attendanceRecords = ensureApprovedLeaveRecordsServer(serverState.attendanceRecords, serverState.leaveRequests);
-  }
-  serverState.lastUpdated = Date.now();
-  await saveServerData(serverState);
-  res.json({ success: true, lastUpdated: serverState.lastUpdated });
-});
-
-// PUT /api/employees/:id - Persist an employee edit without replacing other records
-app.put('/api/employees/:id', async (req, res) => {
-  const employeeId = String(req.params.id || '').trim();
-  const changes = req.body;
-  if (!employeeId || !changes || typeof changes !== 'object') {
-    return res.status(400).json({ success: false, error: 'Invalid employee update' });
-  }
-
-  if (process.env.SUPABASE_DB_URL) {
+app.get(
+  '/api/data',
+  async (_req, res) => {
     try {
-      const [employee] = await db.update(schema.employees)
-        .set({ ...changes, id: employeeId })
-        .where(sql`id = ${employeeId}`)
-        .returning();
-      if (!employee) return res.status(404).json({ success: false, error: 'Employee not found' });
-      return res.json({ success: true, employee, lastUpdated: Date.now() });
-    } catch (err) {
-      console.error('[EMPLOYEE-UPDATE-DB-ERROR]', err);
-      return res.status(500).json({ success: false, error: 'Failed to update employee' });
-    }
-  }
+      if (hasDatabase) {
+        const [
+          employees,
+          attendanceRecords,
+          leaveRequests,
+          overtimeRequests,
+          shifts,
+        ] = await Promise.all([
+          db
+            .select()
+            .from(schema.employees),
 
-  const employees = serverState.employees || [];
-  const index = employees.findIndex((employee: any) => String(employee.id).toLowerCase() === employeeId.toLowerCase());
-  if (index < 0) return res.status(404).json({ success: false, error: 'Employee not found' });
-  const current = employees[index];
-  const updated = { ...current, ...changes, id: current.id };
-  if (!changes._isPhotoRemoved && (!changes.avatar || String(changes.avatar).trim() === '')) {
-    updated.avatar = current.avatar || '';
-  }
-  serverState.employees = employees.map((employee: any, employeeIndex: number) => employeeIndex === index ? updated : employee);
-  serverState.lastUpdated = Date.now();
-  await saveServerData(serverState);
-  return res.json({ success: true, employee: updated, lastUpdated: serverState.lastUpdated });
-});
+          db
+            .select()
+            .from(
+              schema.attendanceRecords
+            ),
 
-app.post('/api/punch', async (req, res) => {
-  const { employeeId, record, action } = req.body;
-  if (!employeeId) return res.status(400).json({ success: false, error: 'Employee ID is required' });
+          db
+            .select()
+            .from(
+              schema.leaveRequests
+            ),
 
-  const rawEmpId = String(employeeId).trim();
-  const normEmpId = rawEmpId.toLowerCase();
-  const serverClock = getServerClock();
-  const todayDate = action === 'update' && record?.date ? String(record.date).trim() : serverClock.date;
-  const canonicalId = `rec-${normEmpId}-${todayDate}`;
-  const timeVal = action === 'update'
-    ? (record?.checkIn || record?.checkOut || serverClock.time)
-    : serverClock.time;
+          db
+            .select()
+            .from(
+              schema.overtimeRequests
+            ),
 
-  if (process.env.SUPABASE_DB_URL) {
-    try {
-      const existingQuery = await db.select().from(schema.attendanceRecords).where(sql`id = ${canonicalId}`);
-      let existingRecord = existingQuery.length > 0 ? existingQuery[0] : null;
-      
-      let newRecord: any = existingRecord ? { ...existingRecord } : {
-        id: canonicalId,
-        employeeId: rawEmpId,
-        date: todayDate,
-        updatedAt: new Date().toISOString()
-      };
-      
+          db
+            .select()
+            .from(schema.shifts),
+        ]);
 
-      if (action === 'check_in') {
-        newRecord.checkIn = newRecord.checkIn || timeVal;
-      } else if (action === 'check_out') {
-        newRecord.checkOut = timeVal;
-      } else if (action === 'break_start') {
-        newRecord.breakStart = timeVal;
-      } else if (action === 'break_end' || action === 'force_break_end') {
-        newRecord.breakEnd = timeVal;
-      } else if (action === 'update' && record) {
-        if (record.checkIn !== undefined) newRecord.checkIn = record.checkIn;
-        if (record.checkOut !== undefined) newRecord.checkOut = record.checkOut;
-        if (record.status !== undefined) newRecord.status = record.status;
-        if (record.leaveType !== undefined) newRecord.leaveType = record.leaveType;
-        if (record.isExcused !== undefined) newRecord.isExcused = record.isExcused;
-        if (record.excusedReason !== undefined) newRecord.excusedReason = record.excusedReason;
-        if (record.excusedBy !== undefined) newRecord.excusedBy = record.excusedBy;
-        if (record.notes !== undefined) newRecord.notes = record.notes;
-        if (record.isExplicitCancelCheckOut !== undefined) newRecord.isExplicitCancelCheckOut = record.isExplicitCancelCheckOut;
-      }
-
-      if (newRecord.checkOut === null || newRecord.isExplicitCancelCheckOut) {
-         newRecord.checkOut = null;
-         newRecord.workHours = 0;
-         newRecord.overtimeHours = 0;
-         newRecord.earlyLeaveMinutes = 0;
-      }
-
-      const calculated = sanitizeRecordServer(newRecord);
-      calculated.updatedAt = new Date().toISOString();
-
-      await db.insert(schema.attendanceRecords)
-        .values(calculated)
-        .onConflictDoUpdate({
-          target: [schema.attendanceRecords.employeeId, schema.attendanceRecords.date],
-          set: calculated
+        return res.json({
+          success: true,
+          employees,
+          attendanceRecords,
+          leaveRequests,
+          overtimeRequests,
+          shifts,
+          companyNameAr:
+            serverState.companyNameAr ||
+            null,
+          companyNameEn:
+            serverState.companyNameEn ||
+            null,
+          urgentNotice:
+            serverState.urgentNotice ??
+            null,
+          lastUpdated:
+            Date.now(),
         });
-        
-      const finalRecs = await db.select().from(schema.attendanceRecords);
-      const single = finalRecs.find(r => r.id === canonicalId);
-      
-      return res.json({
-        success: true,
-        record: single,
-        attendanceRecords: finalRecs,
-        lastUpdated: Date.now(),
-        serverTime: serverClock
-      });
-    } catch (err) {
-      console.error("[PUNCH-DB-ERROR]", err);
-      return res.status(500).json({ success: false, error: String(err) });
-    }
-  }
+      }
 
-  // LEGACY JSON IMPLEMENTATION (Fallback)
-  console.log('[PUNCH-LEGACY] Executing JSON fallback');
-  let currentRecord = null;
-  if (!serverState.attendanceRecords) {
-    serverState.attendanceRecords = [];
-  }
-  
-  let targetRec = serverState.attendanceRecords.find(
-    (r: any) => String(r.employeeId).toLowerCase() === normEmpId && r.date === todayDate
-  );
+      if (hasKvStorage) {
+        try {
+          const persistent =
+            await kv.get<ServerState>(
+              KV_STATE_KEY
+            );
 
-  if (!targetRec) {
-    targetRec = {
-      id: canonicalId,
-      employeeId: rawEmpId,
-      date: todayDate,
-      status: 'in_progress',
-      updatedAt: new Date().toISOString()
-    };
-    serverState.attendanceRecords.push(targetRec);
-  }
-
-  if (action === 'check_in') {
-    if (!targetRec.checkIn) targetRec.checkIn = timeVal;
-  } else if (action === 'check_out') {
-    targetRec.checkOut = timeVal;
-  } else if (action === 'break_start') {
-    targetRec.breakStart = timeVal;
-  } else if (action === 'break_end' || action === 'force_break_end') {
-    targetRec.breakEnd = timeVal;
-  } else if (action === 'update' && record) {
-    Object.assign(targetRec, record);
-  }
-
-  // Keep the client-calculated attendance details while the server remains
-  // authoritative for punch timestamps and the existing record identity.
-  if (record && action !== 'update') {
-    for (const field of [
-      'location', 'notes', 'lateMinutes', 'lateSeconds', 'earlyLeaveMinutes',
-      'workHours', 'overtimeHours', 'minusHours', 'status', 'verifiedByFace',
-      'isExcused', 'excusedReason', 'excusedBy', 'leaveType'
-    ]) {
-      if (record[field] !== undefined) targetRec[field] = record[field];
-    }
-  }
-
-  const sanitizedTarget = sanitizeRecordServer(targetRec);
-  Object.assign(targetRec, sanitizedTarget);
-  targetRec.updatedAt = new Date().toISOString();
-
-  serverState.lastUpdated = Date.now();
-  await saveServerData(serverState);
-  
-  const deletedEmpKeys = serverState.deletedEmployeeKeys || {};
-  res.json({
-    success: true,
-    lastUpdated: serverState.lastUpdated,
-    record: targetRec,
-    serverTime: serverClock,
-    attendanceRecords: (serverState.attendanceRecords || []).filter((r: any) => !deletedEmpKeys[r.employeeId]),
-  });
-});
-
-// POST /api/attendance/clear-today - Clear all attendance records for a specific date
-app.post('/api/attendance/clear-today', (req, res) => {
-  const dateStr = req.body.date || new Date().toISOString().split('T')[0];
-  const now = Date.now();
-  if (!serverState.deletedAttendanceKeys) serverState.deletedAttendanceKeys = {};
-
-  if (serverState.attendanceRecords) {
-    serverState.attendanceRecords.forEach((r: any) => {
-      if (r.date === dateStr) {
-        const rEmp = r.employeeId ? String(r.employeeId).trim().toLowerCase() : '';
-        if (rEmp) {
-          serverState.deletedAttendanceKeys![`${rEmp}_${dateStr}`] = now;
+          if (
+            persistent &&
+            typeof persistent ===
+              'object'
+          ) {
+            serverState = {
+              ...serverState,
+              ...persistent,
+            };
+          }
+        } catch (error) {
+          console.error(
+            'KV data fetch failed:',
+            error
+          );
         }
       }
-    });
 
-    serverState.attendanceRecords = serverState.attendanceRecords.filter(r => r.date !== dateStr);
-    serverState.lastUpdated = Date.now();
-    saveServerData(serverState);
-  }
-  res.json({
-    success: true,
-    attendanceRecords: serverState.attendanceRecords,
-    lastUpdated: serverState.lastUpdated,
-  });
-});
+      if (
+        (!serverState.employees ||
+          serverState.employees
+            .length === 0) &&
+        fs.existsSync(DATA_FILE)
+      ) {
+        const fileState =
+          loadServerData();
 
-// POST /api/attendance/delete-future - Delete ONLY attendance records whose date is AFTER cutoff date
-app.post('/api/attendance/delete-future', (req, res) => {
-  const cutoffDate = req.body.todayDate || new Date().toISOString().split('T')[0];
-
-  if (!serverState.attendanceRecords) {
-    serverState.attendanceRecords = [];
-  }
-
-  const allRecords = serverState.attendanceRecords;
-  const futureRecords = allRecords.filter((r: any) => r && r.date && r.date > cutoffDate);
-  const validRecords = allRecords.filter((r: any) => !r || !r.date || r.date <= cutoffDate);
-
-  let backupFileName = '';
-  if (futureRecords.length > 0) {
-    try {
-      if (!fs.existsSync(BACKUP_DIR)) {
-        fs.mkdirSync(BACKUP_DIR, { recursive: true });
+        if (fileState) {
+          serverState = {
+            ...fileState,
+            ...serverState,
+          };
+        }
       }
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      backupFileName = `future_attendance_backup_${timestamp}.json`;
-      const backupPath = path.join(BACKUP_DIR, backupFileName);
-      fs.writeFileSync(backupPath, JSON.stringify({
+
+      if (
+        serverState.leaveRequests &&
+        serverState.attendanceRecords
+      ) {
+        serverState.attendanceRecords =
+          ensureApprovedLeaveRecordsServer(
+            serverState.attendanceRecords,
+            serverState.leaveRequests
+          );
+      }
+
+      return res.json({
+        success: true,
+        ...cleanStateForResponse(
+          serverState
+        ),
+      });
+    } catch (error) {
+      console.error(
+        'GET /api/data error:',
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to fetch data',
+      });
+    }
+  }
+);
+
+app.post(
+  '/api/data',
+  async (req, res) => {
+    try {
+      const body =
+        req.body || {};
+
+      if (hasKvStorage) {
+        const current =
+          (await kv.get<ServerState>(
+            KV_APP_DATA_KEY
+          )) || serverState;
+
+        serverState = {
+          ...serverState,
+          ...current,
+          ...body,
+          lastUpdated:
+            Date.now(),
+        };
+
+        await saveServerData(
+          serverState
+        );
+
+        return res.json({
+          success: true,
+          ...cleanStateForResponse(
+            serverState
+          ),
+        });
+      }
+
+      serverState = {
+        ...serverState,
+        ...body,
+        lastUpdated:
+          Date.now(),
+      };
+
+      await saveServerData(
+        serverState
+      );
+
+      return res.json({
+        success: true,
+        ...cleanStateForResponse(
+          serverState
+        ),
+      });
+    } catch (error) {
+      console.error(
+        'POST /api/data error:',
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        error: 'فشل حفظ البيانات',
+      });
+    }
+  }
+);
+
+app.post(
+  '/api/login',
+  async (req, res) => {
+    try {
+      const {
+        code: loginCode,
+        password,
+      } = req.body || {};
+
+      if (
+        !loginCode ||
+        !password
+      ) {
+        return res.status(400).json({
+          success: false,
+          error:
+            'Missing credentials',
+        });
+      }
+
+      const cleanInput =
+        String(loginCode)
+          .trim()
+          .toLowerCase();
+
+      const rawAlphanumeric =
+        cleanInput.replace(
+          /[^a-z0-9]/g,
+          ''
+        );
+
+      const numericOnly =
+        cleanInput.replace(
+          /\D/g,
+          ''
+        );
+
+      const numericValue =
+        numericOnly
+          ? parseInt(
+              numericOnly,
+              10
+            )
+          : null;
+
+      const cleanPassword =
+        String(password)
+          .trim()
+          .toLowerCase();
+
+      const employees =
+        hasDatabase
+          ? await db
+              .select()
+              .from(
+                schema.employees
+              )
+          : serverState.employees ||
+            [];
+
+      let employee: any;
+
+      if (
+        cleanInput === 'leader'
+      ) {
+        employee =
+          employees.find(
+            item =>
+              item.role ===
+                'leader' ||
+              item.code ===
+                'EMP011'
+          ) ||
+          employees[0];
+      } else {
+        employee =
+          employees.find(
+            item => {
+              if (!item) {
+                return false;
+              }
+
+              const employeeCode =
+                item.code
+                  ? String(
+                      item.code
+                    ).toLowerCase()
+                  : '';
+
+              const employeeAlpha =
+                employeeCode.replace(
+                  /[^a-z0-9]/g,
+                  ''
+                );
+
+              const employeeNumeric =
+                employeeCode.replace(
+                  /\D/g,
+                  ''
+                );
+
+              const employeeNumber =
+                employeeNumeric
+                  ? parseInt(
+                      employeeNumeric,
+                      10
+                    )
+                  : null;
+
+              if (
+                employeeCode ===
+                cleanInput
+              ) {
+                return true;
+              }
+
+              if (
+                employeeAlpha ===
+                rawAlphanumeric
+              ) {
+                return true;
+              }
+
+              if (
+                numericValue !==
+                  null &&
+                employeeNumber !==
+                  null &&
+                numericValue ===
+                  employeeNumber
+              ) {
+                return true;
+              }
+
+              if (
+                item.email &&
+                String(
+                  item.email
+                ).toLowerCase() ===
+                  cleanInput
+              ) {
+                return true;
+              }
+
+              if (
+                item.phone &&
+                String(
+                  item.phone
+                ).replace(
+                  /\D/g,
+                  ''
+                ) ===
+                  cleanInput.replace(
+                    /\D/g,
+                    ''
+                  )
+              ) {
+                return true;
+              }
+
+              return false;
+            }
+          );
+      }
+
+      if (!employee) {
+        return res.status(401).json({
+          success: false,
+          error:
+            'Invalid login credentials',
+        });
+      }
+
+      const employeeNumber =
+        employee.code
+          ? String(
+              employee.code
+            ).replace(
+              /\D/g,
+              ''
+            )
+          : '';
+
+      const defaultPassword =
+        `emp${employeeNumber}`
+          .toLowerCase();
+
+      const defaultPaddedPassword =
+        `emp${employeeNumber.padStart(
+          3,
+          '0'
+        )}`.toLowerCase();
+
+      let hashedMatch = false;
+
+      if (
+        employee.pin &&
+        String(
+          employee.pin
+        ).length === 64
+      ) {
+        const hashedPassword =
+          crypto
+            .createHash(
+              'sha256'
+            )
+            .update(
+              cleanPassword
+            )
+            .digest('hex');
+
+        hashedMatch =
+          hashedPassword ===
+          employee.pin;
+      }
+
+      const validPassword =
+        hashedMatch ||
+        cleanPassword ===
+          String(
+            employee.pin || ''
+          ).toLowerCase() ||
+        (
+          employee.role ===
+            'leader' &&
+          cleanPassword ===
+            'leader123'
+        ) ||
+        cleanPassword ===
+          defaultPassword ||
+        cleanPassword ===
+          defaultPaddedPassword ||
+        cleanPassword ===
+          '1234' ||
+        cleanPassword ===
+          'tech_123';
+
+      if (!validPassword) {
+        return res.status(401).json({
+          success: false,
+          error:
+            'Invalid login credentials',
+        });
+      }
+
+      if (
+        employee.status ===
+        'inactive'
+      ) {
+        return res.status(403).json({
+          success: false,
+          error:
+            'ACCOUNT_INACTIVE',
+        });
+      }
+
+      const safeEmployee = {
+        ...employee,
+        pin: '***',
+      };
+
+      return res.json({
+        success: true,
+        employee:
+          safeEmployee,
+      });
+    } catch (error) {
+      console.error(
+        'Login error:',
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        error: 'Login failed',
+      });
+    }
+  }
+);
+
+app.post(
+  '/api/sync',
+  async (req, res) => {
+    try {
+      const {
+        employees,
+        attendanceRecords,
+        leaveRequests,
+        overtimeRequests,
+        shifts,
+        companyNameAr,
+        companyNameEn,
+        urgentNotice,
+        deletedAttendanceIds,
+        deletedLeaveIds,
+        deletedEmployeeIds,
+        replaceAttendance,
+      } = req.body || {};
+
+      serverState.deletedAttendanceKeys =
+        serverState.deletedAttendanceKeys ||
+        {};
+
+      serverState.deletedLeaveKeys =
+        serverState.deletedLeaveKeys ||
+        {};
+
+      serverState.deletedEmployeeKeys =
+        serverState.deletedEmployeeKeys ||
+        {};
+
+      if (
+        Array.isArray(
+          deletedEmployeeIds
+        )
+      ) {
+        for (
+          const employeeId of deletedEmployeeIds
+        ) {
+          if (!employeeId) continue;
+
+          serverState.deletedEmployeeKeys[
+            String(employeeId)
+          ] = Date.now();
+        }
+      }
+
+      if (
+        Array.isArray(
+          deletedAttendanceIds
+        ) &&
+        deletedAttendanceIds.length
+      ) {
+        const now =
+          Date.now();
+
+        for (
+          const id of deletedAttendanceIds
+        ) {
+          const record =
+            (
+              serverState.attendanceRecords ||
+              []
+            ).find(
+              item =>
+                item.id === id
+            );
+
+          if (
+            record?.employeeId &&
+            record?.date
+          ) {
+            serverState.deletedAttendanceKeys[
+              attendanceKey(
+                record.employeeId,
+                record.date
+              )
+            ] = now;
+          }
+        }
+
+        const deleteSet =
+          new Set(
+            deletedAttendanceIds
+          );
+
+        serverState.attendanceRecords =
+          (
+            serverState.attendanceRecords ||
+            []
+          ).filter(
+            record =>
+              !deleteSet.has(
+                record.id
+              )
+          );
+      }
+
+      if (
+        Array.isArray(
+          deletedLeaveIds
+        )
+      ) {
+        for (
+          const id of deletedLeaveIds
+        ) {
+          if (!id) continue;
+
+          serverState.deletedLeaveKeys[
+            String(id)
+          ] = Date.now();
+        }
+
+        const deleteSet =
+          new Set(
+            deletedLeaveIds
+          );
+
+        serverState.leaveRequests =
+          (
+            serverState.leaveRequests ||
+            []
+          ).filter(
+            item =>
+              !deleteSet.has(
+                item.id
+              )
+          );
+      }
+
+      const deletedEmployees =
+        serverState.deletedEmployeeKeys ||
+        {};
+
+      if (
+        Array.isArray(
+          employees
+        )
+      ) {
+        serverState.employees =
+          employees.filter(
+            employee =>
+              employee?.id &&
+              !deletedEmployees[
+                employee.id
+              ]
+          );
+      }
+
+      if (
+        Array.isArray(
+          shifts
+        )
+      ) {
+        serverState.shifts =
+          shifts;
+      }
+
+      if (
+        Array.isArray(
+          attendanceRecords
+        )
+      ) {
+        let incoming =
+          attendanceRecords.filter(
+            record =>
+              record &&
+              !deletedEmployees[
+                record.employeeId
+              ]
+          );
+
+        if (
+          Array.isArray(
+            deletedAttendanceIds
+          )
+        ) {
+          const deleteSet =
+            new Set(
+              deletedAttendanceIds
+            );
+
+          incoming =
+            incoming.filter(
+              record =>
+                !deleteSet.has(
+                  record.id
+                )
+            );
+        }
+
+        if (
+          replaceAttendance ===
+          true
+        ) {
+          serverState.attendanceRecords =
+            mergeAttendanceRecords(
+              [],
+              incoming
+            );
+        } else {
+          serverState.attendanceRecords =
+            mergeAttendanceRecords(
+              serverState.attendanceRecords ||
+                [],
+              incoming
+            );
+        }
+      }
+
+      if (
+        Array.isArray(
+          leaveRequests
+        )
+      ) {
+        const incomingLeaves =
+          leaveRequests.filter(
+            request =>
+              request &&
+              !deletedEmployees[
+                request.employeeId
+              ]
+          );
+
+        serverState.leaveRequests =
+          mergeByUniqueId(
+            serverState.leaveRequests ||
+              [],
+            incomingLeaves
+          );
+      }
+
+      if (
+        Array.isArray(
+          overtimeRequests
+        )
+      ) {
+        const existing =
+          serverState.overtimeRequests ||
+          [];
+
+        const map =
+          new Map<string, any>();
+
+        for (
+          const item of existing
+        ) {
+          if (item?.id) {
+            map.set(
+              item.id,
+              item
+            );
+          }
+        }
+
+        for (
+          const item of overtimeRequests
+        ) {
+          if (
+            item?.id &&
+            !deletedEmployees[
+              item.employeeId
+            ]
+          ) {
+            const old =
+              map.get(item.id);
+
+            map.set(
+              item.id,
+              old
+                ? {
+                    ...old,
+                    ...item,
+                  }
+                : {
+                    ...item,
+                  }
+            );
+          }
+        }
+
+        serverState.overtimeRequests =
+          Array.from(
+            map.values()
+          );
+      }
+
+      if (
+        companyNameAr !==
+        undefined
+      ) {
+        serverState.companyNameAr =
+          companyNameAr;
+      }
+
+      if (
+        companyNameEn !==
+        undefined
+      ) {
+        serverState.companyNameEn =
+          companyNameEn;
+      }
+
+      if (
+        urgentNotice !==
+        undefined
+      ) {
+        serverState.urgentNotice =
+          urgentNotice;
+      }
+
+      if (
+        serverState.leaveRequests &&
+        serverState.attendanceRecords
+      ) {
+        serverState.attendanceRecords =
+          ensureApprovedLeaveRecordsServer(
+            serverState.attendanceRecords,
+            serverState.leaveRequests
+          );
+      }
+
+      serverState.lastUpdated =
+        Date.now();
+
+      await saveServerData(
+        serverState
+      );
+
+      return res.json({
+        success: true,
+        lastUpdated:
+          serverState.lastUpdated,
+      });
+    } catch (error) {
+      console.error(
+        'POST /api/sync error:',
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        error:
+          'Failed to synchronize data',
+      });
+    }
+  }
+);
+
+app.put(
+  '/api/employees/:id',
+  async (req, res) => {
+    try {
+      const employeeId =
+        String(
+          req.params.id || ''
+        ).trim();
+
+      const changes =
+        req.body;
+
+      if (
+        !employeeId ||
+        !changes ||
+        typeof changes !==
+          'object'
+      ) {
+        return res.status(400).json({
+          success: false,
+          error:
+            'Invalid employee update',
+        });
+      }
+
+      if (hasDatabase) {
+        const allowedFields: Record<
+          string,
+          any
+        > = {
+          code: changes.code,
+          nameAr: changes.nameAr,
+          nameEn: changes.nameEn,
+          avatar: changes.avatar,
+          email: changes.email,
+          phone: changes.phone,
+          department:
+            changes.department,
+          jobTitleAr:
+            changes.jobTitleAr,
+          jobTitleEn:
+            changes.jobTitleEn,
+          shiftId:
+            changes.shiftId,
+          pin: changes.pin,
+          role: changes.role,
+          joinedDate:
+            changes.joinedDate,
+          status:
+            changes.status,
+          annualLeaveBalance:
+            changes.annualLeaveBalance,
+          casualLeaveBalance:
+            changes.casualLeaveBalance,
+          regularLeaveBalance:
+            changes.regularLeaveBalance,
+          sickLeaveBalance:
+            changes.sickLeaveBalance,
+          isPhotoRemoved:
+            changes.isPhotoRemoved,
+        };
+
+        const updateData =
+          Object.fromEntries(
+            Object.entries(
+              allowedFields
+            ).filter(
+              ([, value]) =>
+                value !==
+                undefined
+            )
+          );
+
+        if (
+          !changes._isPhotoRemoved &&
+          (
+            !changes.avatar ||
+            String(
+              changes.avatar
+            ).trim() === ''
+          )
+        ) {
+          delete updateData.avatar;
+        }
+
+        const updatedRows =
+          await db
+            .update(
+              schema.employees
+            )
+            .set(updateData)
+            .where(
+              sql`id = ${employeeId}`
+            )
+            .returning();
+
+        if (
+          !updatedRows.length
+        ) {
+          return res.status(404).json({
+            success: false,
+            error:
+              'Employee not found',
+          });
+        }
+
+        return res.json({
+          success: true,
+          employee:
+            updatedRows[0],
+          lastUpdated:
+            Date.now(),
+        });
+      }
+
+      const employees =
+        serverState.employees ||
+        [];
+
+      const index =
+        employees.findIndex(
+          employee =>
+            String(
+              employee.id
+            ).toLowerCase() ===
+            employeeId.toLowerCase()
+        );
+
+      if (index < 0) {
+        return res.status(404).json({
+          success: false,
+          error:
+            'Employee not found',
+        });
+      }
+
+      const current =
+        employees[index];
+
+      const updated = {
+        ...current,
+        ...changes,
+        id: current.id,
+      };
+
+      if (
+        !changes._isPhotoRemoved &&
+        (
+          !changes.avatar ||
+          String(
+            changes.avatar
+          ).trim() === ''
+        )
+      ) {
+        updated.avatar =
+          current.avatar || '';
+      }
+
+      serverState.employees =
+        employees.map(
+          (
+            employee,
+            employeeIndex
+          ) =>
+            employeeIndex ===
+            index
+              ? updated
+              : employee
+        );
+
+      serverState.lastUpdated =
+        Date.now();
+
+      await saveServerData(
+        serverState
+      );
+
+      return res.json({
+        success: true,
+        employee: updated,
+        lastUpdated:
+          serverState.lastUpdated,
+      });
+    } catch (error) {
+      console.error(
+        'Employee update error:',
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        error:
+          'Failed to update employee',
+      });
+    }
+  }
+);
+
+app.delete(
+  '/api/shifts/:id',
+  async (req, res) => {
+    try {
+      const id =
+        String(
+          req.params.id || ''
+        ).trim();
+
+      if (!id) {
+        return res.status(400).json({
+          success: false,
+          error:
+            'Shift ID is required',
+        });
+      }
+
+      if (hasDatabase) {
+        await db
+          .delete(schema.shifts)
+          .where(
+            sql`id = ${id}`
+          );
+
+        return res.json({
+          success: true,
+        });
+      }
+
+      serverState.shifts =
+        (
+          serverState.shifts ||
+          []
+        ).filter(
+          shift =>
+            shift.id !== id
+        );
+
+      serverState.lastUpdated =
+        Date.now();
+
+      await saveServerData(
+        serverState
+      );
+
+      return res.json({
+        success: true,
+      });
+    } catch (error) {
+      console.error(
+        'Delete shift error:',
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        error:
+          'Failed to delete shift',
+      });
+    }
+  }
+);
+
+app.post(
+  '/api/punch',
+  async (req, res) => {
+    try {
+      const {
+        employeeId,
+        record,
+        action,
+      } = req.body || {};
+
+      if (!employeeId) {
+        return res.status(400).json({
+          success: false,
+          error:
+            'Employee ID is required',
+        });
+      }
+
+      const rawEmployeeId =
+        String(
+          employeeId
+        ).trim();
+
+      const normalizedEmployeeId =
+        normalizeEmployeeId(
+          rawEmployeeId
+        );
+
+      const serverClock =
+        getServerClock();
+
+      const requestedDate =
+        action === 'update' &&
+        record?.date
+          ? String(
+              record.date
+            ).trim()
+          : serverClock.date;
+
+      const todayDate =
+        requestedDate ||
+        serverClock.date;
+
+      const canonicalId =
+        `rec-${normalizedEmployeeId}-${todayDate}`;
+
+      const timeValue =
+        action === 'update'
+          ? (
+              record?.checkIn ||
+              record?.checkOut ||
+              serverClock.time
+            )
+          : serverClock.time;
+
+      if (hasDatabase) {
+        const existingRows =
+          await db
+            .select()
+            .from(
+              schema.attendanceRecords
+            )
+            .where(
+              sql`employee_id = ${rawEmployeeId} AND date = ${todayDate}`
+            );
+
+        const existing =
+          existingRows[0];
+
+        const newRecord: any =
+          existing
+            ? { ...existing }
+            : {
+                id: canonicalId,
+                employeeId:
+                  rawEmployeeId,
+                date:
+                  todayDate,
+                updatedAt:
+                  new Date().toISOString(),
+              };
+
+        if (
+          action ===
+          'check_in'
+        ) {
+          if (!newRecord.checkIn) {
+            newRecord.checkIn =
+              timeValue;
+          }
+        } else if (
+          action ===
+          'check_out'
+        ) {
+          newRecord.checkOut =
+            timeValue;
+
+          newRecord.isExplicitCancelCheckOut =
+            false;
+        } else if (
+          action ===
+          'break_start'
+        ) {
+          newRecord.breakStart =
+            timeValue;
+        } else if (
+          action ===
+            'break_end' ||
+          action ===
+            'force_break_end'
+        ) {
+          newRecord.breakEnd =
+            timeValue;
+        } else if (
+          action === 'update' &&
+          record
+        ) {
+          const editableFields = [
+            'checkIn',
+            'checkOut',
+            'breakStart',
+            'breakEnd',
+            'breaks',
+            'totalBreakSeconds',
+            'location',
+            'deviceInfo',
+            'status',
+            'leaveType',
+            'notes',
+            'verifiedByFace',
+            'isExcused',
+            'excusedBy',
+            'excusedReason',
+            'isExplicitCancelCheckOut',
+          ];
+
+          for (
+            const field of editableFields
+          ) {
+            if (
+              record[field] !==
+              undefined
+            ) {
+              newRecord[field] =
+                record[field];
+            }
+          }
+        }
+
+        if (
+          newRecord.checkOut ===
+            null ||
+          newRecord.isExplicitCancelCheckOut ===
+            true
+        ) {
+          newRecord.checkOut =
+            null;
+
+          newRecord.workHours =
+            0;
+
+          newRecord.overtimeHours =
+            0;
+
+          newRecord.earlyLeaveMinutes =
+            0;
+        }
+
+        const calculated =
+          sanitizeRecordServer(
+            newRecord
+          );
+
+        calculated.updatedAt =
+          new Date().toISOString();
+
+        const insertData =
+          getAttendanceInsertData(
+            calculated
+          );
+
+        await db
+          .insert(
+            schema.attendanceRecords
+          )
+          .values(
+            insertData
+          )
+          .onConflictDoUpdate({
+            target: [
+              schema.attendanceRecords
+                .employeeId,
+              schema.attendanceRecords
+                .date,
+            ],
+            set: insertData,
+          });
+
+        const finalRecords =
+          await db
+            .select()
+            .from(
+              schema.attendanceRecords
+            );
+
+        const finalRecord =
+          finalRecords.find(
+            item =>
+              normalizeEmployeeId(
+                item.employeeId
+              ) ===
+                normalizedEmployeeId &&
+              String(
+                item.date
+              ) === todayDate
+          );
+
+        return res.json({
+          success: true,
+          record:
+            finalRecord ||
+            calculated,
+          attendanceRecords:
+            finalRecords,
+          lastUpdated:
+            Date.now(),
+          serverTime:
+            serverClock,
+        });
+      }
+
+      if (
+        !serverState.attendanceRecords
+      ) {
+        serverState.attendanceRecords =
+          [];
+      }
+
+      let targetRecord =
+        serverState.attendanceRecords.find(
+          item =>
+            normalizeEmployeeId(
+              item.employeeId
+            ) ===
+              normalizedEmployeeId &&
+            String(
+              item.date
+            ) === todayDate
+        );
+
+      if (!targetRecord) {
+        targetRecord = {
+          id: canonicalId,
+          employeeId:
+            rawEmployeeId,
+          date: todayDate,
+          status:
+            'in_progress',
+          updatedAt:
+            new Date().toISOString(),
+        };
+
+        serverState.attendanceRecords.push(
+          targetRecord
+        );
+      }
+
+      if (
+        action ===
+        'check_in'
+      ) {
+        if (
+          !targetRecord.checkIn
+        ) {
+          targetRecord.checkIn =
+            timeValue;
+        }
+      } else if (
+        action ===
+        'check_out'
+      ) {
+        targetRecord.checkOut =
+          timeValue;
+
+        targetRecord.isExplicitCancelCheckOut =
+          false;
+      } else if (
+        action ===
+        'break_start'
+      ) {
+        targetRecord.breakStart =
+          timeValue;
+      } else if (
+        action ===
+          'break_end' ||
+        action ===
+          'force_break_end'
+      ) {
+        targetRecord.breakEnd =
+          timeValue;
+      } else if (
+        action === 'update' &&
+        record
+      ) {
+        const updated =
+          mergeAttendanceRecords(
+            [targetRecord],
+            [record]
+          )[0];
+
+        if (updated) {
+          targetRecord =
+            updated;
+
+          const index =
+            serverState.attendanceRecords.findIndex(
+              item =>
+                item.id ===
+                canonicalId
+            );
+
+          if (index >= 0) {
+            serverState.attendanceRecords[
+              index
+            ] =
+              targetRecord;
+          }
+        }
+      } else if (
+        record &&
+        action !== 'update'
+      ) {
+        const allowedFields = [
+          'location',
+          'notes',
+          'lateMinutes',
+          'lateSeconds',
+          'earlyLeaveMinutes',
+          'workHours',
+          'overtimeHours',
+          'minusHours',
+          'status',
+          'verifiedByFace',
+          'isExcused',
+          'excusedReason',
+          'excusedBy',
+          'leaveType',
+        ];
+
+        for (
+          const field of allowedFields
+        ) {
+          if (
+            record[field] !==
+            undefined
+          ) {
+            targetRecord[field] =
+              record[field];
+          }
+        }
+      }
+
+      const sanitized =
+        sanitizeRecordServer(
+          targetRecord
+        );
+
+      Object.assign(
+        targetRecord,
+        sanitized
+      );
+
+      targetRecord.updatedAt =
+        new Date().toISOString();
+
+      serverState.lastUpdated =
+        Date.now();
+
+      await saveServerData(
+        serverState
+      );
+
+      return res.json({
+        success: true,
+        lastUpdated:
+          serverState.lastUpdated,
+        record:
+          targetRecord,
+        serverTime:
+          serverClock,
+        attendanceRecords:
+          cleanStateForResponse(
+            serverState
+          ).attendanceRecords,
+      });
+    } catch (error) {
+      console.error(
+        'Punch error:',
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : 'Punch failed',
+      });
+    }
+  }
+);
+
+app.post(
+  '/api/attendance',
+  async (req, res) => {
+    try {
+      const record =
+        req.body;
+
+      if (
+        !record ||
+        (!record.id &&
+          !record.employeeId)
+      ) {
+        return res.status(400).json({
+          success: false,
+          error:
+            'Invalid attendance record',
+        });
+      }
+
+      serverState.attendanceRecords =
+        mergeAttendanceRecords(
+          serverState.attendanceRecords ||
+            [],
+          [record]
+        );
+
+      serverState.lastUpdated =
+        Date.now();
+
+      await saveServerData(
+        serverState
+      );
+
+      return res.json({
+        success: true,
+        attendanceRecords:
+          serverState.attendanceRecords,
+        lastUpdated:
+          serverState.lastUpdated,
+      });
+    } catch (error) {
+      console.error(
+        'Attendance save error:',
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        error:
+          'Failed to save attendance',
+      });
+    }
+  }
+);
+
+app.post(
+  '/api/attendance/clear-today',
+  async (req, res) => {
+    try {
+      const dateString =
+        String(
+          req.body?.date ||
+            getTodayServerDate()
+        ).trim();
+
+      const now =
+        Date.now();
+
+      serverState.deletedAttendanceKeys =
+        serverState.deletedAttendanceKeys ||
+        {};
+
+      const records =
+        serverState.attendanceRecords ||
+        [];
+
+      for (
+        const record of records
+      ) {
+        if (
+          String(
+            record.date
+          ) === dateString
+        ) {
+          if (
+            record.employeeId
+          ) {
+            serverState.deletedAttendanceKeys[
+              attendanceKey(
+                record.employeeId,
+                dateString
+              )
+            ] = now;
+          }
+        }
+      }
+
+      serverState.attendanceRecords =
+        records.filter(
+          record =>
+            String(
+              record.date
+            ) !== dateString
+        );
+
+      serverState.lastUpdated =
+        Date.now();
+
+      await saveServerData(
+        serverState
+      );
+
+      return res.json({
+        success: true,
+        attendanceRecords:
+          serverState.attendanceRecords,
+        lastUpdated:
+          serverState.lastUpdated,
+      });
+    } catch (error) {
+      console.error(
+        'Clear attendance error:',
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        error:
+          'Failed to clear attendance',
+      });
+    }
+  }
+);
+
+app.post(
+  '/api/attendance/delete-future',
+  async (req, res) => {
+    try {
+      const cutoffDate =
+        String(
+          req.body?.todayDate ||
+            getTodayServerDate()
+        ).trim();
+
+      const records =
+        serverState.attendanceRecords ||
+        [];
+
+      const futureRecords =
+        records.filter(
+          record =>
+            record?.date &&
+            String(
+              record.date
+            ) > cutoffDate
+        );
+
+      const validRecords =
+        records.filter(
+          record =>
+            !record?.date ||
+            String(
+              record.date
+            ) <= cutoffDate
+        );
+
+      let backupFileName =
+        '';
+
+      if (
+        futureRecords.length
+      ) {
+        try {
+          if (
+            !fs.existsSync(
+              BACKUP_DIR
+            )
+          ) {
+            fs.mkdirSync(
+              BACKUP_DIR,
+              {
+                recursive:
+                  true,
+              }
+            );
+          }
+
+          const timestamp =
+            new Date()
+              .toISOString()
+              .replace(
+                /[:.]/g,
+                '-'
+              );
+
+          backupFileName =
+            `future_attendance_backup_${timestamp}.json`;
+
+          const backupPath =
+            path.join(
+              BACKUP_DIR,
+              backupFileName
+            );
+
+          fs.writeFileSync(
+            backupPath,
+            JSON.stringify(
+              {
+                cutoffDate,
+                deletedCount:
+                  futureRecords.length,
+                deletedAt:
+                  new Date().toISOString(),
+                futureRecords,
+                fullState:
+                  serverState,
+              },
+              null,
+              2
+            ),
+            'utf-8'
+          );
+        } catch (error) {
+          console.error(
+            'Future attendance backup error:',
+            error
+          );
+        }
+      }
+
+      serverState.attendanceRecords =
+        validRecords;
+
+      serverState.lastUpdated =
+        Date.now();
+
+      await saveServerData(
+        serverState
+      );
+
+      const remainingFuture =
+        (
+          serverState.attendanceRecords ||
+          []
+        ).filter(
+          record =>
+            record?.date &&
+            String(
+              record.date
+            ) > cutoffDate
+        );
+
+      return res.json({
+        success: true,
+        deletedCount:
+          futureRecords.length,
+        remainingFutureCount:
+          remainingFuture.length,
         cutoffDate,
-        deletedCount: futureRecords.length,
-        deletedAt: new Date().toISOString(),
-        futureRecords,
-        fullState: serverState
-      }, null, 2), 'utf-8');
-    } catch (err) {
-      console.error('Failed to create backup before deleting future records:', err);
+        backupFile:
+          backupFileName,
+        attendanceRecords:
+          serverState.attendanceRecords,
+        lastUpdated:
+          serverState.lastUpdated,
+      });
+    } catch (error) {
+      console.error(
+        'Delete future attendance error:',
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        error:
+          'Failed to delete future attendance',
+      });
     }
   }
+);
 
-  serverState.attendanceRecords = validRecords;
-  serverState.lastUpdated = Date.now();
-  saveServerData(serverState);
+app.post(
+  '/api/leaves',
+  async (req, res) => {
+    try {
+      const leaveRequest =
+        req.body;
 
-  const remainingFuture = (serverState.attendanceRecords || []).filter((r: any) => r && r.date && r.date > cutoffDate);
+      if (
+        !leaveRequest ||
+        !leaveRequest.id ||
+        !leaveRequest.employeeId
+      ) {
+        return res.status(400).json({
+          success: false,
+          error:
+            'Invalid leave request',
+        });
+      }
 
-  res.json({
-    success: true,
-    deletedCount: futureRecords.length,
-    remainingFutureCount: remainingFuture.length,
-    cutoffDate,
-    backupFile: backupFileName,
-    attendanceRecords: serverState.attendanceRecords,
-    lastUpdated: serverState.lastUpdated
-  });
-});
+      serverState.leaveRequests =
+        mergeByUniqueId(
+          serverState.leaveRequests ||
+            [],
+          [leaveRequest]
+        );
 
-// POST /api/attendance - Directly add or update an attendance record
-app.post('/api/attendance', (req, res) => {
-  const record = req.body;
-  if (!record || (!record.id && !record.employeeId)) {
-    return res.status(400).json({ error: 'Invalid attendance record' });
+      serverState.lastUpdated =
+        Date.now();
+
+      await saveServerData(
+        serverState
+      );
+
+      return res.json({
+        success: true,
+        leaveRequests:
+          serverState.leaveRequests,
+        lastUpdated:
+          serverState.lastUpdated,
+      });
+    } catch (error) {
+      console.error(
+        'Leave request error:',
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        error:
+          'Failed to save leave request',
+      });
+    }
   }
+);
 
-  serverState.attendanceRecords = mergeAttendanceRecords(
-    serverState.attendanceRecords || [],
-    [record]
-  );
-  serverState.lastUpdated = Date.now();
-  saveServerData(serverState);
+app.put(
+  '/api/leaves/:id/status',
+  async (req, res) => {
+    try {
+      const id =
+        String(
+          req.params.id
+        ).trim();
 
-  res.json({
-    success: true,
-    attendanceRecords: serverState.attendanceRecords,
-    lastUpdated: serverState.lastUpdated
-  });
-});
+      const {
+        status,
+        reviewNotes,
+        reviewedBy,
+      } =
+        req.body || {};
 
-// POST /api/leaves - Submit a new leave request
-app.post('/api/leaves', (req, res) => {
-  const reqBody = req.body;
-  if (!reqBody || !reqBody.id || !reqBody.employeeId) {
-    return res.status(400).json({ error: 'Invalid leave request' });
+      const leaves =
+        serverState.leaveRequests ||
+        [];
+
+      let found = false;
+
+      serverState.leaveRequests =
+        leaves.map(
+          leave => {
+            if (
+              leave.id !==
+              id
+            ) {
+              return leave;
+            }
+
+            found = true;
+
+            return {
+              ...leave,
+              status:
+                status ??
+                leave.status,
+              reviewNotes:
+                reviewNotes !==
+                undefined
+                  ? reviewNotes
+                  : leave.reviewNotes,
+              reviewedBy:
+                reviewedBy ??
+                leave.reviewedBy,
+              updatedAt:
+                new Date().toISOString(),
+            };
+          }
+        );
+
+      if (!found) {
+        return res.status(404).json({
+          success: false,
+          error:
+            'Leave request not found',
+        });
+      }
+
+      if (
+        serverState.leaveRequests &&
+        serverState.attendanceRecords
+      ) {
+        serverState.attendanceRecords =
+          ensureApprovedLeaveRecordsServer(
+            serverState.attendanceRecords,
+            serverState.leaveRequests
+          );
+      }
+
+      serverState.lastUpdated =
+        Date.now();
+
+      await saveServerData(
+        serverState
+      );
+
+      return res.json({
+        success: true,
+        leaveRequests:
+          serverState.leaveRequests,
+        attendanceRecords:
+          serverState.attendanceRecords,
+        lastUpdated:
+          serverState.lastUpdated,
+      });
+    } catch (error) {
+      console.error(
+        'Leave status error:',
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        error:
+          'Failed to update leave status',
+      });
+    }
   }
+);
 
-  serverState.leaveRequests = mergeByUniqueId(
-    serverState.leaveRequests || [],
-    [reqBody]
-  );
-  serverState.lastUpdated = Date.now();
-  saveServerData(serverState);
+app.post(
+  '/api/overtime',
+  async (req, res) => {
+    try {
+      const overtime =
+        req.body;
 
-  res.json({
-    success: true,
-    leaveRequests: serverState.leaveRequests,
-    lastUpdated: serverState.lastUpdated
-  });
-});
+      if (
+        !overtime ||
+        !overtime.id ||
+        !overtime.employeeId ||
+        !overtime.date
+      ) {
+        return res.status(400).json({
+          success: false,
+          error:
+            'Invalid overtime request',
+        });
+      }
 
-// PUT /api/leaves/:id/status - Update leave status (Approve / Reject)
-app.put('/api/leaves/:id/status', (req, res) => {
-  const { id } = req.params;
-  const { status, reviewNotes, reviewedBy } = req.body;
+      if (
+        !serverState.overtimeRequests
+      ) {
+        serverState.overtimeRequests =
+          [];
+      }
 
-  let found = false;
-  const leaves = serverState.leaveRequests || [];
-  serverState.leaveRequests = leaves.map((l: any) => {
-    if (l.id === id) {
-      found = true;
-      return {
-        ...l,
-        status: status || l.status,
-        reviewNotes: reviewNotes !== undefined ? reviewNotes : l.reviewNotes,
-        reviewedBy: reviewedBy || l.reviewedBy
+      const index =
+        serverState.overtimeRequests.findIndex(
+          item =>
+            item.id ===
+            overtime.id
+        );
+
+      if (index >= 0) {
+        serverState.overtimeRequests[
+          index
+        ] = {
+          ...serverState
+            .overtimeRequests[
+            index
+          ],
+          ...overtime,
+          updatedAt:
+            new Date().toISOString(),
+        };
+      } else {
+        serverState.overtimeRequests.push(
+          {
+            ...overtime,
+            createdAt:
+              overtime.createdAt ||
+              new Date().toISOString(),
+            updatedAt:
+              new Date().toISOString(),
+          }
+        );
+      }
+
+      serverState.lastUpdated =
+        Date.now();
+
+      await saveServerData(
+        serverState
+      );
+
+      return res.json({
+        success: true,
+        overtimeRequests:
+          serverState.overtimeRequests,
+        lastUpdated:
+          serverState.lastUpdated,
+      });
+    } catch (error) {
+      console.error(
+        'Overtime create error:',
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        error:
+          'Failed to save overtime request',
+      });
+    }
+  }
+);
+
+app.put(
+  '/api/overtime/:id/status',
+  async (req, res) => {
+    try {
+      const id =
+        String(
+          req.params.id
+        ).trim();
+
+      const {
+        status,
+        reviewNotes,
+        reviewedBy,
+      } =
+        req.body || {};
+
+      if (
+        !serverState.overtimeRequests
+      ) {
+        serverState.overtimeRequests =
+          [];
+      }
+
+      const index =
+        serverState.overtimeRequests.findIndex(
+          item =>
+            item.id ===
+            id
+        );
+
+      if (index < 0) {
+        return res.status(404).json({
+          success: false,
+          error:
+            'Overtime request not found',
+        });
+      }
+
+      const current =
+        serverState
+          .overtimeRequests[
+          index
+        ];
+
+      serverState.overtimeRequests[
+        index
+      ] = {
+        ...current,
+        status:
+          status ??
+          current.status,
+        reviewNotes:
+          reviewNotes !==
+          undefined
+            ? reviewNotes
+            : current.reviewNotes,
+        reviewedBy:
+          reviewedBy ??
+          current.reviewedBy,
+        updatedAt:
+          new Date().toISOString(),
       };
-    }
-    return l;
-  });
 
-  if (!found) {
-    // If not found, add it
-    serverState.leaveRequests.push({
-      id,
-      status,
-      reviewNotes,
-      reviewedBy,
-      createdAt: new Date().toISOString()
+      serverState.lastUpdated =
+        Date.now();
+
+      await saveServerData(
+        serverState
+      );
+
+      return res.json({
+        success: true,
+        overtimeRequests:
+          serverState.overtimeRequests,
+        lastUpdated:
+          serverState.lastUpdated,
+      });
+    } catch (error) {
+      console.error(
+        'Overtime status error:',
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        error:
+          'Failed to update overtime status',
+      });
+    }
+  }
+);
+
+app.get(
+  '/api/backup',
+  (_req, res) => {
+    try {
+      if (
+        !fs.existsSync(
+          BACKUP_DIR
+        )
+      ) {
+        fs.mkdirSync(
+          BACKUP_DIR,
+          {
+            recursive:
+              true,
+          }
+        );
+      }
+
+      const timestamp =
+        new Date()
+          .toISOString()
+          .replace(
+            /[:.]/g,
+            '-'
+          );
+
+      const fileName =
+        `server_data_backup_${timestamp}.json`;
+
+      const filePath =
+        path.join(
+          BACKUP_DIR,
+          fileName
+        );
+
+      const backupData = {
+        ...serverState,
+        backupTimestamp:
+          new Date().toISOString(),
+        version: '2.0',
+      };
+
+      fs.writeFileSync(
+        filePath,
+        JSON.stringify(
+          backupData,
+          null,
+          2
+        ),
+        'utf-8'
+      );
+
+      res.setHeader(
+        'Content-Type',
+        'application/json'
+      );
+
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${fileName}"`
+      );
+
+      return res.send(
+        JSON.stringify(
+          backupData,
+          null,
+          2
+        )
+      );
+    } catch (error) {
+      console.error(
+        'Backup error:',
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : 'Failed to create backup',
+      });
+    }
+  }
+);
+
+app.post(
+  '/api/backup/restore',
+  async (req, res) => {
+    try {
+      const backup =
+        req.body;
+
+      if (
+        !backup ||
+        !Array.isArray(
+          backup.employees
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          error:
+            'Invalid backup file payload',
+        });
+      }
+
+      if (
+        !fs.existsSync(
+          BACKUP_DIR
+        )
+      ) {
+        fs.mkdirSync(
+          BACKUP_DIR,
+          {
+            recursive:
+              true,
+          }
+        );
+      }
+
+      const preRestorePath =
+        path.join(
+          BACKUP_DIR,
+          `server_data_prerestore_${Date.now()}.json`
+        );
+
+      fs.writeFileSync(
+        preRestorePath,
+        JSON.stringify(
+          serverState,
+          null,
+          2
+        ),
+        'utf-8'
+      );
+
+      serverState = {
+        employees:
+          backup.employees ||
+          [],
+        shifts:
+          Array.isArray(
+            backup.shifts
+          )
+            ? backup.shifts
+            : [],
+        attendanceRecords:
+          Array.isArray(
+            backup.attendanceRecords
+          )
+            ? backup.attendanceRecords
+            : [],
+        leaveRequests:
+          Array.isArray(
+            backup.leaveRequests
+          )
+            ? backup.leaveRequests
+            : [],
+        overtimeRequests:
+          Array.isArray(
+            backup.overtimeRequests
+          )
+            ? backup.overtimeRequests
+            : [],
+        companyNameAr:
+          backup.companyNameAr,
+        companyNameEn:
+          backup.companyNameEn,
+        urgentNotice:
+          backup.urgentNotice,
+        deletedAttendanceKeys:
+          backup.deletedAttendanceKeys ||
+          {},
+        deletedLeaveKeys:
+          backup.deletedLeaveKeys ||
+          {},
+        deletedEmployeeKeys:
+          backup.deletedEmployeeKeys ||
+          {},
+        lastUpdated:
+          Date.now(),
+      };
+
+      if (
+        serverState.leaveRequests &&
+        serverState.attendanceRecords
+      ) {
+        serverState.attendanceRecords =
+          ensureApprovedLeaveRecordsServer(
+            serverState.attendanceRecords,
+            serverState.leaveRequests
+          );
+      }
+
+      await saveServerData(
+        serverState
+      );
+
+      return res.json({
+        success: true,
+        message:
+          'Database successfully restored from backup',
+        lastUpdated:
+          serverState.lastUpdated,
+        employeesCount:
+          serverState.employees
+            ?.length || 0,
+        attendanceRecordsCount:
+          serverState
+            .attendanceRecords
+            ?.length || 0,
+      });
+    } catch (error) {
+      console.error(
+        'Restore error:',
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : 'Restore failed',
+      });
+    }
+  }
+);
+
+app.get(
+  '/api/health',
+  (_req, res) => {
+    return res.json({
+      status: 'ok',
+      database:
+        hasDatabase,
+      kv:
+        hasKvStorage,
+      serverTime:
+        getServerClock(),
     });
   }
-
-  serverState.lastUpdated = Date.now();
-  saveServerData(serverState);
-
-  res.json({
-    success: true,
-    leaveRequests: serverState.leaveRequests,
-    lastUpdated: serverState.lastUpdated
-  });
-});
-
-// GET /api/backup - Generate a manual timestamped backup and download JSON
-app.get('/api/backup', (req, res) => {
-  try {
-    if (!fs.existsSync(BACKUP_DIR)) {
-      fs.mkdirSync(BACKUP_DIR, { recursive: true });
-    }
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const backupFileName = `server_data_backup_${timestamp}.json`;
-    const backupFilePath = path.join(BACKUP_DIR, backupFileName);
-
-    const fullData = {
-      ...serverState,
-      backupTimestamp: new Date().toISOString(),
-      version: '1.0'
-    };
-
-    fs.writeFileSync(backupFilePath, JSON.stringify(fullData, null, 2), 'utf-8');
-
-    res.setHeader('Content-Type', 'application/json');
-    res.setHeader('Content-Disposition', `attachment; filename="${backupFileName}"`);
-    res.send(JSON.stringify(fullData, null, 2));
-  } catch (err: any) {
-    console.error('Error creating backup:', err);
-    res.status(500).json({ error: 'Failed to create backup: ' + err.message });
-  }
-});
-
-// POST /api/backup/restore - Safe restore from JSON backup object
-app.post('/api/backup/restore', (req, res) => {
-  try {
-    const backupData = req.body;
-    if (!backupData || !Array.isArray(backupData.employees)) {
-      return res.status(400).json({ error: 'Invalid backup file payload' });
-    }
-
-    // Save current as pre-restore backup first
-    if (!fs.existsSync(BACKUP_DIR)) {
-      fs.mkdirSync(BACKUP_DIR, { recursive: true });
-    }
-    const preRestorePath = path.join(BACKUP_DIR, `server_data_prerestore_${Date.now()}.json`);
-    fs.writeFileSync(preRestorePath, JSON.stringify(serverState, null, 2), 'utf-8');
-
-    // Update state safely
-    serverState = {
-      employees: backupData.employees || [],
-      attendanceRecords: Array.isArray(backupData.attendanceRecords) ? backupData.attendanceRecords : [],
-      leaveRequests: Array.isArray(backupData.leaveRequests) ? backupData.leaveRequests : [],
-      companyNameAr: backupData.companyNameAr || serverState.companyNameAr,
-      companyNameEn: backupData.companyNameEn || serverState.companyNameEn,
-      urgentNotice: backupData.urgentNotice || serverState.urgentNotice,
-      lastUpdated: Date.now()
-    };
-
-    saveServerData(serverState);
-
-    res.json({
-      success: true,
-      message: 'Database successfully restored from backup',
-      lastUpdated: serverState.lastUpdated,
-      employeesCount: serverState.employees?.length || 0,
-      attendanceRecordsCount: serverState.attendanceRecords?.length || 0
-    });
-  } catch (err: any) {
-    console.error('Error restoring backup:', err);
-    res.status(500).json({ error: 'Restore failed: ' + err.message });
-  }
-});
-
-// Health check endpoint
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', serverTime: getServerClock() });
-});
-
-// POST /api/overtime - Create a new overtime request
-app.post('/api/overtime', (req, res) => {
-  const reqBody = req.body;
-  if (!reqBody || !reqBody.id || !reqBody.employeeId || !reqBody.date) {
-    return res.status(400).json({ error: 'Invalid overtime request' });
-  }
-
-  if (!serverState.overtimeRequests) {
-    serverState.overtimeRequests = [];
-  }
-  
-  const existingIndex = serverState.overtimeRequests.findIndex((o: any) => o.id === reqBody.id);
-  if (existingIndex >= 0) {
-    serverState.overtimeRequests[existingIndex] = { ...serverState.overtimeRequests[existingIndex], ...reqBody };
-  } else {
-    serverState.overtimeRequests.push(reqBody);
-  }
-  
-  serverState.lastUpdated = Date.now();
-  saveServerData(serverState);
-  
-  res.json({
-    success: true,
-    overtimeRequests: serverState.overtimeRequests,
-    lastUpdated: serverState.lastUpdated
-  });
-});
-
-// PUT /api/overtime/:id/status - Update overtime request status
-app.put('/api/overtime/:id/status', (req, res) => {
-  const { id } = req.params;
-  const { status, reviewNotes, reviewedBy } = req.body;
-  
-  if (!serverState.overtimeRequests) {
-    serverState.overtimeRequests = [];
-  }
-  
-  let found = false;
-  serverState.overtimeRequests = serverState.overtimeRequests.map((o: any) => {
-    if (o.id === id) {
-      found = true;
-      return {
-        ...o,
-        status: status || o.status,
-        reviewNotes: reviewNotes !== undefined ? reviewNotes : o.reviewNotes,
-        reviewedBy: reviewedBy || o.reviewedBy,
-        updatedAt: new Date().toISOString()
-      };
-    }
-    return o;
-  });
-  
-  if (!found) {
-    return res.status(404).json({ error: 'Overtime request not found' });
-  }
-  
-  serverState.lastUpdated = Date.now();
-  saveServerData(serverState);
-  
-  res.json({
-    success: true,
-    overtimeRequests: serverState.overtimeRequests,
-    lastUpdated: serverState.lastUpdated
-  });
-});
+);
 
 async function startServer() {
-  const persistentState = await loadPersistentServerData();
-  if (persistentState && typeof persistentState === 'object') {
-    serverState = { ...serverState, ...persistentState };
-  }
+  try {
+    const persistentState =
+      await loadPersistentServerData();
 
-  if (serverState.leaveRequests && serverState.attendanceRecords) {
-    serverState.attendanceRecords = ensureApprovedLeaveRecordsServer(serverState.attendanceRecords, serverState.leaveRequests);
-  }
+    if (
+      persistentState &&
+      typeof persistentState ===
+        'object'
+    ) {
+      serverState = {
+        ...serverState,
+        ...persistentState,
+      };
+    }
 
-  // Vite middleware for development
-  if (process.env.NODE_ENV !== 'production') {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa',
-    });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
-  }
+    serverState.employees =
+      Array.isArray(
+        serverState.employees
+      )
+        ? serverState.employees
+        : [];
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on http://0.0.0.0:${PORT}`);
-  });
+    serverState.shifts =
+      Array.isArray(
+        serverState.shifts
+      )
+        ? serverState.shifts
+        : [];
+
+    serverState.attendanceRecords =
+      Array.isArray(
+        serverState.attendanceRecords
+      )
+        ? serverState.attendanceRecords
+        : [];
+
+    serverState.leaveRequests =
+      Array.isArray(
+        serverState.leaveRequests
+      )
+        ? serverState.leaveRequests
+        : [];
+
+    serverState.overtimeRequests =
+      Array.isArray(
+        serverState.overtimeRequests
+      )
+        ? serverState.overtimeRequests
+        : [];
+
+    serverState.deletedAttendanceKeys =
+      serverState.deletedAttendanceKeys ||
+      {};
+
+    serverState.deletedLeaveKeys =
+      serverState.deletedLeaveKeys ||
+      {};
+
+    serverState.deletedEmployeeKeys =
+      serverState.deletedEmployeeKeys ||
+      {};
+
+    if (
+      serverState.leaveRequests &&
+      serverState.attendanceRecords
+    ) {
+      serverState.attendanceRecords =
+        ensureApprovedLeaveRecordsServer(
+          serverState.attendanceRecords,
+          serverState.leaveRequests
+        );
+    }
+
+    if (
+      process.env.NODE_ENV !==
+      'production'
+    ) {
+      const vite =
+        await createViteServer({
+          server: {
+            middlewareMode:
+              true,
+          },
+          appType: 'spa',
+        });
+
+      app.use(
+        vite.middlewares
+      );
+    } else {
+      const distPath =
+        path.join(
+          process.cwd(),
+          'dist'
+        );
+
+      app.use(
+        express.static(
+          distPath
+        )
+      );
+
+      app.get(
+        '*',
+        (_req, res) => {
+          res.sendFile(
+            path.join(
+              distPath,
+              'index.html'
+            )
+          );
+        }
+      );
+    }
+
+    app.listen(
+      PORT,
+      '0.0.0.0',
+      () => {
+        console.log(
+          `Server running on http://0.0.0.0:${PORT}`
+        );
+      }
+    );
+  } catch (error) {
+    console.error(
+      'Server startup error:',
+      error
+    );
+
+    process.exit(1);
+  }
 }
 
 startServer();
- localServerState// متغيرة الذاكرة المؤقتة الاحتياطية
- = { records: [], employees: [], shifts: [] };
-
-// 1. مسار جلب البيانات الموحد (يمنع الكاش كلياً)
-app.get('/api/data', async (req, res) => {
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-  res.setHeader('Pragma', 'no-cache');
-  res.setHeader('Expires', '0');
-
-  try {
-    if (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) {
-      const data = (await kv.get('app_data')) || localServerState;
-      return res.json({ success: true, ...data });
-    }
-    return res.json({ success: true, ...localServerState });
-  } catch (err) {
-    console.error('KV Fetch Error:', err);
-    return res.json({ success: true, ...localServerState });
-  }
-});
-
-// 2. مسار حفظ/تحديث البيانات الموحد
-app.post('/api/data', async (req, res) => {
-  try {
-    const body = req.body || {};
-
-    if (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) {
-      const currentData = (await kv.get('app_data')) || localServerState;
-      const updatedData = { ...currentData, ...body };
-
-      await kv.set('app_data', updatedData);
-      localServerState = updatedData;
-
-      return res.json({ success: true, ...updatedData });
-    } else {
-      localServerState = { ...localServerState, ...body };
-      return res.json({ success: true, ...localServerState });
-    }
-  } catch (err) {
-    console.error('KV Save Error:', err);
-    return res.status(500).json({ success: false, error: 'فشل حفظ البيانات في KV' });
-  }
-});
