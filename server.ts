@@ -5,7 +5,6 @@ import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
 import { sql } from "drizzle-orm";
-import { createServer as createViteServer } from "vite";
 import { db } from "./src/db/index.js";
 import * as schema from "./src/db/schema.js";
 
@@ -2515,22 +2514,14 @@ async function start() {
 
   // Local development only
   if (!process.env.VERCEL && process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
-      server: {
-        middlewareMode: true,
-      },
-      appType: "spa",
-    });
+   const { createServer: createViteServer } = await import("vite");
 
-    app.use(vite.middlewares);
-
-    app.listen(PORT, "0.0.0.0", () => {
-      console.log(
-        `Server running on port ${PORT} | Database: ${
-          USE_DATABASE ? "SUPABASE" : "LOCAL JSON"
-        }`
-      );
-    });
+const vite = await createViteServer({
+  server: {
+    middlewareMode: true,
+  },
+  appType: "spa",
+});
 
     return;
   }
