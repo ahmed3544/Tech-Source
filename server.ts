@@ -2498,6 +2498,10 @@ app.post(
    FRONTEND / VITE
 ========================= */
 
+/* =========================
+   START / FRONTEND
+========================= */
+
 async function start() {
   if (USE_DATABASE) {
     try {
@@ -2512,7 +2516,7 @@ async function start() {
     );
   }
 
-  // Local development only
+  // Local development with Vite
   if (!process.env.VERCEL && process.env.NODE_ENV !== "production") {
     const { createServer: createViteServer } = await import("vite");
 
@@ -2524,44 +2528,46 @@ async function start() {
     });
 
     app.use(vite.middlewares);
+  } else {
+    // Production / Vercel
+    const dist = path.join(process.cwd(), "dist");
 
-    return;
-  }
+    app.use(express.static(dist));
 
-  return;
-}
+    app.get("/", (_req, res) => {
+      res.sendFile(path.join(dist, "index.html"));
+    });
 
-/* =========================
-   PRODUCTION / VERCEL
-========================= */
+    app.get("*", (req, res) => {
+      if (req.path.startsWith("/api/")) {
+        return res.status(404).json({
+          error: "API endpoint not found",
+        });
+      }
 
-const dist = path.join(process.cwd(), "dist");
-
-app.use(express.static(dist));
-
-app.get("/", (_req, res) => {
-  res.sendFile(path.join(dist, "index.html"));
-});
-
-app.get("*", (req, res) => {
-  if (req.path.startsWith("/api/")) {
-    return res.status(404).json({
-      error: "API endpoint not found",
+      res.sendFile(path.join(dist, "index.html"));
     });
   }
-
-  res.sendFile(path.join(dist, "index.html"));
-});
+}
 
 /* =========================
    LOCAL SERVER
 ========================= */
 
 if (!process.env.VERCEL) {
-  start().catch((e) => {
-    console.error("Server startup failed:", e);
-    process.exit(1);
-  });
+  start()
+    .then(() => {
+      app.listen(PORT, "0.0.0.0", () => {
+        console.log(`Server running on port ${PORT}`);
+        console.log(
+          `Database: ${USE_DATABASE ? "SUPABASE" : "LOCAL JSON"}`
+        );
+      });
+    })
+    .catch((e) => {
+      console.error("Server startup failed:", e);
+      process.exit(1);
+    });
 }
 
 export default app;
