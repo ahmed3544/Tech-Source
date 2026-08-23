@@ -2514,19 +2514,27 @@ async function start() {
 
   // Local development only
   if (!process.env.VERCEL && process.env.NODE_ENV !== "production") {
-   const { createServer: createViteServer } = await import("vite");
+    const { createServer: createViteServer } = await import("vite");
 
-const vite = await createViteServer({
-  server: {
-    middlewareMode: true,
-  },
-  appType: "spa",
-});
+    const vite = await createViteServer({
+      server: {
+        middlewareMode: true,
+      },
+      appType: "spa",
+    });
+
+    app.use(vite.middlewares);
 
     return;
   }
 
-  // Production / Vercel
+  return;
+}
+
+/* =========================
+   PRODUCTION / VERCEL
+========================= */
+
 const dist = path.join(process.cwd(), "dist");
 
 app.use(express.static(dist));
@@ -2543,9 +2551,12 @@ app.get("*", (req, res) => {
   }
 
   res.sendFile(path.join(dist, "index.html"));
-});}
+});
 
-// Start only when running locally
+/* =========================
+   LOCAL SERVER
+========================= */
+
 if (!process.env.VERCEL) {
   start().catch((e) => {
     console.error("Server startup failed:", e);
@@ -2553,5 +2564,4 @@ if (!process.env.VERCEL) {
   });
 }
 
-// Vercel Serverless Function
 export default app;
