@@ -1,12 +1,12 @@
 {
   "version": 2,
   "buildCommand": "npm run build",
-  "functions": {
-    "server.ts": {
-      "runtime": "nodejs22.x"
-    }
-  },
+  "outputDirectory": "dist",
   "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "/server.ts"
+    },
     {
       "source": "/(.*)",
       "destination": "/server.ts"
