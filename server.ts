@@ -2527,14 +2527,23 @@ const vite = await createViteServer({
   }
 
   // Production / Vercel
-  const dist = path.join(process.cwd(), "dist");
+const dist = path.join(process.cwd(), "dist");
 
-  app.use(express.static(dist));
+app.use(express.static(dist));
 
-  app.get("*", (_req, res) => {
-    res.sendFile(path.join(dist, "index.html"));
-  });
-}
+app.get("/", (_req, res) => {
+  res.sendFile(path.join(dist, "index.html"));
+});
+
+app.get("*", (req, res) => {
+  if (req.path.startsWith("/api/")) {
+    return res.status(404).json({
+      error: "API endpoint not found",
+    });
+  }
+
+  res.sendFile(path.join(dist, "index.html"));
+});}
 
 // Start only when running locally
 if (!process.env.VERCEL) {
