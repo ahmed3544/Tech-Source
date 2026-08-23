@@ -1,21 +1,15 @@
 {
   "version": 2,
   "buildCommand": "npm run build",
-  "outputDirectory": "dist",
-  "builds": [
-    {
-      "src": "server.ts",
-      "use": "@vercel/node"
+  "functions": {
+    "server.ts": {
+      "runtime": "nodejs22.x"
     }
-  ],
-  "routes": [
+  },
+  "rewrites": [
     {
-      "src": "/api/(.*)",
-      "dest": "server.ts"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "server.ts"
+      "source": "/(.*)",
+      "destination": "/server.ts"
     }
   ]
 }
