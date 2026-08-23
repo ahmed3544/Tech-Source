@@ -2513,9 +2513,7 @@ async function start() {
     );
   }
 
-  // ================================
-  // LOCAL DEVELOPMENT
-  // ================================
+  // Local development only
   if (!process.env.VERCEL && process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: {
@@ -2537,9 +2535,7 @@ async function start() {
     return;
   }
 
-  // ================================
-  // PRODUCTION / VERCEL
-  // ================================
+  // Production / Vercel
   const dist = path.join(process.cwd(), "dist");
 
   app.use(express.static(dist));
@@ -2549,10 +2545,7 @@ async function start() {
   });
 }
 
-// ================================
-// START LOCAL SERVER ONLY
-// ================================
-
+// Start only when running locally
 if (!process.env.VERCEL) {
   start().catch((e) => {
     console.error("Server startup failed:", e);
@@ -2560,8 +2553,5 @@ if (!process.env.VERCEL) {
   });
 }
 
-// ================================
-// VERCEL EXPORT
-// ================================
-
+// Vercel Serverless Function
 export default app;
