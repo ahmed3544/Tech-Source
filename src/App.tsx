@@ -328,22 +328,34 @@ export default function App() {
           }
 
           if (data.attendanceRecords && Array.isArray(data.attendanceRecords)) {
-            const sanitizedRecs = data.attendanceRecords
-              .filter((r: AttendanceRecord) => !deletedSet.has(r.employeeId))
-              .map(ensureSanitizedRecord);
-            const merged = mergeAttendanceRecords(sanitizedRecs, attendanceRecordsRef.current || []);
-            setAttendanceRecords(merged);
-            attendanceRecordsRef.current = merged;
-            localStorage.setItem('attendance_records', JSON.stringify(merged));
-          }
+  const sanitizedRecs = data.attendanceRecords
+    .filter((r: AttendanceRecord) => !deletedSet.has(r.employeeId))
+    .map(ensureSanitizedRecord);
 
-          if (data.leaveRequests && Array.isArray(data.leaveRequests)) {
-            const cleanLeaves = data.leaveRequests.filter((l: LeaveRequest) => !deletedSet.has(l.employeeId));
-            const mergedLeaves = mergeLeaveRequestsClient(leaveRequestsRef.current || [], cleanLeaves);
-            setLeaveRequests(mergedLeaves);
-            leaveRequestsRef.current = mergedLeaves;
-            localStorage.setItem('attendance_leaves', JSON.stringify(mergedLeaves));
-          }
+  const merged = mergeAttendanceRecords(
+    sanitizedRecs,
+    attendanceRecordsRef.current || []
+  );
+
+  setAttendanceRecords(merged);
+  attendanceRecordsRef.current = merged;
+
+  // لا نحفظ كل سجلات الحضور في Local Storage
+  // لأن حجمها قد يتجاوز حد المتصفح.
+  try {
+    const recentRecords = merged
+      .filter(r => r.date)
+      .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+      .slice(0, 100);
+
+    localStorage.setItem(
+      'attendance_records',
+      JSON.stringify(recentRecords)
+    );
+  } catch (error) {
+    console.warn('Could not save attendance cache locally:', error);
+  }
+}
 
           if (data.companyNameAr) {
             setCompanyNameAr(data.companyNameAr);
@@ -386,17 +398,47 @@ export default function App() {
     localStorage.setItem('company_name_en', companyNameEn);
   }, [companyNameEn]);
 
-  useEffect(() => {
-    localStorage.setItem('attendance_employees', JSON.stringify(employees));
-  }, [employees]);
+useEffect(() => {
+  try {
+    localStorage.setItem(
+      'attendance_employees',
+      JSON.stringify(employees)
+    );
+  } catch (error) {
+    console.warn('Could not save employees locally:', error);
+  }
+}, [employees]);
 
-  useEffect(() => {
-    localStorage.setItem('attendance_records', JSON.stringify(attendanceRecords));
-  }, [attendanceRecords]);
+useEffect(() => {
+  try {
+    // Save only a small local cache.
+    // Full attendance data remains on the server / Supabase.
+    const recentRecords = [...attendanceRecords]
+      .filter(record => record && record.date)
+      .sort((a, b) =>
+        (b.date || '').localeCompare(a.date || '')
+      )
+      .slice(0, 100);
 
-  useEffect(() => {
-    localStorage.setItem('attendance_leaves', JSON.stringify(leaveRequests));
-  }, [leaveRequests]);
+    localStorage.setItem(
+      'attendance_records',
+      JSON.stringify(recentRecords)
+    );
+  } catch (error) {
+    console.warn('Could not save attendance records locally:', error);
+  }
+}, [attendanceRecords]);
+
+useEffect(() => {
+  try {
+    localStorage.setItem(
+      'attendance_leaves',
+      JSON.stringify(leaveRequests)
+    );
+  } catch (error) {
+    console.warn('Could not save leave requests locally:', error);
+  }
+}, [leaveRequests]);
 
   // Handle Tab restrictions based on user role
   useEffect(() => {
@@ -765,46 +807,95 @@ export default function App() {
     pushSync({ attendanceRecords: updated });
   };
 
-  const handleUpdateRecord = (record: AttendanceRecord) => {
-    const recWithTime: AttendanceRecord = { 
-      ...record, 
-      updatedAt: new Date().toISOString() 
-    };
-
-    const targetEmpId = record.employeeId;
-    const targetDate = record.date;
-    const targetId = record.id;
-    const filtered = (attendanceRecordsRef.current || []).filter(r => r.id !== targetId && !(r.employeeId === targetEmpId && r.date === targetDate));
-    const nextRecords = [recWithTime, ...filtered];
-
-    attendanceRecordsRef.current = nextRecords;
-    lastLocalUpdateRef.current = Date.now();
-    localStorage.setItem('attendance_records', JSON.stringify(nextRecords));
-    setAttendanceRecords(nextRecords);
-    pushSync({ attendanceRecords: nextRecords });
-    try {
-      fetch('/api/punch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ employeeId: targetEmpId, action: 'update', record: recWithTime })
-      })
-      .then(res => res.json())
-      .then(data => {
-        if (data && data.success && Array.isArray(data.attendanceRecords)) {
-          const sanitized = data.attendanceRecords.map(ensureSanitizedRecord);
-          attendanceRecordsRef.current = sanitized;
-          setAttendanceRecords(sanitized);
-          localStorage.setItem('attendance_records', JSON.stringify(sanitized));
-          if (data.lastUpdated) {
-            lastLocalUpdateRef.current = data.lastUpdated;
-          }
-        }
-      })
-      .catch(() => {});
-    } catch {
-      // ignore
-    }
+  const handleUpdateRecord = async (record: AttendanceRecord) => {
+  const recWithTime: AttendanceRecord = {
+    ...record,
+    updatedAt: new Date().toISOString(),
   };
+
+  const targetEmpId = record.employeeId;
+  const targetDate = record.date;
+  const targetId = record.id;
+
+  // تحديث الواجهة فورًا
+  const filtered = (
+    attendanceRecordsRef.current || []
+  ).filter(
+    r =>
+      r.id !== targetId &&
+      !(
+        r.employeeId === targetEmpId &&
+        r.date === targetDate
+      )
+  );
+
+  const nextRecords = [
+    recWithTime,
+    ...filtered,
+  ];
+
+  attendanceRecordsRef.current = nextRecords;
+  setAttendanceRecords(nextRecords);
+  lastLocalUpdateRef.current = Date.now();
+
+  try {
+    // إرسال التعديل للسيرفر مرة واحدة فقط
+    const res = await fetch('/api/punch', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        employeeId: targetEmpId,
+        action: 'update',
+        record: recWithTime,
+      }),
+    });
+
+    if (!res.ok) {
+      throw new Error(
+        `Attendance update failed: ${res.status}`
+      );
+    }
+
+    const data = await res.json();
+
+    if (
+      data?.success &&
+      Array.isArray(data.attendanceRecords)
+    ) {
+      const sanitized =
+        data.attendanceRecords.map(
+          ensureSanitizedRecord
+        );
+
+      attendanceRecordsRef.current =
+        sanitized;
+
+      setAttendanceRecords(
+        sanitized
+      );
+
+      if (data.lastUpdated) {
+        lastLocalUpdateRef.current =
+          data.lastUpdated;
+      }
+    }
+  } catch (error) {
+    console.error(
+      'Failed to update attendance record:',
+      error
+    );
+
+    // نحتفظ بالتعديل في الواجهة في حالة تعذر الاتصال
+    attendanceRecordsRef.current =
+      nextRecords;
+
+    setAttendanceRecords(
+      nextRecords
+    );
+  }
+};
 
   // Force end employee break by Leader
   const handleForceEndBreak = (empId: string) => {
@@ -1083,95 +1174,220 @@ export default function App() {
   };
 
   // Leave Actions
-  const handleAddLeave = (req: LeaveRequest) => {
-    const nextLeaves = [req, ...leaveRequestsRef.current];
-    setLeaveRequests(nextLeaves);
-    leaveRequestsRef.current = nextLeaves;
-    localStorage.setItem('attendance_leaves', JSON.stringify(nextLeaves));
+  const handleAddLeave = async (req: LeaveRequest) => {
+  // إضافة الطلب مرة واحدة فقط
+  const nextLeaves = [
+    req,
+    ...leaveRequestsRef.current.filter(
+      existing => existing.id !== req.id
+    )
+  ];
 
-    if (req.status === 'approved') {
-      handleUpdateLeaveStatus(req.id, 'approved', req.reviewNotes || 'تم الاعتماد المباشر عند تقديم الطلب');
-    } else {
-      pushSync({ leaveRequests: nextLeaves });
-    }
+  setLeaveRequests(nextLeaves);
+  leaveRequestsRef.current = nextLeaves;
+
+  try {
+    localStorage.setItem(
+      'attendance_leaves',
+      JSON.stringify(nextLeaves)
+    );
+  } catch (error) {
+    console.warn(
+      'Could not save leave requests locally:',
+      error
+    );
+  }
+
+  // إذا كان الطلب معتمدًا من البداية:
+  // لا نعتمد عليه قبل أن يكون موجودًا فعليًا في الـstate/ref
+  if (req.status === 'approved') {
+    await handleUpdateLeaveStatus(
+      req.id,
+      'approved',
+      req.reviewNotes ||
+        'تم الاعتماد المباشر من الإدارة/التيم ليدر'
+    );
+    return;
+  }
+
+  // Pending: يرسل للسيرفر فقط
+  await pushSync({
+    leaveRequests: nextLeaves
+  });
+};
+
+  const handleUpdateLeaveStatus = async (
+  id: string,
+  status: LeaveStatus,
+  reviewNotes?: string
+) => {
+  const previousReq = leaveRequestsRef.current.find(
+    l => l.id === id
+  );
+
+  if (!previousReq) return;
+
+  const wasApproved =
+    previousReq.status === 'approved';
+
+  const updatedTargetReq: LeaveRequest = {
+    ...previousReq,
+    status,
+    reviewNotes,
+    updatedAt: new Date().toISOString(),
   };
 
-  const handleUpdateLeaveStatus = (id: string, status: LeaveStatus, reviewNotes?: string) => {
-    let updatedTargetReq: LeaveRequest | undefined;
-    const previousReq = leaveRequestsRef.current.find(l => l.id === id);
-    const wasApproved = previousReq?.status === 'approved';
+  const nextLeaves = leaveRequestsRef.current.map(l =>
+    l.id === id ? updatedTargetReq : l
+  );
 
-    const currentLeaves = leaveRequestsRef.current;
-    const nextLeaves = currentLeaves.map(l => {
-      if (l.id === id) {
-        updatedTargetReq = { ...l, status, reviewNotes, updatedAt: new Date().toISOString() };
-        return updatedTargetReq;
-      }
-      return l;
-    });
+  // Update UI immediately
+  setLeaveRequests(nextLeaves);
+  leaveRequestsRef.current = nextLeaves;
 
-    if (!updatedTargetReq) return;
+  try {
+    localStorage.setItem(
+      'attendance_leaves',
+      JSON.stringify(nextLeaves)
+    );
+  } catch (error) {
+    console.warn(
+      'Could not save leave requests locally:',
+      error
+    );
+  }
 
-    setLeaveRequests(nextLeaves);
-    leaveRequestsRef.current = nextLeaves;
-    localStorage.setItem('attendance_leaves', JSON.stringify(nextLeaves));
+  let nextEmployees = employeesRef.current;
+  let nextAttendance = attendanceRecordsRef.current;
 
-    let nextEmployees = employeesRef.current;
-    let nextAttendance = attendanceRecordsRef.current;
+  // =========================================================
+  // APPROVE
+  // =========================================================
 
-    if (status === 'approved' && updatedTargetReq && !wasApproved) {
-      const req = updatedTargetReq;
-      const days = calculateWorkDaysInPeriod(req.startDate, req.endDate);
+  if (
+    status === 'approved' &&
+    !wasApproved
+  ) {
+    const req = updatedTargetReq;
 
-      // 1. Deduct Leave Balances if applicable
-      if (req.type === 'sick' || req.type === 'casual' || req.type === 'emergency' || req.type === 'regular' || req.type === 'annual') {
-        nextEmployees = employeesRef.current.map(emp => {
-          if (emp.id === req.employeeId) {
-            if (req.type === 'sick') {
-              const sickBal = emp.sickLeaveBalance ?? 30;
-              const newSick = Math.max(0, sickBal - days);
-              return { ...emp, sickLeaveBalance: newSick };
-            } else {
-              const casual = emp.casualLeaveBalance ?? 7;
-              const regular = emp.regularLeaveBalance ?? 8;
-              const annual = emp.annualLeaveBalance ?? (casual + regular);
+    const days = calculateWorkDaysInPeriod(
+      req.startDate,
+      req.endDate
+    );
 
-              if (req.type === 'casual' || req.type === 'emergency') {
-                const newCasual = Math.max(0, casual - days);
-                const newAnnual = Math.max(0, annual - days);
-                return { ...emp, casualLeaveBalance: newCasual, annualLeaveBalance: newAnnual };
-              } else {
-                const newRegular = Math.max(0, regular - days);
-                const newAnnual = Math.max(0, annual - days);
-                return { ...emp, regularLeaveBalance: newRegular, annualLeaveBalance: newAnnual };
-              }
-            }
+    // Deduct leave balance
+    if (
+      req.type === 'sick' ||
+      req.type === 'casual' ||
+      req.type === 'emergency' ||
+      req.type === 'regular' ||
+      req.type === 'annual'
+    ) {
+      nextEmployees =
+        employeesRef.current.map(emp => {
+          if (emp.id !== req.employeeId) {
+            return emp;
           }
-          return emp;
+
+          if (req.type === 'sick') {
+            const sickBal =
+              emp.sickLeaveBalance ?? 30;
+
+            return {
+              ...emp,
+              sickLeaveBalance: Math.max(
+                0,
+                sickBal - days
+              ),
+            };
+          }
+
+          const casual =
+            emp.casualLeaveBalance ?? 7;
+
+          const regular =
+            emp.regularLeaveBalance ?? 8;
+
+          const annual =
+            emp.annualLeaveBalance ??
+            (casual + regular);
+
+          if (
+            req.type === 'casual' ||
+            req.type === 'emergency'
+          ) {
+            return {
+              ...emp,
+              casualLeaveBalance: Math.max(
+                0,
+                casual - days
+              ),
+              annualLeaveBalance: Math.max(
+                0,
+                annual - days
+              ),
+            };
+          }
+
+          return {
+            ...emp,
+            regularLeaveBalance: Math.max(
+              0,
+              regular - days
+            ),
+            annualLeaveBalance: Math.max(
+              0,
+              annual - days
+            ),
+          };
         });
-      }
+    }
 
-      // 2. Automatically generate / update AttendanceRecords
-      const newRecords = [...attendanceRecordsRef.current];
-      const cur = new Date(req.startDate);
-      const endDateObj = new Date(req.endDate);
+    // Generate/update attendance records
+    const newRecords = [
+      ...attendanceRecordsRef.current,
+    ];
 
-      while (cur <= endDateObj) {
-        const dateStr = getTodayString(cur);
-        if (!isWeekend(dateStr)) {
-        const existingIdx = newRecords.findIndex(r => r.employeeId === req.employeeId && r.date === dateStr);
+    const cur = new Date(
+      req.startDate
+    );
 
-        if (req.type === 'permission') {
+    const endDateObj = new Date(
+      req.endDate
+    );
+
+    while (cur <= endDateObj) {
+      const dateStr =
+        getTodayString(cur);
+
+      if (!isWeekend(dateStr)) {
+        const existingIdx =
+          newRecords.findIndex(
+            r =>
+              r.employeeId ===
+                req.employeeId &&
+              r.date === dateStr
+          );
+
+        if (
+          req.type === 'permission'
+        ) {
           if (existingIdx >= 0) {
-            const existing = newRecords[existingIdx];
+            const existing =
+              newRecords[existingIdx];
+
             if (existing.checkIn) {
               newRecords[existingIdx] = {
                 ...existing,
                 lateMinutes: 0,
                 lateSeconds: 0,
-                status: existing.checkOut ? 'on_time' : 'in_progress',
+                status: existing.checkOut
+                  ? 'on_time'
+                  : 'in_progress',
                 isExcused: true,
-                excusedReason: req.reason || 'إذن خروج معتمد'
+                excusedReason:
+                  req.reason ||
+                  'إذن خروج معتمد',
               };
             } else {
               newRecords[existingIdx] = {
@@ -1180,13 +1396,16 @@ export default function App() {
                 leaveType: 'permission',
                 lateMinutes: 0,
                 lateSeconds: 0,
-                notes: req.reason ? `إذن: ${req.reason}` : 'إذن خروج معتمد'
+                notes: req.reason
+                  ? `إذن: ${req.reason}`
+                  : 'إذن خروج معتمد',
               };
             }
           } else {
             newRecords.push({
               id: `rec-leave-${req.employeeId}-${dateStr}`,
-              employeeId: req.employeeId,
+              employeeId:
+                req.employeeId,
               date: dateStr,
               status: 'on_leave',
               leaveType: 'permission',
@@ -1194,155 +1413,384 @@ export default function App() {
               lateMinutes: 0,
               earlyLeaveMinutes: 0,
               overtimeHours: 0,
-              notes: req.reason ? `إذن: ${req.reason}` : 'إذن خروج معتمد',
+              notes: req.reason
+                ? `إذن: ${req.reason}`
+                : 'إذن خروج معتمد',
               verifiedByFace: true,
             });
           }
         } else {
-          const notesText = req.type === 'sick'
-            ? `إجازة مرضية: ${req.reason || 'تقرير طبي'}`
-            : req.type === 'casual'
-            ? `إجازة عارضة: ${req.reason || 'ظرف طارئ'}`
-            : req.type === 'annual' || req.type === 'regular'
-            ? `إجازة اعتيادية: ${req.reason || 'رصيد سنوي'}`
-            : (req.reason ? `إجازة (${req.type}): ${req.reason}` : 'إجازة معتمدة');
+          const notesText =
+            req.type === 'sick'
+              ? `إجازة مرضية: ${
+                  req.reason ||
+                  'تقرير طبي'
+                }`
+              : req.type === 'casual'
+              ? `إجازة عارضة: ${
+                  req.reason ||
+                  'ظرف طارئ'
+                }`
+              : req.type ===
+                    'annual' ||
+                  req.type ===
+                    'regular'
+              ? `إجازة اعتيادية: ${
+                  req.reason ||
+                  'رصيد سنوي'
+                }`
+              : req.reason
+              ? `إجازة (${req.type}): ${req.reason}`
+              : 'إجازة معتمدة';
 
           const leaveRec: AttendanceRecord = {
-            id: existingIdx >= 0 ? newRecords[existingIdx].id : `rec-leave-${req.employeeId}-${dateStr}`,
-            employeeId: req.employeeId,
-            date: dateStr,
-            status: 'on_leave',
-            leaveType: req.type,
-            workHours: 0,
-            lateMinutes: 0,
-            earlyLeaveMinutes: 0,
-            overtimeHours: 0,
-            notes: notesText,
-            verifiedByFace: true,
+            id:
+              existingIdx >= 0
+                ? newRecords[existingIdx].id
+                : `rec-leave-${req.employeeId}-${dateStr}`,
+
+            employeeId:
+              req.employeeId,
+
+            date:
+              dateStr,
+
+            status:
+              'on_leave',
+
+            leaveType:
+              req.type,
+
+            workHours:
+              0,
+
+            lateMinutes:
+              0,
+
+            earlyLeaveMinutes:
+              0,
+
+            overtimeHours:
+              0,
+
+            notes:
+              notesText,
+
+            verifiedByFace:
+              true,
           };
 
           if (existingIdx >= 0) {
-            newRecords[existingIdx] = leaveRec;
+            newRecords[existingIdx] =
+              leaveRec;
           } else {
-            newRecords.push(leaveRec);
+            newRecords.push(
+              leaveRec
+            );
           }
         }
-        }
-
-        cur.setDate(cur.getDate() + 1);
       }
-      nextAttendance = sanitizeAttendanceWithPermissions(newRecords, nextLeaves);
-    } else if (wasApproved && status !== 'approved' && updatedTargetReq) {
-      // REVOKING AN APPROVED LEAVE: Restore balance and remove generated on_leave attendance records
-      const req = updatedTargetReq;
-      const days = calculateWorkDaysInPeriod(req.startDate, req.endDate);
 
-      // Restore balances
-      if (req.type === 'sick' || req.type === 'casual' || req.type === 'emergency' || req.type === 'regular' || req.type === 'annual') {
-        nextEmployees = employeesRef.current.map(emp => {
-          if (emp.id === req.employeeId) {
-            if (req.type === 'sick') {
-              const sickBal = emp.sickLeaveBalance ?? 30;
-              return { ...emp, sickLeaveBalance: sickBal + days };
-            } else if (req.type === 'casual' || req.type === 'emergency') {
-              const casual = emp.casualLeaveBalance ?? 7;
-              const annual = emp.annualLeaveBalance ?? 15;
-              return { ...emp, casualLeaveBalance: casual + days, annualLeaveBalance: annual + days };
-            } else {
-              const regular = emp.regularLeaveBalance ?? 8;
-              const annual = emp.annualLeaveBalance ?? 15;
-              return { ...emp, regularLeaveBalance: regular + days, annualLeaveBalance: annual + days };
+      cur.setDate(
+        cur.getDate() + 1
+      );
+    }
+
+    nextAttendance =
+      sanitizeAttendanceWithPermissions(
+        newRecords,
+        nextLeaves
+      );
+  }
+
+  // =========================================================
+  // REJECT / REVOKE
+  // =========================================================
+
+  else if (
+    wasApproved &&
+    status !== 'approved'
+  ) {
+    const req =
+      updatedTargetReq;
+
+    const days =
+      calculateWorkDaysInPeriod(
+        req.startDate,
+        req.endDate
+      );
+
+    // Restore balance
+    if (
+      req.type === 'sick' ||
+      req.type === 'casual' ||
+      req.type === 'emergency' ||
+      req.type === 'regular' ||
+      req.type === 'annual'
+    ) {
+      nextEmployees =
+        employeesRef.current.map(
+          emp => {
+            if (
+              emp.id !==
+              req.employeeId
+            ) {
+              return emp;
             }
-          }
-          return emp;
-        });
-      }
 
-      // Remove on_leave attendance records generated for this leave
-      nextAttendance = attendanceRecordsRef.current.filter(r => {
-        if (r.employeeId === req.employeeId && r.status === 'on_leave' && r.date >= req.startDate && r.date <= req.endDate) {
-          return false;
+            if (
+              req.type === 'sick'
+            ) {
+              return {
+                ...emp,
+                sickLeaveBalance:
+                  (emp.sickLeaveBalance ??
+                    30) +
+                  days,
+              };
+            }
+
+            if (
+              req.type === 'casual' ||
+              req.type === 'emergency'
+            ) {
+              return {
+                ...emp,
+                casualLeaveBalance:
+                  (emp.casualLeaveBalance ??
+                    7) +
+                  days,
+                annualLeaveBalance:
+                  (emp.annualLeaveBalance ??
+                    15) +
+                  days,
+              };
+            }
+
+            return {
+              ...emp,
+              regularLeaveBalance:
+                (emp.regularLeaveBalance ??
+                  8) +
+                days,
+              annualLeaveBalance:
+                (emp.annualLeaveBalance ??
+                  15) +
+                days,
+            };
+          }
+        );
+    }
+
+    // Remove generated attendance leave records
+    nextAttendance =
+      attendanceRecordsRef.current.filter(
+        r => {
+          if (
+            r.employeeId ===
+              req.employeeId &&
+            r.status ===
+              'on_leave' &&
+            r.date >=
+              req.startDate &&
+            r.date <=
+              req.endDate
+          ) {
+            return false;
+          }
+
+          return true;
         }
-        return true;
+      );
+  }
+
+  // =========================================================
+  // UPDATE LOCAL STATE
+  // =========================================================
+
+  setEmployees(
+    nextEmployees
+  );
+
+  employeesRef.current =
+    nextEmployees;
+
+  try {
+    localStorage.setItem(
+      'attendance_employees',
+      JSON.stringify(
+        nextEmployees
+      )
+    );
+  } catch {}
+
+  setAttendanceRecords(
+    nextAttendance
+  );
+
+  attendanceRecordsRef.current =
+    nextAttendance;
+
+  // =========================================================
+  // IMPORTANT:
+  // Save the FINAL state to the backend.
+  // =========================================================
+
+  await pushSync({
+    leaveRequests:
+      nextLeaves,
+
+    employees:
+      nextEmployees,
+
+    attendanceRecords:
+      nextAttendance,
+  });
+};
+// Export CSV helper
+const handleExportCSV = () => {
+  exportToCSV(attendanceRecords, (id) => {
+    const emp = employees.find(e => e.id === id);
+    return emp ? emp.nameAr : id;
+  });
+};
+// Bulk Import Leave Records Success Handler
+const handleImportLeavesSuccess = async (
+  newRecords: LeaveRequest[]
+) => {
+  if (!newRecords || newRecords.length === 0) {
+    return;
+  }
+
+  let currentLeaves = [
+    ...newRecords,
+    ...leaveRequestsRef.current
+  ];
+
+  let currentEmployees = [
+    ...employeesRef.current
+  ];
+
+  let currentAttendance = [
+    ...attendanceRecordsRef.current
+  ];
+
+  // Apply effects for approved imported requests
+  for (const req of newRecords) {
+    if (req.status !== 'approved') {
+      continue;
+    }
+
+    const days = calculateWorkDaysInPeriod(
+      req.startDate,
+      req.endDate
+    );
+
+    // ---------------------------------------------
+    // Deduct leave balances
+    // ---------------------------------------------
+
+    if (
+      req.type === 'sick' ||
+      req.type === 'casual' ||
+      req.type === 'emergency' ||
+      req.type === 'regular' ||
+      req.type === 'annual'
+    ) {
+      currentEmployees = currentEmployees.map(emp => {
+        if (emp.id !== req.employeeId) {
+          return emp;
+        }
+
+        if (req.type === 'sick') {
+          const sickBal =
+            emp.sickLeaveBalance ?? 30;
+
+          return {
+            ...emp,
+            sickLeaveBalance: Math.max(
+              0,
+              sickBal - days
+            )
+          };
+        }
+
+        const casual =
+          emp.casualLeaveBalance ?? 7;
+
+        const regular =
+          emp.regularLeaveBalance ?? 8;
+
+        const annual =
+          emp.annualLeaveBalance ??
+          (casual + regular);
+
+        if (
+          req.type === 'casual' ||
+          req.type === 'emergency'
+        ) {
+          return {
+            ...emp,
+            casualLeaveBalance: Math.max(
+              0,
+              casual - days
+            ),
+            annualLeaveBalance: Math.max(
+              0,
+              annual - days
+            )
+          };
+        }
+
+        return {
+          ...emp,
+          regularLeaveBalance: Math.max(
+            0,
+            regular - days
+          ),
+          annualLeaveBalance: Math.max(
+            0,
+            annual - days
+          )
+        };
       });
     }
 
-    setEmployees(nextEmployees);
-    employeesRef.current = nextEmployees;
-    localStorage.setItem('attendance_employees', JSON.stringify(nextEmployees));
+    // ---------------------------------------------
+    // Generate attendance records
+    // ---------------------------------------------
 
-    setAttendanceRecords(nextAttendance);
-    attendanceRecordsRef.current = nextAttendance;
-    localStorage.setItem('attendance_records', JSON.stringify(nextAttendance));
+    const cur = new Date(req.startDate);
+    const endDateObj = new Date(req.endDate);
 
-    pushSync({
-      leaveRequests: nextLeaves,
-      employees: nextEmployees,
-      attendanceRecords: nextAttendance
-    });
-  };
+    while (cur <= endDateObj) {
+      const dateStr = getTodayString(cur);
 
-  // Export CSV helper
-  const handleExportCSV = () => {
-    exportToCSV(attendanceRecords, (id) => {
-      const emp = employees.find(e => e.id === id);
-      return emp ? emp.nameAr : id;
-    });
-  };
-
-  // Bulk Import Leave Records Success Handler
-  const handleImportLeavesSuccess = async (newRecords: LeaveRequest[]) => {
-    let currentLeaves = [...newRecords, ...leaveRequestsRef.current];
-    let currentEmployees = [...employeesRef.current];
-    let currentAttendance = [...attendanceRecordsRef.current];
-
-    // Apply effects (balance deduction & attendance records sync) for all approved imported requests
-    for (const req of newRecords) {
-      if (req.status !== 'approved') continue;
-
-      const days = calculateWorkDaysInPeriod(req.startDate, req.endDate);
-
-      // 1. Balance Deductions
-      if (req.type === 'sick' || req.type === 'casual' || req.type === 'emergency' || req.type === 'regular' || req.type === 'annual') {
-        currentEmployees = currentEmployees.map(emp => {
-          if (emp.id === req.employeeId) {
-            if (req.type === 'sick') {
-              const sickBal = emp.sickLeaveBalance ?? 30;
-              return { ...emp, sickLeaveBalance: Math.max(0, sickBal - days) };
-            } else if (req.type === 'casual' || req.type === 'emergency') {
-              const casual = emp.casualLeaveBalance ?? 7;
-              const annual = emp.annualLeaveBalance ?? (casual + (emp.regularLeaveBalance ?? 8));
-              return { ...emp, casualLeaveBalance: Math.max(0, casual - days), annualLeaveBalance: Math.max(0, annual - days) };
-            } else {
-              const regular = emp.regularLeaveBalance ?? 8;
-              const annual = emp.annualLeaveBalance ?? ((emp.casualLeaveBalance ?? 7) + regular);
-              return { ...emp, regularLeaveBalance: Math.max(0, regular - days), annualLeaveBalance: Math.max(0, annual - days) };
-            }
-          }
-          return emp;
-        });
-      }
-
-      // 2. Attendance Records Sync for every day in date range
-      const cur = new Date(req.startDate);
-      const endDateObj = new Date(req.endDate);
-
-      while (cur <= endDateObj) {
-        const dateStr = getTodayString(cur);
-        if (!isWeekend(dateStr)) {
-        const existingIdx = currentAttendance.findIndex(r => r.employeeId === req.employeeId && r.date === dateStr);
+      if (!isWeekend(dateStr)) {
+        const existingIdx =
+          currentAttendance.findIndex(
+            r =>
+              r.employeeId === req.employeeId &&
+              r.date === dateStr
+          );
 
         if (req.type === 'permission') {
           if (existingIdx >= 0) {
-            const existing = currentAttendance[existingIdx];
+            const existing =
+              currentAttendance[existingIdx];
+
             if (existing.checkIn) {
               currentAttendance[existingIdx] = {
                 ...existing,
                 lateMinutes: 0,
                 lateSeconds: 0,
-                status: existing.checkOut ? 'on_time' : 'in_progress',
+                status: existing.checkOut
+                  ? 'on_time'
+                  : 'in_progress',
                 isExcused: true,
-                excusedReason: req.reason || 'إذن خروج معتمد'
+                excusedReason:
+                  req.reason ||
+                  'إذن خروج معتمد'
               };
             } else {
               currentAttendance[existingIdx] = {
@@ -1351,7 +1799,9 @@ export default function App() {
                 leaveType: 'permission',
                 lateMinutes: 0,
                 lateSeconds: 0,
-                notes: req.reason ? `إذن: ${req.reason}` : 'إذن خروج معتمد'
+                notes: req.reason
+                  ? `إذن: ${req.reason}`
+                  : 'إذن خروج معتمد'
               };
             }
           } else {
@@ -1365,21 +1815,37 @@ export default function App() {
               lateMinutes: 0,
               earlyLeaveMinutes: 0,
               overtimeHours: 0,
-              notes: req.reason ? `إذن: ${req.reason}` : 'إذن خروج معتمد',
-              verifiedByFace: true,
+              notes: req.reason
+                ? `إذن: ${req.reason}`
+                : 'إذن خروج معتمد',
+              verifiedByFace: true
             });
           }
         } else {
-          const notesText = req.type === 'sick'
-            ? `إجازة مرضية: ${req.reason || 'تقرير طبي'}`
-            : req.type === 'casual'
-            ? `إجازة عارضة: ${req.reason || 'ظرف طارئ'}`
-            : req.type === 'annual' || req.type === 'regular'
-            ? `إجازة اعتيادية: ${req.reason || 'رصيد سنوي'}`
-            : (req.reason ? `إجازة (${req.type}): ${req.reason}` : 'إجازة معتمدة');
+          const notesText =
+            req.type === 'sick'
+              ? `إجازة مرضية: ${
+                  req.reason || 'تقرير طبي'
+                }`
+              : req.type === 'casual'
+              ? `إجازة عارضة: ${
+                  req.reason || 'ظرف طارئ'
+                }`
+              : req.type === 'annual' ||
+                req.type === 'regular'
+              ? `إجازة اعتيادية: ${
+                  req.reason || 'رصيد سنوي'
+                }`
+              : req.reason
+              ? `إجازة (${req.type}): ${req.reason}`
+              : 'إجازة معتمدة';
 
           const leaveRec: AttendanceRecord = {
-            id: existingIdx >= 0 ? currentAttendance[existingIdx].id : `rec-leave-${req.employeeId}-${dateStr}`,
+            id:
+              existingIdx >= 0
+                ? currentAttendance[existingIdx].id
+                : `rec-leave-${req.employeeId}-${dateStr}`,
+
             employeeId: req.employeeId,
             date: dateStr,
             status: 'on_leave',
@@ -1389,45 +1855,86 @@ export default function App() {
             earlyLeaveMinutes: 0,
             overtimeHours: 0,
             notes: notesText,
-            verifiedByFace: true,
+            verifiedByFace: true
           };
 
           if (existingIdx >= 0) {
-            currentAttendance[existingIdx] = leaveRec;
+            currentAttendance[existingIdx] =
+              leaveRec;
           } else {
-            currentAttendance.push(leaveRec);
+            currentAttendance.push(
+              leaveRec
+            );
           }
         }
-        }
-
-        cur.setDate(cur.getDate() + 1);
       }
+
+      cur.setDate(cur.getDate() + 1);
     }
+  }
 
-    // Sanitize any remaining records against approved permissions
-    currentAttendance = sanitizeAttendanceWithPermissions(currentAttendance, currentLeaves);
+  // Sanitize attendance
+  currentAttendance =
+    sanitizeAttendanceWithPermissions(
+      currentAttendance,
+      currentLeaves
+    );
 
-    // Save state atomically
-    setLeaveRequests(currentLeaves);
-    leaveRequestsRef.current = currentLeaves;
-    localStorage.setItem('attendance_leaves', JSON.stringify(currentLeaves));
+  // Update React state
+  setLeaveRequests(
+    currentLeaves
+  );
+  leaveRequestsRef.current =
+    currentLeaves;
 
-    setEmployees(currentEmployees);
-    employeesRef.current = currentEmployees;
-    localStorage.setItem('attendance_employees', JSON.stringify(currentEmployees));
+  try {
+    localStorage.setItem(
+      'attendance_leaves',
+      JSON.stringify(currentLeaves)
+    );
+  } catch (error) {
+    console.warn(
+      'Could not save leave requests locally:',
+      error
+    );
+  }
 
-    setAttendanceRecords(currentAttendance);
-    attendanceRecordsRef.current = currentAttendance;
-    localStorage.setItem('attendance_records', JSON.stringify(currentAttendance));
+  setEmployees(
+    currentEmployees
+  );
+  employeesRef.current =
+    currentEmployees;
 
-    // Sync to backend in one single API call
-    pushSync({
-      leaveRequests: currentLeaves,
-      employees: currentEmployees,
-      attendanceRecords: currentAttendance
-    });
-  };
+  try {
+    localStorage.setItem(
+      'attendance_employees',
+      JSON.stringify(currentEmployees)
+    );
+  } catch (error) {
+    console.warn(
+      'Could not save employees locally:',
+      error
+    );
+  }
 
+  setAttendanceRecords(
+    currentAttendance
+  );
+  attendanceRecordsRef.current =
+    currentAttendance;
+
+  // Send everything to the central server/Supabase
+  await pushSync({
+    leaveRequests:
+      currentLeaves,
+
+    employees:
+      currentEmployees,
+
+    attendanceRecords:
+      currentAttendance
+  });
+};
   const pendingLeavesCount = React.useMemo(() => {
     if (!leaveRequests || leaveRequests.length === 0) return 0;
     if (!currentUser) return leaveRequests.filter(l => l.status === 'pending').length;

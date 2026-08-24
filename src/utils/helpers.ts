@@ -583,8 +583,8 @@ export function exportToCSV(
     const rows = records.map(r => [
       toWesternDigits(r.date),
       `"${getEmpName(r.employeeId)}"`,
-      formatTime(r.checkIn),
-      formatTime(r.checkOut),
+      formatTime(r.checkIn ?? undefined),
+      formatTime(r.checkOut ?? undefined),
       toWesternDigits(r.workHours?.toFixed(1) || '0'),
       toWesternDigits(r.overtimeHours?.toFixed(1) || '0'),
       toWesternDigits(r.lateMinutes || 0),
@@ -981,8 +981,8 @@ export function generateCSVString(
     const rows = (data as AttendanceRecord[]).map(r => [
       toWesternDigits(r.date),
       `"${getEmpName ? getEmpName(r.employeeId) : r.employeeId}"`,
-      formatTime(r.checkIn),
-      formatTime(r.checkOut),
+      formatTime(r.checkIn ?? undefined),
+      formatTime(r.checkOut ?? undefined),
       toWesternDigits(r.workHours?.toFixed(1) || '0'),
       toWesternDigits(r.overtimeHours?.toFixed(1) || '0'),
       toWesternDigits(r.lateMinutes || 0),
