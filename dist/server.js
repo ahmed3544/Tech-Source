@@ -367,6 +367,46 @@ function mergeAttendance(a = [], b = []) {
   }
   return [...m.values()];
 }
+function normalizeLeave(x) {
+  return {
+    ...x,
+    id: String(x.id),
+    employeeId: String(x.employeeId),
+    type: x.type ?? null,
+    startDate: x.startDate ? String(x.startDate).slice(0, 10) : null,
+    endDate: x.endDate ? String(x.endDate).slice(0, 10) : null,
+    reason: x.reason ?? null,
+    status: x.status ?? "pending",
+    createdAt: x.createdAt || (/* @__PURE__ */ new Date()).toISOString(),
+    hours: x.hours == null ? null : Number(x.hours),
+    permissionSlot: x.permissionSlot ?? null,
+    attachmentUrl: x.attachmentUrl ?? null,
+    attachmentName: x.attachmentName ?? null,
+    reviewedBy: x.reviewedBy ?? null,
+    reviewNotes: x.reviewNotes ?? null
+  };
+}
+function isEmployeeOnLeave(leave, date) {
+  if (!leave) {
+    return false;
+  }
+  if (String(leave.status || "").toLowerCase() !== "approved") {
+    return false;
+  }
+  if (!leave.startDate) {
+    return false;
+  }
+  const start2 = String(leave.startDate).slice(0, 10);
+  const end = String(
+    leave.endDate || leave.startDate
+  ).slice(0, 10);
+  return date >= start2 && date <= end;
+}
+function getActiveLeaves(leaves, date) {
+  return leaves.map(normalizeLeave).filter(
+    (x) => isEmployeeOnLeave(x, date)
+  );
+}
 async function setting(key, value) {
   await db.insert(settings).values({
     key,
@@ -382,12 +422,8 @@ async function employeeUpsert(e) {
   const v = {
     id: String(e.id),
     code: e.code ?? null,
-    nameAr: String(
-      e.nameAr ?? ""
-    ),
-    nameEn: String(
-      e.nameEn ?? ""
-    ),
+    nameAr: String(e.nameAr ?? ""),
+    nameEn: String(e.nameEn ?? ""),
     avatar: e.avatar ?? null,
     email: e.email ?? null,
     phone: e.phone ?? null,
@@ -410,16 +446,30 @@ async function employeeUpsert(e) {
     set: v
   });
 }
+async function findAttendance(employeeId, date) {
+  const rows = await db.select().from(
+    attendanceRecords
+  ).where(
+    sql`
+          ${attendanceRecords.employeeId}
+          = ${employeeId}
+          AND
+          ${attendanceRecords.date}
+          = ${date}
+        `
+  );
+  return rows[0] || null;
+}
 async function attendanceUpsert(r) {
   r = sanitize(r);
+  const employeeId = String(r.employeeId);
+  const date = String(r.date);
   const v = {
     id: String(
-      r.id || `rec-${norm(
-        r.employeeId
-      )}-${r.date}`
+      r.id || `rec-${norm(employeeId)}-${date}`
     ),
-    employeeId: String(r.employeeId),
-    date: String(r.date),
+    employeeId,
+    date,
     checkIn: r.checkIn ?? null,
     checkOut: r.checkOut ?? null,
     breakStart: r.breakStart ?? null,
@@ -451,8 +501,12 @@ async function attendanceUpsert(r) {
     status: r.status ?? null,
     leaveType: r.leaveType ?? null,
     notes: r.notes ?? null,
-    verifiedByFace: Boolean(r.verifiedByFace),
-    isExcused: Boolean(r.isExcused),
+    verifiedByFace: Boolean(
+      r.verifiedByFace
+    ),
+    isExcused: Boolean(
+      r.isExcused
+    ),
     excusedBy: r.excusedBy ?? null,
     excusedReason: r.excusedReason ?? null,
     updatedAt: r.updatedAt || (/* @__PURE__ */ new Date()).toISOString(),
@@ -460,33 +514,34 @@ async function attendanceUpsert(r) {
       r.isExplicitCancelCheckOut
     )
   };
-  await db.insert(attendanceRecords).values(v).onConflictDoUpdate({
-    target: [
-      attendanceRecords.employeeId,
-      attendanceRecords.date
-    ],
-    set: v
-  });
-  return v;
+  const existing = await findAttendance(
+    employeeId,
+    date
+  );
+  if (existing) {
+    const [updated] = await db.update(
+      attendanceRecords
+    ).set({
+      ...v,
+      id: existing.id
+    }).where(
+      sql`
+            ${attendanceRecords.id}
+            = ${existing.id}
+          `
+    ).returning();
+    return updated;
+  }
+  const [inserted] = await db.insert(
+    attendanceRecords
+  ).values(v).returning();
+  return inserted;
 }
 async function leaveUpsert(x) {
-  const v = {
-    id: String(x.id),
-    employeeId: String(x.employeeId),
-    type: x.type ?? null,
-    startDate: x.startDate ?? null,
-    endDate: x.endDate ?? null,
-    reason: x.reason ?? null,
-    status: x.status ?? "pending",
-    createdAt: x.createdAt || (/* @__PURE__ */ new Date()).toISOString(),
-    hours: x.hours == null ? null : Number(x.hours),
-    permissionSlot: x.permissionSlot ?? null,
-    attachmentUrl: x.attachmentUrl ?? null,
-    attachmentName: x.attachmentName ?? null,
-    reviewedBy: x.reviewedBy ?? null,
-    reviewNotes: x.reviewNotes ?? null
-  };
-  await db.insert(leaveRequests).values(v).onConflictDoUpdate({
+  const v = normalizeLeave(x);
+  await db.insert(
+    leaveRequests
+  ).values(v).onConflictDoUpdate({
     target: leaveRequests.id,
     set: v
   });
@@ -509,7 +564,9 @@ async function overtimeUpsert(x) {
     createdAt: x.createdAt || (/* @__PURE__ */ new Date()).toISOString(),
     updatedAt: x.updatedAt || (/* @__PURE__ */ new Date()).toISOString()
   };
-  await db.insert(overtimeRequests).values(v).onConflictDoUpdate({
+  await db.insert(
+    overtimeRequests
+  ).values(v).onConflictDoUpdate({
     target: overtimeRequests.id,
     set: v
   });
@@ -538,7 +595,9 @@ async function data() {
   ]);
   localState.employees = employees2;
   localState.shifts = shifts2;
-  localState.leaveRequests = leaveRequests2;
+  localState.leaveRequests = leaveRequests2.map(
+    normalizeLeave
+  );
   localState.overtimeRequests = overtimeRequests2;
   localState.attendanceRecords = attendanceRecords2.map(
     sanitize
@@ -555,24 +614,24 @@ async function data() {
     }
   }
   localState.lastUpdated = Date.now();
+  const today = clock().date;
+  const activeLeaves = getActiveLeaves(
+    localState.leaveRequests,
+    today
+  );
   return {
     ...localState,
+    /*
+    كل الأجهزة هتستقبل نفس
+    leaveRequests من Supabase.
+    */
+    leaveRequests: localState.leaveRequests,
+    /*
+    الإجازات الفعالة اليوم.
+    */
+    activeLeaves,
     lastUpdated: localState.lastUpdated
   };
-}
-async function findAttendance(employeeId, date) {
-  const rows = await db.select().from(
-    attendanceRecords
-  ).where(
-    sql`
-          ${attendanceRecords.employeeId}
-          = ${employeeId}
-          AND
-          ${attendanceRecords.date}
-          = ${date}
-        `
-  );
-  return rows[0] || null;
 }
 app.disable(
   "x-powered-by"
@@ -587,7 +646,7 @@ app.use(
   (_req, res, next) => {
     res.setHeader(
       "Cache-Control",
-      "no-store, no-cache, must-revalidate, proxy-revalidate"
+      "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0"
     );
     res.setHeader(
       "Pragma",
@@ -629,7 +688,13 @@ app.get(
   "/api/data",
   async (_req, res) => {
     try {
-      const result = USE_DATABASE ? await data() : localState;
+      const result = USE_DATABASE ? await data() : {
+        ...localState,
+        activeLeaves: getActiveLeaves(
+          localState.leaveRequests,
+          clock().date
+        )
+      };
       res.json({
         success: true,
         ...result
@@ -642,6 +707,57 @@ app.get(
       res.status(500).json({
         success: false,
         error: "Failed to load application data"
+      });
+    }
+  }
+);
+app.get(
+  "/api/leaves",
+  async (req, res) => {
+    try {
+      const requestedDate = String(
+        req.query.date || clock().date
+      );
+      if (USE_DATABASE) {
+        const rows = await db.select().from(
+          leaveRequests
+        );
+        const normalized2 = rows.map(
+          normalizeLeave
+        );
+        const active = getActiveLeaves(
+          normalized2,
+          requestedDate
+        );
+        return res.json({
+          success: true,
+          leaveRequests: normalized2,
+          activeLeaves: active,
+          date: requestedDate,
+          lastUpdated: Date.now()
+        });
+      }
+      const normalized = localState.leaveRequests.map(
+        normalizeLeave
+      );
+      res.json({
+        success: true,
+        leaveRequests: normalized,
+        activeLeaves: getActiveLeaves(
+          normalized,
+          requestedDate
+        ),
+        date: requestedDate,
+        lastUpdated: Date.now()
+      });
+    } catch (e) {
+      console.error(
+        "GET /api/leaves:",
+        e
+      );
+      res.status(500).json({
+        success: false,
+        error: "Failed to load leaves"
       });
     }
   }
@@ -891,17 +1007,27 @@ app.post(
         )}-${r.date}`
       });
       if (USE_DATABASE) {
-        await attendanceUpsert(s);
+        await attendanceUpsert(
+          s
+        );
         const freshData = await data();
         return res.json({
           success: true,
           record: await findAttendance(
-            String(r.employeeId),
+            String(
+              r.employeeId
+            ),
             String(r.date)
           ),
           attendanceRecords: freshData.attendanceRecords,
           employees: freshData.employees,
           shifts: freshData.shifts,
+          /*
+          مهم:
+          رجوع الإجازات مع الحضور
+          */
+          leaveRequests: freshData.leaveRequests,
+          activeLeaves: freshData.activeLeaves,
           lastUpdated: Date.now()
         });
       }
@@ -914,7 +1040,8 @@ app.post(
       res.json({
         success: true,
         attendanceRecords: localState.attendanceRecords,
-        lastUpdated: localState.lastUpdated
+        leaveRequests: localState.leaveRequests,
+        lastUpdated: Date.now()
       });
     } catch (e) {
       console.error(
@@ -1000,9 +1127,10 @@ app.post(
             b.urgentNotice
           );
         }
+        const fresh = await data();
         return res.json({
           success: true,
-          ...await data()
+          ...fresh
         });
       }
       if (Array.isArray(
@@ -1023,7 +1151,9 @@ app.post(
       if (Array.isArray(
         b.leaveRequests
       )) {
-        localState.leaveRequests = b.leaveRequests;
+        localState.leaveRequests = b.leaveRequests.map(
+          normalizeLeave
+        );
       }
       if (Array.isArray(
         b.overtimeRequests
@@ -1057,7 +1187,11 @@ app.post(
       saveLocalState();
       res.json({
         success: true,
-        ...localState
+        ...localState,
+        activeLeaves: getActiveLeaves(
+          localState.leaveRequests,
+          clock().date
+        )
       });
     } catch (e) {
       console.error(
@@ -1287,28 +1421,58 @@ app.post(
           error: "Invalid leave request"
         });
       }
+      const normalized = normalizeLeave(x);
       if (USE_DATABASE) {
         await leaveUpsert(
-          x
+          normalized
         );
+        const fresh = await data();
         return res.json({
           success: true,
-          leaveRequests: await db.select().from(
-            leaveRequests
-          ),
+          /*
+          الإجازة التي تم حفظها
+          */
+          leaveRequest: fresh.leaveRequests.find(
+            (a) => String(a.id) === String(
+              normalized.id
+            )
+          ) || null,
+          /*
+          كل الإجازات
+          */
+          leaveRequests: fresh.leaveRequests,
+          /*
+          إجازات اليوم
+          */
+          activeLeaves: fresh.activeLeaves,
+          /*
+          باقي البيانات المهمة
+          */
+          employees: fresh.employees,
+          attendanceRecords: fresh.attendanceRecords,
+          shifts: fresh.shifts,
+          overtimeRequests: fresh.overtimeRequests,
           lastUpdated: Date.now()
         });
       }
       localState.leaveRequests = [
         ...localState.leaveRequests.filter(
-          (a) => String(a.id) !== String(x.id)
+          (a) => String(a.id) !== String(
+            normalized.id
+          )
         ),
-        x
+        normalized
       ];
+      localState.lastUpdated = Date.now();
       saveLocalState();
       res.json({
         success: true,
+        leaveRequest: normalized,
         leaveRequests: localState.leaveRequests,
+        activeLeaves: getActiveLeaves(
+          localState.leaveRequests,
+          clock().date
+        ),
         lastUpdated: Date.now()
       });
     } catch (e) {
@@ -1318,7 +1482,7 @@ app.post(
       );
       res.status(500).json({
         success: false,
-        error: "Failed to save leave"
+        error: e instanceof Error ? e.message : "Failed to save leave"
       });
     }
   }
@@ -1344,13 +1508,29 @@ app.put(
                 = ${id}
               `
         ).returning();
-        return x ? res.json({
+        if (!x) {
+          return res.status(404).json({
+            success: false,
+            error: "Leave request not found"
+          });
+        }
+        const fresh = await data();
+        return res.json({
           success: true,
-          leaveRequest: x,
+          leaveRequest: fresh.leaveRequests.find(
+            (a) => String(a.id) === id
+          ) || null,
+          /*
+          نرجع كل الإجازات
+          وليس السجل المعدل فقط.
+          */
+          leaveRequests: fresh.leaveRequests,
+          activeLeaves: fresh.activeLeaves,
+          employees: fresh.employees,
+          attendanceRecords: fresh.attendanceRecords,
+          shifts: fresh.shifts,
+          overtimeRequests: fresh.overtimeRequests,
           lastUpdated: Date.now()
-        }) : res.status(404).json({
-          success: false,
-          error: "Leave request not found"
         });
       }
       const i = localState.leaveRequests.findIndex(
@@ -1362,14 +1542,20 @@ app.put(
           error: "Leave request not found"
         });
       }
-      localState.leaveRequests[i] = {
+      localState.leaveRequests[i] = normalizeLeave({
         ...localState.leaveRequests[i],
         ...b
-      };
+      });
+      localState.lastUpdated = Date.now();
       saveLocalState();
       res.json({
         success: true,
         leaveRequest: localState.leaveRequests[i],
+        leaveRequests: localState.leaveRequests,
+        activeLeaves: getActiveLeaves(
+          localState.leaveRequests,
+          clock().date
+        ),
         lastUpdated: Date.now()
       });
     } catch (e) {
@@ -1454,6 +1640,9 @@ app.put(
         return x ? res.json({
           success: true,
           overtimeRequest: x,
+          overtimeRequests: await db.select().from(
+            overtimeRequests
+          ),
           lastUpdated: Date.now()
         }) : res.status(404).json({
           success: false,
@@ -1478,6 +1667,7 @@ app.put(
       res.json({
         success: true,
         overtimeRequest: localState.overtimeRequests[i],
+        overtimeRequests: localState.overtimeRequests,
         lastUpdated: Date.now()
       });
     } catch (e) {
@@ -1500,7 +1690,7 @@ app.get(
       const b = {
         ...d,
         backupTimestamp: (/* @__PURE__ */ new Date()).toISOString(),
-        version: "2.0"
+        version: "3.0"
       };
       fs.mkdirSync(
         BACKUP_DIR,
@@ -1601,7 +1791,9 @@ app.post(
         attendanceRecords: (b.attendanceRecords || []).filter(
           (x) => String(x.date) <= clock().date
         ),
-        leaveRequests: b.leaveRequests || [],
+        leaveRequests: (b.leaveRequests || []).map(
+          normalizeLeave
+        ),
         overtimeRequests: b.overtimeRequests || [],
         shifts: b.shifts || [],
         lastUpdated: Date.now()
@@ -1609,7 +1801,11 @@ app.post(
       saveLocalState();
       res.json({
         success: true,
-        ...localState
+        ...localState,
+        activeLeaves: getActiveLeaves(
+          localState.leaveRequests,
+          clock().date
+        )
       });
     } catch (e) {
       console.error(
@@ -1626,10 +1822,17 @@ app.post(
 async function start() {
   if (USE_DATABASE) {
     try {
-      await db.execute(sql`select 1`);
-      console.log("Database connection successful.");
+      await db.execute(
+        sql`select 1`
+      );
+      console.log(
+        "Database connection successful."
+      );
     } catch (e) {
-      console.error("Database connection failed:", e);
+      console.error(
+        "Database connection failed:",
+        e
+      );
     }
   } else {
     console.warn(
@@ -1637,40 +1840,78 @@ async function start() {
     );
   }
   if (!process.env.VERCEL && process.env.NODE_ENV !== "production") {
-    const { createServer: createViteServer } = await import("vite");
+    const {
+      createServer: createViteServer
+    } = await import("vite");
     const vite = await createViteServer({
       server: {
         middlewareMode: true
       },
       appType: "spa"
     });
-    app.use(vite.middlewares);
+    app.use(
+      vite.middlewares
+    );
   } else {
-    const dist = path.join(process.cwd(), "dist");
-    app.use(express.static(dist));
-    app.get("/", (_req, res) => {
-      res.sendFile(path.join(dist, "index.html"));
-    });
-    app.get("*", (req, res) => {
-      if (req.path.startsWith("/api/")) {
-        return res.status(404).json({
-          error: "API endpoint not found"
-        });
+    const dist = path.join(
+      process.cwd(),
+      "dist"
+    );
+    app.use(
+      express.static(
+        dist
+      )
+    );
+    app.get(
+      "/",
+      (_req, res) => {
+        res.sendFile(
+          path.join(
+            dist,
+            "index.html"
+          )
+        );
       }
-      res.sendFile(path.join(dist, "index.html"));
-    });
+    );
+    app.get(
+      "*",
+      (req, res) => {
+        if (req.path.startsWith(
+          "/api/"
+        )) {
+          return res.status(404).json({
+            error: "API endpoint not found"
+          });
+        }
+        res.sendFile(
+          path.join(
+            dist,
+            "index.html"
+          )
+        );
+      }
+    );
   }
 }
 if (!process.env.VERCEL) {
   start().then(() => {
-    app.listen(PORT, "0.0.0.0", () => {
-      console.log(`Server running on port ${PORT}`);
-      console.log(
-        `Database: ${USE_DATABASE ? "SUPABASE" : "LOCAL JSON"}`
-      );
-    });
+    app.listen(
+      PORT,
+      "0.0.0.0",
+      () => {
+        console.log(
+          `Server running on port ${PORT}`
+        );
+        console.log(
+          `Database: ${USE_DATABASE ? "SUPABASE" : "LOCAL JSON"}`
+        );
+      }
+    );
   }).catch((e) => {
-    console.error("Server startup failed:", e);
+    console.error(
+      "Server startup failed:",
+      e
+    );
     process.exit(1);
   });
 }
