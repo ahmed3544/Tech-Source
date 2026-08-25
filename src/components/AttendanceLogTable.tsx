@@ -16,7 +16,6 @@ import {
   Trash2,
   Users
  } from 'lucide-react';
-import { DriveBackupButton } from './DriveBackupButton';
 import { generateCSVString } from '../utils/helpers';
 import { AttendanceRecord, Employee, Shift, AttendanceStatus, Language, LeaveRequest } from '../types';
 import { UserAvatar } from './UserAvatar';
@@ -443,18 +442,8 @@ export const AttendanceLogTable: React.FC<AttendanceLogTableProps> = ({
             <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
             <span>{lang === 'ar' ? 'تصدير تقرير (CSV)' : 'Export CSV Report'}</span>
           </button>
-          <DriveBackupButton 
-            csvData={generateCSVString(filteredRecords, (id) => {
-              const emp = employees.find(e => e.id === id);
-              return emp ? emp.nameAr : id;
-            })}
-            filename={`attendance_report_${new Date().toISOString().split('T')[0]}.csv`}
-            lang={lang}
-          />
-
         </div>
       </div>
-
       {/* Filters Bar */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
         {/* Search */}

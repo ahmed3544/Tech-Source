@@ -891,19 +891,17 @@ app.post(
         )}-${r.date}`
       });
       if (USE_DATABASE) {
-        await attendanceUpsert(
-          s
-        );
+        await attendanceUpsert(s);
+        const freshData = await data();
         return res.json({
           success: true,
           record: await findAttendance(
-            String(
-              r.employeeId
-            ),
-            String(
-              r.date
-            )
+            String(r.employeeId),
+            String(r.date)
           ),
+          attendanceRecords: freshData.attendanceRecords,
+          employees: freshData.employees,
+          shifts: freshData.shifts,
           lastUpdated: Date.now()
         });
       }
@@ -925,7 +923,7 @@ app.post(
       );
       res.status(500).json({
         success: false,
-        error: "Failed to save attendance"
+        error: e instanceof Error ? e.message : "Failed to save attendance"
       });
     }
   }

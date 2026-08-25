@@ -58,27 +58,85 @@ export function isWeekend(date: string | Date): boolean {
 /**
  * Calculate actual work days in a period (excluding Friday & Saturday)
  */
-export function calculateWorkDaysInPeriod(startDateStr: string, endDateStr: string): number {
+export function calculateWorkDaysInPeriod(
+  startDateStr: string,
+  endDateStr: string,
+  attendanceRecords: any[] = []
+): number {
   if (!startDateStr || !endDateStr) return 0;
+
   const startParts = startDateStr.split('T')[0].split('-').map(Number);
   const endParts = endDateStr.split('T')[0].split('-').map(Number);
-  if (startParts.length !== 3 || endParts.length !== 3 || startParts.some(isNaN) || endParts.some(isNaN)) {
+
+  if (
+    startParts.length !== 3 ||
+    endParts.length !== 3 ||
+    startParts.some(isNaN) ||
+    endParts.some(isNaN)
+  ) {
     return 0;
   }
 
-  const start = new Date(startParts[0], startParts[1] - 1, startParts[2]);
-  const end = new Date(endParts[0], endParts[1] - 1, endParts[2]);
+  const start = new Date(
+    startParts[0],
+    startParts[1] - 1,
+    startParts[2]
+  );
+
+  const end = new Date(
+    endParts[0],
+    endParts[1] - 1,
+    endParts[2]
+  );
+
   if (isNaN(start.getTime()) || isNaN(end.getTime())) return 0;
+
+  // تواريخ الإجازات والعطلات الرسمية
+  const excludedDates = new Set(
+    (attendanceRecords || [])
+      .filter(record => {
+        const status = String(record.status || '').toLowerCase();
+        const leaveType = String(record.leaveType || '').toLowerCase();
+
+        return (
+          status === 'on_leave' ||
+          leaveType === 'annual' ||
+          leaveType === 'regular' ||
+          leaveType === 'sick' ||
+          leaveType === 'casual' ||
+          leaveType === 'official' ||
+          leaveType === 'holiday'
+        );
+      })
+      .map(record => String(record.date || '').split('T')[0])
+      .filter(Boolean)
+  );
 
   let count = 0;
   const cur = new Date(start);
+
   while (cur <= end) {
     const day = cur.getDay();
-    if (day !== 5 && day !== 6) { // Not Friday (5) and Not Saturday (6)
+
+    const yyyy = cur.getFullYear();
+    const mm = String(cur.getMonth() + 1).padStart(2, '0');
+    const dd = String(cur.getDate()).padStart(2, '0');
+
+    const dateStr = `${yyyy}-${mm}-${dd}`;
+
+    // الجمعة والسبت = إجازة أسبوعية
+    const isWeekendDay = day === 5 || day === 6;
+
+    // إجازة سنوية / مرضية / عارضة / رسمية
+    const isExcludedDay = excludedDates.has(dateStr);
+
+    if (!isWeekendDay && !isExcludedDay) {
       count++;
     }
+
     cur.setDate(cur.getDate() + 1);
   }
+
   return count;
 }
 

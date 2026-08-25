@@ -7,7 +7,6 @@ import { EmployeeManager } from './components/EmployeeManager';
 import { LeaveManager } from './components/LeaveManager';
 import { AnalyticsView } from './components/AnalyticsView';
 import { EmployeePortal } from './components/EmployeePortal';
-import { DataImportModal } from './components/DataImportModal';
 import { LoginModal } from './components/LoginModal';
 import { CompanyRulesModal } from './components/CompanyRulesModal';
 import { CompanySocialBar } from './components/CompanySocialBar';
@@ -80,8 +79,6 @@ export default function App() {
   });
 
   const [isLoginModalOpen, setIsLoginModalOpen] = useState<boolean>(() => !currentUser);
-  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
-  const [importModalTab, setImportModalTab] = useState<'company' | 'employees' | 'raw_paste' | 'backup'>('company');
   const [isRulesModalOpen, setIsRulesModalOpen] = useState(false);
   const [isNoticeModalOpen, setIsNoticeModalOpen] = useState(false);
 
@@ -299,6 +296,24 @@ export default function App() {
         if (!res.ok) return;
         const data = await res.json();
         if (data.success && isMounted) {
+          if (data.leaveRequests && Array.isArray(data.leaveRequests)) {
+  const serverLeaves = data.leaveRequests;
+
+  setLeaveRequests(serverLeaves);
+  leaveRequestsRef.current = serverLeaves;
+
+  try {
+    localStorage.setItem(
+      'attendance_leaves',
+      JSON.stringify(serverLeaves)
+    );
+  } catch (error) {
+    console.warn(
+      'Could not save leave requests cache locally:',
+      error
+    );
+  }
+}
           // If server response is older than our latest local mutation, skip overriding to avoid race conditions
           if (data.lastUpdated && lastLocalUpdateRef.current && data.lastUpdated < lastLocalUpdateRef.current) {
             return;
@@ -327,25 +342,22 @@ export default function App() {
             });
           }
 
-          if (data.attendanceRecords && Array.isArray(data.attendanceRecords)) {
+if (data.attendanceRecords && Array.isArray(data.attendanceRecords)) {
   const sanitizedRecs = data.attendanceRecords
     .filter((r: AttendanceRecord) => !deletedSet.has(r.employeeId))
     .map(ensureSanitizedRecord);
 
-  const merged = mergeAttendanceRecords(
-    sanitizedRecs,
-    attendanceRecordsRef.current || []
-  );
+  const serverRecords = sanitizedRecs;
 
-  setAttendanceRecords(merged);
-  attendanceRecordsRef.current = merged;
+  setAttendanceRecords(serverRecords);
+  attendanceRecordsRef.current = serverRecords;
 
-  // لا نحفظ كل سجلات الحضور في Local Storage
-  // لأن حجمها قد يتجاوز حد المتصفح.
   try {
-    const recentRecords = merged
-      .filter(r => r.date)
-      .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+    const recentRecords = [...serverRecords]
+      .filter(r => r && r.date)
+      .sort((a, b) =>
+        (b.date || '').localeCompare(a.date || '')
+      )
       .slice(0, 100);
 
     localStorage.setItem(
@@ -353,66 +365,60 @@ export default function App() {
       JSON.stringify(recentRecords)
     );
   } catch (error) {
-    console.warn('Could not save attendance cache locally:', error);
+    console.warn(
+      'Could not save attendance cache locally:',
+      error
+    );
   }
 }
+if (data.companyNameAr) {
+  setCompanyNameAr(data.companyNameAr);
+  localStorage.setItem('company_name_ar', data.companyNameAr);
+}
 
-          if (data.companyNameAr) {
-            setCompanyNameAr(data.companyNameAr);
-            localStorage.setItem('company_name_ar', data.companyNameAr);
-          }
+if (data.companyNameEn) {
+  setCompanyNameEn(data.companyNameEn);
+  localStorage.setItem('company_name_en', data.companyNameEn);
+}
 
-          if (data.companyNameEn) {
-            setCompanyNameEn(data.companyNameEn);
-            localStorage.setItem('company_name_en', data.companyNameEn);
-          }
+if (data.urgentNotice !== undefined && !isNoticeModalOpen) {
+  urgentNoticeRef.current = data.urgentNotice;
+  setUrgentNotice(data.urgentNotice);
 
-          if (data.urgentNotice !== undefined && !isNoticeModalOpen) {
-            urgentNoticeRef.current = data.urgentNotice;
-            setUrgentNotice(data.urgentNotice);
-            if (data.urgentNotice && data.urgentNotice.active !== false) {
-              localStorage.setItem('urgent_notice', JSON.stringify(data.urgentNotice));
-            } else {
-              localStorage.removeItem('urgent_notice');
-            }
-          }
-        }
-      } catch {
-        // Fallback silently if offline or server momentarily restarting
-      }
-    };
-
-    fetchLatestData();
-    const interval = setInterval(fetchLatestData, 5000);
-    return () => {
-      isMounted = false;
-      clearInterval(interval);
-    };
-  }, [isNoticeModalOpen]);
-
-  useEffect(() => {
-    localStorage.setItem('company_name_ar', companyNameAr);
-  }, [companyNameAr]);
-
-  useEffect(() => {
-    localStorage.setItem('company_name_en', companyNameEn);
-  }, [companyNameEn]);
-
-useEffect(() => {
-  try {
+  if (
+    data.urgentNotice &&
+    data.urgentNotice.active !== false
+  ) {
     localStorage.setItem(
-      'attendance_employees',
-      JSON.stringify(employees)
+      'urgent_notice',
+      JSON.stringify(data.urgentNotice)
     );
-  } catch (error) {
-    console.warn('Could not save employees locally:', error);
+  } else {
+    localStorage.removeItem('urgent_notice');
   }
-}, [employees]);
+} // إغلاق if urgentNotice
+
+} // إغلاق if (data.success && isMounted)
+
+} catch (error) {
+  console.warn('Failed to fetch latest data:', error);
+}
+
+}; // إغلاق fetchLatestData
+
+fetchLatestData();
+
+const interval = setInterval(fetchLatestData, 1500);
+
+return () => {
+  isMounted = false;
+  clearInterval(interval);
+};
+
+}, [isNoticeModalOpen]);
 
 useEffect(() => {
   try {
-    // Save only a small local cache.
-    // Full attendance data remains on the server / Supabase.
     const recentRecords = [...attendanceRecords]
       .filter(record => record && record.date)
       .sort((a, b) =>
@@ -425,10 +431,12 @@ useEffect(() => {
       JSON.stringify(recentRecords)
     );
   } catch (error) {
-    console.warn('Could not save attendance records locally:', error);
+    console.warn(
+      'Could not save attendance records locally:',
+      error
+    );
   }
-}, [attendanceRecords]);
-
+}, [attendanceRecords])
 useEffect(() => {
   try {
     localStorage.setItem(
@@ -757,7 +765,6 @@ useEffect(() => {
     lastLocalUpdateRef.current = Date.now();
     localStorage.setItem('attendance_records', JSON.stringify(updated));
     setAttendanceRecords(updated);
-    pushSync({ attendanceRecords: updated });
 
     try {
       fetch('/api/punch', {
@@ -804,7 +811,6 @@ useEffect(() => {
     lastLocalUpdateRef.current = Date.now();
     localStorage.setItem('attendance_records', JSON.stringify(updated));
     setAttendanceRecords(updated);
-    pushSync({ attendanceRecords: updated });
   };
 
   const handleUpdateRecord = async (record: AttendanceRecord) => {
@@ -860,27 +866,35 @@ useEffect(() => {
 
     const data = await res.json();
 
-    if (
-      data?.success &&
-      Array.isArray(data.attendanceRecords)
-    ) {
-      const sanitized =
-        data.attendanceRecords.map(
-          ensureSanitizedRecord
-        );
+    if (data?.success && data.record) {
+  const serverRecord = ensureSanitizedRecord(data.record);
 
-      attendanceRecordsRef.current =
-        sanitized;
+  const updatedFromServer = [
+    serverRecord,
+    ...(attendanceRecordsRef.current || []).filter(
+      r =>
+        r.id !== serverRecord.id &&
+        !(
+          r.employeeId === serverRecord.employeeId &&
+          r.date === serverRecord.date
+        )
+    ),
+  ];
 
-      setAttendanceRecords(
-        sanitized
-      );
+  attendanceRecordsRef.current = updatedFromServer;
+  setAttendanceRecords(updatedFromServer);
 
-      if (data.lastUpdated) {
-        lastLocalUpdateRef.current =
-          data.lastUpdated;
-      }
-    }
+  try {
+    localStorage.setItem(
+      'attendance_records',
+      JSON.stringify(updatedFromServer)
+    );
+  } catch {}
+
+  if (data.lastUpdated) {
+    lastLocalUpdateRef.current = data.lastUpdated;
+  }
+}
   } catch (error) {
     console.error(
       'Failed to update attendance record:',
@@ -1970,8 +1984,6 @@ const handleImportLeavesSuccess = async (
         pendingLeavesCount={pendingLeavesCount}
         companyNameAr={companyNameAr}
         companyNameEn={companyNameEn}
-        onOpenImportModal={() => { setImportModalTab('company'); setIsImportModalOpen(true); }}
-        onOpenBackupModal={() => { setImportModalTab('backup'); setIsImportModalOpen(true); }}
         onOpenRulesModal={() => setIsRulesModalOpen(true)}
         onOpenNoticeModal={() => setIsNoticeModalOpen(true)}
         currentUser={currentUser}
@@ -2054,7 +2066,6 @@ const handleImportLeavesSuccess = async (
             onUpdateEmployee={handleUpdateEmployee}
             onDeleteEmployee={handleDeleteEmployee}
             lang={lang}
-            onOpenImportModal={() => setIsImportModalOpen(true)}
             globalSearchTerm={searchTerm}
           />
         )}
@@ -2123,18 +2134,6 @@ const handleImportLeavesSuccess = async (
         onLoginSuccess={handleLoginSuccess}
         lang={lang}
       />
-
-      {/* Data Import & Backup Modal */}
-      <DataImportModal
-        isOpen={isImportModalOpen}
-        onClose={() => setIsImportModalOpen(false)}
-        onImportEmployees={handleImportEmployees}
-        onImportAttendance={handleImportAttendance}
-        employeesCount={employees.length}
-        lang={lang}
-        initialTab="employees"
-      />
-
       {/* Official Company Rules & Regulations Modal */}
       <CompanyRulesModal
         isOpen={isRulesModalOpen}

@@ -1,31 +1,43 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Upload, 
-  FileSpreadsheet, 
-  FileText, 
-  Building2, 
-  Check, 
-  AlertCircle, 
-  X, 
-  Download, 
-  Users, 
-  Sparkles,
-  Database
+import {
+  Upload,
+  FileSpreadsheet,
+  FileText,
+  Check,
+  AlertCircle,
+  X,
+  Download,
+  Users,
 } from 'lucide-react';
+
 import { Employee, AttendanceRecord, Language } from '../types';
 import { getTodayString } from '../utils/helpers';
 
 interface DataImportModalProps {
   isOpen: boolean;
   onClose: () => void;
+
   companyNameAr?: string;
   companyNameEn?: string;
+
   onUpdateCompany?: (nameAr: string, nameEn: string) => void;
-  onImportEmployees: (newEmployees: Employee[], overwrite: boolean) => void;
-  onImportAttendance: (records: AttendanceRecord[], overwrite: boolean) => void;
+
+  onImportEmployees: (
+    newEmployees: Employee[],
+    overwrite: boolean
+  ) => void;
+
+  // موجود للحفاظ على توافق المكون مع الملفات التي تستدعيه
+  onImportAttendance: (
+    records: AttendanceRecord[],
+    overwrite: boolean
+  ) => void;
+
   employeesCount: number;
   lang: Language;
-  initialTab?: 'employees' | 'raw_paste' | 'backup';
+
+  // لم نعد نستخدم backup
+  initialTab?: 'employees' | 'raw_paste';
 }
 
 export function DataImportModal({
@@ -38,124 +50,94 @@ export function DataImportModal({
   onImportAttendance,
   employeesCount,
   lang,
-  initialTab = 'backup',
+  initialTab = 'employees',
 }: DataImportModalProps) {
-  const [activeTab, setActiveTab] = useState<'employees' | 'raw_paste' | 'backup'>(initialTab);
+  // منع تحذير TypeScript بسبب props المستخدمة للتوافق
+  void onImportAttendance;
+  void onUpdateCompany;
 
-  useEffect(() => {
-    if (isOpen && initialTab) {
-      setActiveTab(initialTab);
-    }
-  }, [isOpen, initialTab]);
+  const [activeTab, setActiveTab] = useState<'employees' | 'raw_paste'>(
+    initialTab
+  );
+
   const [rawText, setRawText] = useState('');
   const [overwrite, setOverwrite] = useState(false);
+
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
-  const [nameAr, setNameAr] = useState(companyNameAr);
-  const [nameEn, setNameEn] = useState(companyNameEn);
+
+  const [nameAr] = useState(companyNameAr);
+  const [nameEn] = useState(companyNameEn);
+
+  void nameAr;
+  void nameEn;
 
   useEffect(() => {
-    setNameAr(companyNameAr);
-    setNameEn(companyNameEn);
-  }, [companyNameAr, companyNameEn]);
-
-  const handleDownloadBackup = async () => {
-    try {
-      setIsProcessing(true);
-      setErrorMsg('');
+    if (isOpen) {
+      setActiveTab(initialTab);
       setSuccessMsg('');
-      const res = await fetch('/api/backup');
-      if (!res.ok) throw new Error('فشل إنشاء أو تحميل النسخة الاحتياطية');
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      const timestamp = new Date().toISOString().split('T')[0];
-      link.setAttribute('download', `server_data_backup_${timestamp}.json`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      setSuccessMsg(lang === 'ar' ? 'تم تحضير وتحميل النسخة الاحتياطية بنجاح!' : 'Backup file downloaded successfully!');
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Error downloading backup');
-    } finally {
-      setIsProcessing(false);
+      setErrorMsg('');
     }
-  };
+  }, [isOpen, initialTab]);
 
-  const handleRestoreBackupFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setIsProcessing(true);
-    setErrorMsg('');
-    setSuccessMsg('');
-
-    const reader = new FileReader();
-    reader.onload = async (evt) => {
-      try {
-        const text = evt.target?.result as string;
-        const backupObj = JSON.parse(text);
-        if (!backupObj || (!backupObj.employees && !Array.isArray(backupObj))) {
-          throw new Error('ملف النسخة الاحتياطية غير صالح');
-        }
-
-        const res = await fetch('/api/backup/restore', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(backupObj)
-        });
-        const data = await res.json();
-        if (data.success) {
-          setSuccessMsg(lang === 'ar' ? 'تم استعادة النسخة الاحتياطية بنجاح! جاري تحديث الشاشة...' : 'Database restored successfully! Reloading...');
-          setTimeout(() => {
-            window.location.reload();
-          }, 1500);
-        } else {
-          setErrorMsg(data.error || 'فشلت عملية الاستعادة');
-        }
-      } catch (err: any) {
-        setErrorMsg(err.message || 'Error parsing backup file');
-      } finally {
-        setIsProcessing(false);
-      }
-    };
-    reader.readAsText(file);
-  };
-
-  if (!isOpen) return null;
-
-  const handleSaveCompany = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (onUpdateCompany) {
-      onUpdateCompany(nameAr, nameEn);
-    }
-    setSuccessMsg(lang === 'ar' ? 'تم تحديث اسم الشركة بنجاح!' : 'Company name updated successfully!');
-    setTimeout(() => setSuccessMsg(''), 3000);
-  };
+  /*
+   * ================================
+   * CSV PARSER
+   * ================================
+   */
 
   const parseCSV = (text: string): Employee[] => {
-    const lines = text.split(/\r?\n/).filter(line => line.trim().length > 0);
-    if (lines.length < 2) return [];
+    const lines = text
+      .split(/\r?\n/)
+      .filter((line) => line.trim().length > 0);
+
+    if (lines.length < 2) {
+      return [];
+    }
 
     const result: Employee[] = [];
-    // Assume header is first line
+
+    // أول سطر Header
     for (let i = 1; i < lines.length; i++) {
       const line = lines[i].trim();
+
       if (!line) continue;
-      // Split by comma or tab or semicolon
-      const cols = line.split(/[,;\t]/).map(c => c.replace(/^["']|["']$/g, '').trim());
+
+      const cols = line
+        .split(/[,;\t]/)
+        .map((c) =>
+          c.replace(/^["']|["']$/g, '').trim()
+        );
+
       if (cols.length < 2) continue;
 
-      const code = cols[0] || `EMP-${100 + i}`;
-      const nameArCol = cols[1] || `موظف ${i}`;
-      const nameEnCol = cols[2] || cols[1] || `Employee ${i}`;
-      const dept = cols[3] || 'General';
-      const jobAr = cols[4] || 'موظف';
-      const jobEn = cols[5] || cols[4] || 'Employee';
-      const email = cols[6] || `emp${i}@company.com`;
-      const phone = cols[7] || `+9665000000${i}`;
-      const pin = cols[8] || `${1000 + i}`;
+      const code =
+        cols[0] || `EMP-${100 + i}`;
+
+      const nameArCol =
+        cols[1] || `موظف ${i}`;
+
+      const nameEnCol =
+        cols[2] || cols[1] || `Employee ${i}`;
+
+      const dept =
+        cols[3] || 'General';
+
+      const jobAr =
+        cols[4] || 'موظف';
+
+      const jobEn =
+        cols[5] || cols[4] || 'Employee';
+
+      const email =
+        cols[6] || `emp${i}@company.com`;
+
+      const phone =
+        cols[7] || `+2010000000${i}`;
+
+      const pin =
+        cols[8] || `${1000 + i}`;
 
       result.push({
         id: `emp-imp-${Date.now()}-${i}`,
@@ -174,11 +156,21 @@ export function DataImportModal({
         status: 'active',
       });
     }
+
     return result;
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  /*
+   * ================================
+   * FILE UPLOAD
+   * ================================
+   */
+
+  const handleFileUpload = (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
     const file = e.target.files?.[0];
+
     if (!file) return;
 
     setErrorMsg('');
@@ -186,364 +178,875 @@ export function DataImportModal({
     setIsProcessing(true);
 
     const reader = new FileReader();
+
     reader.onload = (evt) => {
       try {
         const content = evt.target?.result as string;
+
         let importedEmps: Employee[] = [];
 
-        if (file.name.endsWith('.json')) {
+        /*
+         * JSON
+         */
+        if (file.name.toLowerCase().endsWith('.json')) {
           const parsed = JSON.parse(content);
+
           if (Array.isArray(parsed)) {
-            importedEmps = parsed.map((item, idx) => ({
-              id: item.id || `emp-json-${Date.now()}-${idx}`,
-              code: item.code || String(100 + idx),
-              nameAr: item.nameAr || item.name || `موظف ${idx + 1}`,
-              nameEn: item.nameEn || item.name || `Employee ${idx + 1}`,
-              avatar: item.avatar || '',
-              email: item.email || `user${idx}@company.sa`,
-              phone: item.phone || '+966 50 000 0000',
-              department: item.department || 'General',
-              jobTitleAr: item.jobTitleAr || 'موظف',
-              jobTitleEn: item.jobTitleEn || 'Employee',
-              shiftId: item.shiftId || 'shift-1',
-              pin: item.pin || '1234',
-              joinedDate: item.joinedDate || getTodayString(),
-              status: item.status || 'active',
-            }));
-          } else if (parsed.employees && Array.isArray(parsed.employees)) {
-            if (parsed.companyNameAr) {
-              onUpdateCompany(parsed.companyNameAr, parsed.companyNameEn || parsed.companyNameAr);
-            }
+            importedEmps = parsed.map(
+              (item: any, idx: number) => ({
+                id:
+                  item.id ||
+                  `emp-json-${Date.now()}-${idx}`,
+
+                code:
+                  item.code ||
+                  String(100 + idx),
+
+                nameAr:
+                  item.nameAr ||
+                  item.name ||
+                  `موظف ${idx + 1}`,
+
+                nameEn:
+                  item.nameEn ||
+                  item.name ||
+                  `Employee ${idx + 1}`,
+
+                avatar:
+                  item.avatar || '',
+
+                email:
+                  item.email ||
+                  `user${idx}@company.com`,
+
+                phone:
+                  item.phone ||
+                  '+20 100 000 0000',
+
+                department:
+                  item.department ||
+                  'General',
+
+                jobTitleAr:
+                  item.jobTitleAr ||
+                  'موظف',
+
+                jobTitleEn:
+                  item.jobTitleEn ||
+                  'Employee',
+
+                shiftId:
+                  item.shiftId ||
+                  'shift-1',
+
+                pin:
+                  item.pin ||
+                  '1234',
+
+                joinedDate:
+                  item.joinedDate ||
+                  getTodayString(),
+
+                status:
+                  item.status ||
+                  'active',
+              })
+            );
+          } else if (
+            parsed &&
+            parsed.employees &&
+            Array.isArray(parsed.employees)
+          ) {
             importedEmps = parsed.employees;
           }
-        } else {
-          // CSV / TXT / TSV
+        }
+
+        /*
+         * CSV / TXT / TSV
+         */
+        else {
           importedEmps = parseCSV(content);
         }
 
+        /*
+         * النتيجة
+         */
         if (importedEmps.length === 0) {
-          setErrorMsg(lang === 'ar' ? 'لم يتم العثور على موظفين في الملف المرفق. تأكد من تنسيق البيانات.' : 'No employees found in file. Please verify data format.');
+          setErrorMsg(
+            lang === 'ar'
+              ? 'لم يتم العثور على موظفين في الملف المرفق. تأكد من تنسيق البيانات.'
+              : 'No employees found in file. Please verify data format.'
+          );
         } else {
-          onImportEmployees(importedEmps, overwrite);
-          setSuccessMsg(lang === 'ar' ? `تم استيراد ${importedEmps.length} موظف بنجاح!` : `Successfully imported ${importedEmps.length} employees!`);
+          onImportEmployees(
+            importedEmps,
+            overwrite
+          );
+
+          setSuccessMsg(
+            lang === 'ar'
+              ? `تم استيراد ${importedEmps.length} موظف بنجاح!`
+              : `Successfully imported ${importedEmps.length} employees!`
+          );
         }
       } catch (err: any) {
-        setErrorMsg(lang === 'ar' ? 'حدث خطأ أثناء قراءة الملف: ' + err.message : 'Error reading file: ' + err.message);
+        setErrorMsg(
+          lang === 'ar'
+            ? 'حدث خطأ أثناء قراءة الملف: ' +
+                (err?.message || 'خطأ غير معروف')
+            : 'Error reading file: ' +
+                (err?.message || 'Unknown error')
+        );
       } finally {
         setIsProcessing(false);
+
+        // السماح باختيار نفس الملف مرة أخرى
+        e.target.value = '';
       }
     };
-    reader.readAsText(file);
+
+    reader.onerror = () => {
+      setErrorMsg(
+        lang === 'ar'
+          ? 'تعذر قراءة الملف.'
+          : 'Unable to read the file.'
+      );
+
+      setIsProcessing(false);
+    };
+
+    reader.readAsText(file, 'UTF-8');
   };
 
+  /*
+   * ================================
+   * RAW TEXT IMPORT
+   * ================================
+   */
+
   const handleParseRawText = () => {
-    if (!rawText.trim()) return;
+    if (!rawText.trim()) {
+      setErrorMsg(
+        lang === 'ar'
+          ? 'من فضلك أدخل بيانات الموظفين أولاً.'
+          : 'Please enter employee data first.'
+      );
+
+      return;
+    }
+
     setErrorMsg('');
     setSuccessMsg('');
     setIsProcessing(true);
 
     try {
       let importedEmps: Employee[] = [];
-      if (rawText.trim().startsWith('{') || rawText.trim().startsWith('[')) {
-        const parsed = JSON.parse(rawText);
+
+      const trimmed = rawText.trim();
+
+      /*
+       * JSON
+       */
+      if (
+        trimmed.startsWith('{') ||
+        trimmed.startsWith('[')
+      ) {
+        const parsed = JSON.parse(trimmed);
+
         if (Array.isArray(parsed)) {
-          importedEmps = parsed;
-        } else if (parsed.employees) {
-          if (parsed.companyNameAr) {
-            onUpdateCompany(parsed.companyNameAr, parsed.companyNameEn || parsed.companyNameAr);
-          }
+          importedEmps = parsed.map(
+            (item: any, idx: number) => ({
+              id:
+                item.id ||
+                `emp-text-${Date.now()}-${idx}`,
+
+              code:
+                item.code ||
+                String(100 + idx),
+
+              nameAr:
+                item.nameAr ||
+                item.name ||
+                `موظف ${idx + 1}`,
+
+              nameEn:
+                item.nameEn ||
+                item.name ||
+                `Employee ${idx + 1}`,
+
+              avatar:
+                item.avatar || '',
+
+              email:
+                item.email ||
+                `user${idx}@company.com`,
+
+              phone:
+                item.phone ||
+                '+20 100 000 0000',
+
+              department:
+                item.department ||
+                'General',
+
+              jobTitleAr:
+                item.jobTitleAr ||
+                'موظف',
+
+              jobTitleEn:
+                item.jobTitleEn ||
+                'Employee',
+
+              shiftId:
+                item.shiftId ||
+                'shift-1',
+
+              pin:
+                item.pin ||
+                '1234',
+
+              joinedDate:
+                item.joinedDate ||
+                getTodayString(),
+
+              status:
+                item.status ||
+                'active',
+            })
+          );
+        } else if (
+          parsed &&
+          parsed.employees &&
+          Array.isArray(parsed.employees)
+        ) {
           importedEmps = parsed.employees;
         }
-      } else {
-        importedEmps = parseCSV(rawText);
+      }
+
+      /*
+       * CSV / TSV / TXT
+       */
+      else {
+        importedEmps = parseCSV(trimmed);
       }
 
       if (importedEmps.length === 0) {
-        setErrorMsg(lang === 'ar' ? 'تعذر استخراج بيانات الموظفين من النص المنسوخ.' : 'Failed to extract employee data from text.');
+        setErrorMsg(
+          lang === 'ar'
+            ? 'تعذر استخراج بيانات الموظفين من النص المنسوخ.'
+            : 'Failed to extract employee data from text.'
+        );
       } else {
-        onImportEmployees(importedEmps, overwrite);
-        setSuccessMsg(lang === 'ar' ? `تم استيراد ${importedEmps.length} موظف بنجاح!` : `Successfully imported ${importedEmps.length} employees!`);
+        onImportEmployees(
+          importedEmps,
+          overwrite
+        );
+
+        setSuccessMsg(
+          lang === 'ar'
+            ? `تم استيراد ${importedEmps.length} موظف بنجاح!`
+            : `Successfully imported ${importedEmps.length} employees!`
+        );
+
         setRawText('');
       }
     } catch (err: any) {
-      setErrorMsg(lang === 'ar' ? 'خطأ في تنسيق النص: ' + err.message : 'Invalid format: ' + err.message);
+      setErrorMsg(
+        lang === 'ar'
+          ? 'خطأ في تنسيق النص: ' +
+              (err?.message || 'خطأ غير معروف')
+          : 'Invalid format: ' +
+              (err?.message || 'Unknown error')
+      );
     } finally {
       setIsProcessing(false);
     }
   };
 
+  /*
+   * ================================
+   * SAMPLE CSV
+   * ================================
+   */
+
   const downloadSampleCSV = () => {
     const csvContent = `كود الموظف,اسم الموظف بالعربي,English Name,القسم,المسمى الوظيفي,English Job,البريد الإلكتروني,رقم الهاتف,رمز PIN
-101,محمد أحمد العتيبي,Mohammed Ahmed,CX,Senior Graphic Designer,Senior Graphic Designer,mohammed@company.sa,+966501234567,1234
-102,سارة خالد الشمري,Sara Khaled,CX,CX Agent,CX Agent,sara@company.sa,+966559876543,2345
-103,عبدالله علي الغامدي,Abdullah Ali,E-Commerce,E-Commerce Specialist,E-Commerce Specialist,abdullah@company.sa,+966543218765,3456`;
+101,محمد أحمد,Mohammed Ahmed,CX,موظف,Employee,mohammed@company.com,+201012345678,1234
+102,سارة خالد,Sara Khaled,CX,موظف,Employee,sara@company.com,+201012345679,2345
+103,عبدالله علي,Abdullah Ali,E-Commerce,موظف,Employee,abdullah@company.com,+201012345680,3456`;
 
-    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
+    const blob = new Blob(
+      ['\uFEFF' + csvContent],
+      {
+        type: 'text/csv;charset=utf-8;',
+      }
+    );
+
+    const url =
+      URL.createObjectURL(blob);
+
+    const link =
+      document.createElement('a');
+
     link.href = url;
-    link.setAttribute('download', 'نموذج_استيراد_الموظفين.csv');
+
+    link.setAttribute(
+      'download',
+      'نموذج_استيراد_الموظفين.csv'
+    );
+
     document.body.appendChild(link);
+
     link.click();
+
     document.body.removeChild(link);
+
+    URL.revokeObjectURL(url);
   };
 
+  /*
+   * ================================
+   * MODAL
+   * ================================
+   */
+
+  if (!isOpen) {
+    return null;
+  }
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-md animate-fade-in overflow-y-auto">
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden my-8">
-        
-        {/* Header */}
-        <div className="p-5 border-b border-slate-800 flex items-center justify-between bg-slate-900/50">
+    <div
+      className="
+        fixed inset-0 z-50
+        flex items-center justify-center
+        p-4
+        bg-slate-950/75
+        backdrop-blur-md
+        animate-fade-in
+        overflow-y-auto
+      "
+    >
+      <div
+        className="
+          bg-slate-900
+          border border-slate-800
+          rounded-2xl
+          w-full max-w-2xl
+          shadow-2xl
+          overflow-hidden
+          my-8
+        "
+      >
+
+        {/* ================= HEADER ================= */}
+
+        <div
+          className="
+            p-5
+            border-b border-slate-800
+            flex items-center justify-between
+            bg-slate-900/50
+          "
+        >
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center">
-              <Database className="w-5 h-5" />
+            <div
+              className="
+                w-10 h-10
+                rounded-xl
+                bg-emerald-500/10
+                border border-emerald-500/20
+                text-emerald-400
+                flex items-center justify-center
+              "
+            >
+              <FileSpreadsheet className="w-5 h-5" />
             </div>
+
             <div>
               <h3 className="text-lg font-bold text-white">
-                {lang === 'ar' ? 'استيراد البيانات والنسخة الاحتياطية' : 'Data Import & Backup Safety'}
+                {lang === 'ar'
+                  ? 'استيراد بيانات الموظفين'
+                  : 'Import Employee Data'}
               </h3>
+
               <p className="text-xs text-slate-400">
-                {lang === 'ar' ? 'رفع ملفات Excel/CSV، النسخة الاحتياطية، أو لصق القوائم المباشرة' : 'Upload Excel/CSV files, backup database, or paste raw data'}
+                {lang === 'ar'
+                  ? 'رفع ملف الموظفين أو لصق البيانات مباشرة'
+                  : 'Upload employee files or paste data directly'}
               </p>
             </div>
           </div>
-          <button 
+
+          <button
             onClick={onClose}
-            className="w-8 h-8 rounded-lg bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center hover:bg-slate-700 transition"
+            className="
+              w-8 h-8
+              rounded-lg
+              bg-slate-800
+              text-slate-400
+              hover:text-white
+              flex items-center justify-center
+              hover:bg-slate-700
+              transition
+            "
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Navigation Tabs */}
-        <div className="flex border-b border-slate-800 bg-slate-950/40 p-1">
-          <button
-            onClick={() => setActiveTab('backup')}
-            className={`flex-1 py-2.5 px-3 text-xs sm:text-sm font-medium rounded-lg transition flex items-center justify-center gap-1.5 ${
-              activeTab === 'backup' 
-                ? 'bg-emerald-500 text-slate-950 font-bold shadow-sm' 
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-            }`}
-          >
-            <Download className="w-4 h-4" />
-            {lang === 'ar' ? 'النسخة الاحتياطية' : 'Backup & Safety'}
-          </button>
+        {/* ================= TABS ================= */}
 
+        <div
+          className="
+            flex
+            border-b border-slate-800
+            bg-slate-950/40
+            p-1
+          "
+        >
           <button
-            onClick={() => setActiveTab('employees')}
-            className={`flex-1 py-2.5 px-4 text-xs sm:text-sm font-medium rounded-lg transition flex items-center justify-center gap-2 ${
-              activeTab === 'employees' 
-                ? 'bg-emerald-500 text-slate-950 font-bold shadow-sm' 
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-            }`}
+            onClick={() =>
+              setActiveTab('employees')
+            }
+            className={`
+              flex-1
+              py-2.5
+              px-4
+              text-xs sm:text-sm
+              font-medium
+              rounded-lg
+              transition
+              flex items-center
+              justify-center
+              gap-2
+              ${
+                activeTab === 'employees'
+                  ? 'bg-emerald-500 text-slate-950 font-bold shadow-sm'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              }
+            `}
           >
             <FileSpreadsheet className="w-4 h-4" />
-            {lang === 'ar' ? 'رفع ملف الموظفين' : 'Upload Employees'}
+
+            {lang === 'ar'
+              ? 'رفع ملف الموظفين'
+              : 'Upload Employees'}
           </button>
 
           <button
-            onClick={() => setActiveTab('raw_paste')}
-            className={`flex-1 py-2.5 px-3 text-xs sm:text-sm font-medium rounded-lg transition flex items-center justify-center gap-1.5 ${
-              activeTab === 'raw_paste' 
-                ? 'bg-emerald-500 text-slate-950 font-bold shadow-sm' 
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-            }`}
+            onClick={() =>
+              setActiveTab('raw_paste')
+            }
+            className={`
+              flex-1
+              py-2.5
+              px-4
+              text-xs sm:text-sm
+              font-medium
+              rounded-lg
+              transition
+              flex items-center
+              justify-center
+              gap-2
+              ${
+                activeTab === 'raw_paste'
+                  ? 'bg-emerald-500 text-slate-950 font-bold shadow-sm'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              }
+            `}
           >
             <FileText className="w-4 h-4" />
-            {lang === 'ar' ? 'لصق نص' : 'Paste Text'}
+
+            {lang === 'ar'
+              ? 'لصق نص'
+              : 'Paste Text'}
           </button>
         </div>
 
-        {/* Content Body */}
+        {/* ================= BODY ================= */}
+
         <div className="p-6 space-y-6">
-          
-          {/* Notifications */}
+
+          {/* SUCCESS */}
+
           {successMsg && (
-            <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 flex items-center gap-3 text-sm animate-fade-in">
+            <div
+              className="
+                p-4
+                rounded-xl
+                bg-emerald-500/10
+                border border-emerald-500/30
+                text-emerald-400
+                flex items-center
+                gap-3
+                text-sm
+                animate-fade-in
+              "
+            >
               <Check className="w-5 h-5 shrink-0" />
-              <span>{successMsg}</span>
+
+              <span>
+                {successMsg}
+              </span>
             </div>
           )}
+
+          {/* ERROR */}
 
           {errorMsg && (
-            <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 flex items-center gap-3 text-sm animate-fade-in">
+            <div
+              className="
+                p-4
+                rounded-xl
+                bg-rose-500/10
+                border border-rose-500/30
+                text-rose-400
+                flex items-center
+                gap-3
+                text-sm
+                animate-fade-in
+              "
+            >
               <AlertCircle className="w-5 h-5 shrink-0" />
-              <span>{errorMsg}</span>
+
+              <span>
+                {errorMsg}
+              </span>
             </div>
           )}
 
-          {/* TAB: File Upload (CSV / JSON) */}
+          {/* ================= EMPLOYEE FILE TAB ================= */}
+
           {activeTab === 'employees' && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
+            <div className="space-y-5">
+
+              <div className="flex items-center justify-between gap-3">
                 <label className="text-xs font-semibold text-slate-300">
-                  {lang === 'ar' ? 'اختيار ملف بيانات الموظفين (CSV, TSV, JSON)' : 'Select Employee Data File'}
+                  {lang === 'ar'
+                    ? 'اختيار ملف بيانات الموظفين'
+                    : 'Select Employee Data File'}
                 </label>
+
                 <button
                   onClick={downloadSampleCSV}
-                  className="text-xs text-emerald-400 hover:underline flex items-center gap-1.5"
+                  className="
+                    text-xs
+                    text-emerald-400
+                    hover:underline
+                    flex items-center
+                    gap-1.5
+                  "
                 >
                   <Download className="w-3.5 h-3.5" />
-                  {lang === 'ar' ? 'تحميل نموذج Excel / CSV جاهز' : 'Download Sample CSV'}
+
+                  {lang === 'ar'
+                    ? 'تحميل نموذج CSV'
+                    : 'Download Sample CSV'}
                 </button>
               </div>
 
-              <div className="border-2 border-dashed border-slate-700 hover:border-emerald-500/50 rounded-2xl p-8 text-center bg-slate-800/20 transition relative group">
+              {/* OVERWRITE */}
+
+              <label
+                className="
+                  flex items-center
+                  gap-3
+                  p-3
+                  rounded-xl
+                  bg-slate-950
+                  border border-slate-800
+                  cursor-pointer
+                "
+              >
+                <input
+                  type="checkbox"
+                  checked={overwrite}
+                  onChange={(e) =>
+                    setOverwrite(e.target.checked)
+                  }
+                  className="
+                    w-4 h-4
+                    accent-emerald-500
+                  "
+                />
+
+                <div>
+                  <div className="text-sm font-semibold text-white">
+                    {lang === 'ar'
+                      ? 'استبدال البيانات الموجودة'
+                      : 'Overwrite existing data'}
+                  </div>
+
+                  <div className="text-xs text-slate-500">
+                    {lang === 'ar'
+                      ? 'فعّل هذا الخيار إذا كنت تريد استبدال الموظفين الحاليين بالبيانات المستوردة.'
+                      : 'Enable this to replace existing employees with imported data.'}
+                  </div>
+                </div>
+              </label>
+
+              {/* FILE DROP */}
+
+              <div
+                className="
+                  border-2
+                  border-dashed
+                  border-slate-700
+                  hover:border-emerald-500/50
+                  rounded-2xl
+                  p-10
+                  text-center
+                  bg-slate-800/20
+                  transition
+                  relative
+                  group
+                "
+              >
                 <input
                   type="file"
                   accept=".csv,.json,.txt,.tsv"
                   onChange={handleFileUpload}
                   disabled={isProcessing}
-                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                  className="
+                    absolute inset-0
+                    w-full h-full
+                    opacity-0
+                    cursor-pointer
+                    z-10
+                  "
                 />
-                <div className="flex flex-col items-center justify-center space-y-3 pointer-events-none">
-                  <div className="w-14 h-14 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center group-hover:scale-110 transition duration-300">
+
+                <div className="flex flex-col items-center gap-3 pointer-events-none">
+
+                  <div
+                    className="
+                      w-14 h-14
+                      rounded-2xl
+                      bg-emerald-500/10
+                      border border-emerald-500/20
+                      text-emerald-400
+                      flex items-center
+                      justify-center
+                    "
+                  >
                     <Upload className="w-7 h-7" />
                   </div>
+
                   <div>
-                    <p className="text-sm font-semibold text-white">
-                      {lang === 'ar' ? 'انقر هنا لاختيار الملف أو اسحبه إلى هذا النطاق' : 'Click to select file or drag & drop'}
+                    <p className="text-sm font-bold text-white">
+                      {isProcessing
+                        ? (
+                          lang === 'ar'
+                            ? 'جاري معالجة الملف...'
+                            : 'Processing file...'
+                        )
+                        : (
+                          lang === 'ar'
+                            ? 'اضغط لاختيار ملف الموظفين'
+                            : 'Click to select employee file'
+                        )}
                     </p>
-                    <p className="text-xs text-slate-400 mt-1">
-                      {lang === 'ar' ? 'يدعم ملفات CSV، TSV، ونصوص JSON' : 'Supports CSV, TSV, or JSON formats'}
+
+                    <p className="text-xs text-slate-500 mt-1">
+                      CSV / TSV / TXT / JSON
                     </p>
                   </div>
+
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 pt-2">
+              {/* FORMAT INFO */}
+
+              <div
+                className="
+                  p-4
+                  rounded-xl
+                  bg-slate-950
+                  border border-slate-800
+                "
+              >
+                <p className="text-xs font-bold text-slate-300 mb-2">
+                  {lang === 'ar'
+                    ? 'ترتيب أعمدة CSV:'
+                    : 'CSV column order:'}
+                </p>
+
+                <p className="text-[11px] text-slate-500 leading-6">
+                  كود الموظف → الاسم بالعربي → الاسم بالإنجليزي
+                  → القسم → المسمى الوظيفي → المسمى بالإنجليزي
+                  → البريد → الهاتف → PIN
+                </p>
+              </div>
+
+            </div>
+          )}
+
+          {/* ================= RAW TEXT TAB ================= */}
+
+          {activeTab === 'raw_paste' && (
+            <div className="space-y-5">
+
+              <div>
+                <label className="text-sm font-semibold text-slate-200">
+                  {lang === 'ar'
+                    ? 'الصق بيانات الموظفين هنا'
+                    : 'Paste employee data here'}
+                </label>
+
+                <p className="text-xs text-slate-500 mt-1">
+                  {lang === 'ar'
+                    ? 'يمكنك لصق CSV أو TSV أو JSON.'
+                    : 'You can paste CSV, TSV or JSON.'}
+                </p>
+              </div>
+
+              {/* OVERWRITE */}
+
+              <label
+                className="
+                  flex items-center
+                  gap-3
+                  p-3
+                  rounded-xl
+                  bg-slate-950
+                  border border-slate-800
+                  cursor-pointer
+                "
+              >
                 <input
                   type="checkbox"
-                  id="overwrite-check-1"
                   checked={overwrite}
-                  onChange={(e) => setOverwrite(e.target.checked)}
-                  className="w-4 h-4 rounded border-slate-700 bg-slate-900 text-emerald-500 focus:ring-emerald-500"
+                  onChange={(e) =>
+                    setOverwrite(e.target.checked)
+                  }
+                  className="
+                    w-4 h-4
+                    accent-emerald-500
+                  "
                 />
-                <label htmlFor="overwrite-check-1" className="text-xs text-slate-300 cursor-pointer">
-                  {lang === 'ar' 
-                    ? `استبدال الموظفين الحاليين بالكامل (العدد الحالي: ${employeesCount} موظف)` 
-                    : `Overwrite existing employees list (Current: ${employeesCount})`}
-                </label>
-              </div>
-            </div>
-          )}
 
-          {/* TAB 3: Raw Text Paste */}
-          {activeTab === 'raw_paste' && (
-            <div className="space-y-4">
-              <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                  {lang === 'ar' 
-                    ? 'انسخ والصق بيانات الموظفين (أسماء، أكواد، أقسام) بنسق CSV أو JSON:' 
-                    : 'Paste Employee CSV or JSON data:'}
-                </label>
-                <textarea
-                  value={rawText}
-                  onChange={(e) => setRawText(e.target.value)}
-                  rows={7}
-                  placeholder={`101, محمد بن سعيد, Mohamed Said, IT, مدير نظم, mohamed@company.sa, 0501112233, 1234\n102, فاطمة علي, Fatima Ali, HR, أخصائية موارد, fatima@company.sa, 0504445566, 2345`}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3.5 text-xs text-slate-200 font-mono focus:outline-none focus:border-emerald-500 transition leading-relaxed"
-                />
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    id="overwrite-check-2"
-                    checked={overwrite}
-                    onChange={(e) => setOverwrite(e.target.checked)}
-                    className="w-4 h-4 rounded border-slate-700 bg-slate-900 text-emerald-500 focus:ring-emerald-500"
-                  />
-                  <label htmlFor="overwrite-check-2" className="text-xs text-slate-300 cursor-pointer">
-                    {lang === 'ar' ? 'استبدال البيانات الحالية' : 'Overwrite current data'}
-                  </label>
-                </div>
-
-                <button
-                  onClick={handleParseRawText}
-                  disabled={!rawText.trim() || isProcessing}
-                  className="px-5 py-2.5 rounded-xl bg-emerald-500 text-slate-950 font-bold hover:bg-emerald-400 disabled:opacity-50 transition flex items-center gap-2 text-xs shadow-md"
-                >
-                  <Sparkles className="w-4 h-4" />
-                  {lang === 'ar' ? 'معالجة وتطبيق البيانات' : 'Apply & Process Data'}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* TAB 4: Backup & Safety */}
-          {activeTab === 'backup' && (
-            <div className="space-y-5 animate-fade-in">
-              <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center border border-emerald-500/20 shrink-0">
-                    <Download className="w-5 h-5" />
+                <div>
+                  <div className="text-sm font-semibold text-white">
+                    {lang === 'ar'
+                      ? 'استبدال البيانات الموجودة'
+                      : 'Overwrite existing data'}
                   </div>
-                  <div>
-                    <h4 className="text-sm font-bold text-white">
-                      {lang === 'ar' ? 'تصدير وتحميل النسخة الاحتياطية الكاملة' : 'Download Complete Database Backup'}
-                    </h4>
-                    <p className="text-xs text-slate-400">
-                      {lang === 'ar' ? 'قم بتحميل ملف JSON يحتوي على كافة الموظفين، سجلات الحضور والانصراف، وطلبات الإجازات.' : 'Download a complete JSON snapshot of all employees, attendance records, and leave requests.'}
-                    </p>
+
+                  <div className="text-xs text-slate-500">
+                    {lang === 'ar'
+                      ? 'استبدال الموظفين الحاليين بالبيانات الجديدة.'
+                      : 'Replace existing employees with the new data.'}
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={handleDownloadBackup}
-                  disabled={isProcessing}
-                  className="w-full py-3 rounded-xl bg-emerald-500 text-slate-950 font-bold hover:bg-emerald-400 transition flex items-center justify-center gap-2 text-xs shadow-md disabled:opacity-50"
-                >
-                  <Download className="w-4 h-4" />
-                  <span>{lang === 'ar' ? 'تحميل النسخة الاحتياطية الآن (JSON)' : 'Download Backup File Now (JSON)'}</span>
-                </button>
-              </div>
+              </label>
 
-              <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-blue-500/10 text-blue-400 flex items-center justify-center border border-blue-500/20 shrink-0">
-                    <Upload className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-bold text-white">
-                      {lang === 'ar' ? 'استعادة قاعدة البيانات من ملف نسخة احتياطية' : 'Restore Database from Backup File'}
-                    </h4>
-                    <p className="text-xs text-slate-400">
-                      {lang === 'ar' ? 'حدد ملف النسخة الاحتياطية (server_data_backup_*.json) للاستعادة الآمنة.' : 'Select a backup file (server_data_backup_*.json) for safe database restoration.'}
-                    </p>
-                  </div>
-                </div>
-                <label className="w-full py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold transition flex items-center justify-center gap-2 text-xs cursor-pointer border border-slate-700">
-                  <Upload className="w-4 h-4 text-emerald-400" />
-                  <span>{lang === 'ar' ? 'اختر ملف النسخة الاحتياطية للاستعادة' : 'Select Backup File to Restore'}</span>
-                  <input
-                    type="file"
-                    accept=".json"
-                    onChange={handleRestoreBackupFile}
-                    className="hidden"
-                    disabled={isProcessing}
-                  />
-                </label>
-              </div>
+              <textarea
+                value={rawText}
+                onChange={(e) =>
+                  setRawText(e.target.value)
+                }
+                placeholder={
+                  lang === 'ar'
+                    ? `مثال:
+101,أحمد محمد,Ahmed Mohamed,CX,موظف,Employee,ahmed@company.com,01000000000,1234
+102,محمد علي,Mohamed Ali,IT,موظف,Employee,mohamed@company.com,01000000001,1235`
+                    : `Example:
+101,Ahmed Mohamed,Ahmed Mohamed,CX,Employee,Employee,ahmed@company.com,01000000000,1234`
+                }
+                className="
+                  w-full
+                  min-h-[260px]
+                  p-4
+                  rounded-xl
+                  bg-slate-950
+                  border border-slate-700
+                  focus:border-emerald-500
+                  focus:outline-none
+                  text-sm
+                  text-slate-200
+                  placeholder:text-slate-600
+                  resize-y
+                  font-mono
+                "
+                dir="auto"
+              />
+
+              <button
+                onClick={handleParseRawText}
+                disabled={
+                  isProcessing ||
+                  !rawText.trim()
+                }
+                className="
+                  w-full
+                  py-3
+                  rounded-xl
+                  bg-emerald-500
+                  hover:bg-emerald-400
+                  disabled:bg-slate-700
+                  disabled:text-slate-500
+                  text-slate-950
+                  font-bold
+                  transition
+                "
+              >
+                {isProcessing
+                  ? (
+                    lang === 'ar'
+                      ? 'جاري الاستيراد...'
+                      : 'Importing...'
+                  )
+                  : (
+                    lang === 'ar'
+                      ? 'استيراد الموظفين'
+                      : 'Import Employees'
+                  )}
+              </button>
+
             </div>
           )}
 
         </div>
 
-        {/* Footer */}
-        <div className="p-4 border-t border-slate-800 bg-slate-950/60 flex items-center justify-between text-xs text-slate-400">
+        {/* ================= FOOTER ================= */}
+
+        <div
+          className="
+            p-4
+            border-t border-slate-800
+            bg-slate-950/60
+            flex items-center
+            justify-between
+            gap-4
+            text-xs
+            text-slate-400
+          "
+        >
           <div className="flex items-center gap-2">
             <Users className="w-4 h-4 text-emerald-400" />
+
             <span>
-              {lang === 'ar' ? `عدد الموظفين المعرفين حالياً: ${employeesCount}` : `Current defined employees: ${employeesCount}`}
+              {lang === 'ar'
+                ? `عدد الموظفين المعرفين حالياً: ${employeesCount}`
+                : `Current defined employees: ${employeesCount}`}
             </span>
           </div>
+
           <button
             onClick={onClose}
-            className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 transition"
+            className="
+              px-4 py-2
+              rounded-lg
+              bg-slate-800
+              text-slate-300
+              hover:text-white
+              hover:bg-slate-700
+              transition
+            "
           >
-            {lang === 'ar' ? 'إغلاق Window' : 'Close'}
+            {lang === 'ar'
+              ? 'إغلاق'
+              : 'Close'}
           </button>
         </div>
 

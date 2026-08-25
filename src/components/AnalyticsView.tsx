@@ -24,8 +24,6 @@ import {
   Palmtree,
   FileSpreadsheet,
   Calendar,
-  CheckCircle2,
-  ShieldCheck,
   Zap,
   Activity,
   Award
@@ -38,13 +36,10 @@ import {
   Language
 } from '../types';
 
-import { UserAvatar } from './UserAvatar';
-
 import {
   formatHoursToHHMM,
   formatTime,
   exportToCSV,
-  getStatusBadgeStyle,
   getStatusText,
   toWesternDigits,
   calculateWorkDaysInPeriod,
@@ -64,17 +59,11 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
   employees,
   leaveRequests = [],
   lang,
-  globalSearchTerm,
+  globalSearchTerm
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
-
-  React.useEffect(() => {
-    if (globalSearchTerm) {
-      setSearchQuery(globalSearchTerm);
-    }
-  }, [globalSearchTerm]);
-
   const [selectedDept, setSelectedDept] = useState('all');
+
   const [selectedEmpId, setSelectedEmpId] = useState<string>(
     employees[0]?.id || ''
   );
@@ -83,7 +72,14 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
     'daily' | 'weekly' | 'monthly'
   >('monthly');
 
-  const [selectedMonth, setSelectedMonth] = useState<string>('2026-08');
+  const [selectedMonth, setSelectedMonth] =
+    useState<string>('2026-08');
+
+  React.useEffect(() => {
+    if (globalSearchTerm) {
+      setSearchQuery(globalSearchTerm);
+    }
+  }, [globalSearchTerm]);
 
   // =========================================================
   // TEAM MONTHLY REPORT
@@ -156,17 +152,19 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
       0
     );
 
-    const overtimeHoursTotal = empMonthRecords.reduce(
-      (acc, r) =>
-        acc + (r.overtimeHours || 0),
-      0
-    );
+    const overtimeHoursTotal =
+      empMonthRecords.reduce(
+        (acc, r) =>
+          acc + (r.overtimeHours || 0),
+        0
+      );
 
-    const minusHoursTotal = empMonthRecords.reduce(
-      (acc, r) =>
-        acc + ((r as any).minusHours || 0),
-      0
-    );
+    const minusHoursTotal =
+      empMonthRecords.reduce(
+        (acc, r) =>
+          acc + ((r as any).minusHours || 0),
+        0
+      );
 
     return {
       emp,
@@ -178,7 +176,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
       leaveDays,
       weekendDays,
       lateMins,
-      workedHours,
+      workedHours
     };
   });
 
@@ -201,13 +199,17 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
       'الاسم بالعربي': item.emp.nameAr,
       'الاسم بالإنجليزية': item.emp.nameEn,
       'القسم': item.emp.department,
+
       'الدور':
         item.emp.role === 'leader'
           ? 'تيم ليدر'
           : 'موظف',
 
-      'أيام الحضور': item.presentDays,
-      'أيام الغياب': item.absentDays,
+      'أيام الحضور':
+        item.presentDays,
+
+      'أيام الغياب':
+        item.absentDays,
 
       'أيام العطلات الأسبوعية':
         item.weekendDays,
@@ -222,13 +224,19 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
         item.leaveDays,
 
       'ساعات العمل الإجمالية':
-        formatHoursToHHMM(item.workedHours),
+        formatHoursToHHMM(
+          item.workedHours
+        ),
 
       'ساعات العمل الإضافي':
-        formatHoursToHHMM(item.overtimeHoursTotal),
+        formatHoursToHHMM(
+          item.overtimeHoursTotal
+        ),
 
       'ساعات النقص':
-        formatHoursToHHMM(item.minusHoursTotal),
+        formatHoursToHHMM(
+          item.minusHoursTotal
+        )
     }));
 
     exportToCSV(
@@ -242,14 +250,18 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
   // =========================================================
 
   const filteredEmployees = employees.filter(emp => {
+    const query =
+      searchQuery.toLowerCase().trim();
+
     const matchesQuery =
+      !query ||
       emp.nameAr.includes(searchQuery) ||
       emp.nameEn
         .toLowerCase()
-        .includes(searchQuery.toLowerCase()) ||
+        .includes(query) ||
       emp.code
         .toLowerCase()
-        .includes(searchQuery.toLowerCase());
+        .includes(query);
 
     const matchesDept =
       selectedDept === 'all' ||
@@ -268,82 +280,89 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
     ) || employees[0];
 
   const empRecords = records.filter(
-    r => r.employeeId === targetEmployee?.id
+    r =>
+      r.employeeId ===
+      targetEmployee?.id
   );
 
   // =========================================================
   // EMPLOYEE STATISTICS
   // =========================================================
 
-  const totalPresentDays = empRecords.filter(
-    r =>
-      r.checkIn &&
-      r.status !== 'on_leave' &&
-      r.status !== 'absent' &&
-      r.status !== 'weekend' &&
-      !isWeekend(r.date)
-  ).length;
-
-  const totalWeekendDays = empRecords.filter(
-    r =>
-      r.status === 'weekend' ||
-      (isWeekend(r.date) && !r.checkIn)
-  ).length;
-
-  const totalAbsentDays = empRecords.filter(
-    r =>
-      r.status === 'absent' &&
-      !isWeekend(r.date)
-  ).length;
-
-  const totalLateDays = empRecords.filter(
-    r =>
-      (
-        r.status === 'late' ||
-        (r.lateMinutes && r.lateMinutes > 0)
-      ) &&
-      !isWeekend(r.date)
-  ).length;
-
-  const totalLeaveDays = empRecords.filter(
-    r =>
-      r.status === 'on_leave' &&
-      !isWeekend(r.date)
-  ).length;
-
-  const totalWorkedHours = empRecords.reduce(
-    (acc, r) =>
-      acc +
-      (
-        !isWeekend(r.date) || r.checkIn
-          ? r.workHours || 0
-          : 0
-      ),
-    0
-  );
-
-  const totalOvertimeHours = empRecords.reduce(
-    (acc, r) =>
-      acc + (r.overtimeHours || 0),
-    0
-  );
-
-  const totalMinusHours = empRecords.reduce(
-    (acc, r) =>
-      acc + ((r as any).minusHours || 0),
-    0
-  );
-
-  const totalLateMinutes = empRecords.reduce(
-    (acc, r) =>
-      acc +
-      (
+  const totalPresentDays =
+    empRecords.filter(
+      r =>
+        r.checkIn &&
+        r.status !== 'on_leave' &&
+        r.status !== 'absent' &&
+        r.status !== 'weekend' &&
         !isWeekend(r.date)
-          ? r.lateMinutes || 0
-          : 0
-      ),
-    0
-  );
+    ).length;
+
+  const totalWeekendDays =
+    empRecords.filter(
+      r =>
+        r.status === 'weekend' ||
+        (isWeekend(r.date) && !r.checkIn)
+    ).length;
+
+  const totalAbsentDays =
+    empRecords.filter(
+      r =>
+        r.status === 'absent' &&
+        !isWeekend(r.date)
+    ).length;
+
+  const totalLateDays =
+    empRecords.filter(
+      r =>
+        (
+          r.status === 'late' ||
+          (r.lateMinutes &&
+            r.lateMinutes > 0)
+        ) &&
+        !isWeekend(r.date)
+    ).length;
+
+  const totalWorkedHours =
+    empRecords.reduce(
+      (acc, r) =>
+        acc +
+        (
+          !isWeekend(r.date) ||
+          r.checkIn
+            ? r.workHours || 0
+            : 0
+        ),
+      0
+    );
+
+  const totalOvertimeHours =
+    empRecords.reduce(
+      (acc, r) =>
+        acc + (r.overtimeHours || 0),
+      0
+    );
+
+  const totalMinusHours =
+    empRecords.reduce(
+      (acc, r) =>
+        acc +
+        ((r as any).minusHours || 0),
+      0
+    );
+
+  const totalLateMinutes =
+    empRecords.reduce(
+      (acc, r) =>
+        acc +
+        (
+          !isWeekend(r.date)
+            ? r.lateMinutes || 0
+            : 0
+        ),
+      0
+    );
 
   // =========================================================
   // LEAVE CALCULATIONS
@@ -355,7 +374,8 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
     return leaveRequests
       .filter(
         l =>
-          l.employeeId === targetEmployee?.id &&
+          l.employeeId ===
+            targetEmployee?.id &&
           l.status === 'approved' &&
           types.includes(l.type)
       )
@@ -401,226 +421,269 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
   // =========================================================
 
   const handleExportEmployeeReport = () => {
-    if (!targetEmployee) return;
+  if (!targetEmployee) return;
 
-    const exportData = empRecords.map(r => ({
-      'كود الموظف':
-        targetEmployee.code,
+  const isEnglish = lang === 'en';
 
-      'اسم الموظف بالعربي':
-        targetEmployee.nameAr,
+  const exportData = empRecords.map(r => ({
+    [isEnglish ? 'Employee Code' : 'كود الموظف']:
+      targetEmployee.code,
 
-      'اسم الموظف بالإنجليزية':
-        targetEmployee.nameEn,
+    [isEnglish ? 'Employee Name (Arabic)' : 'اسم الموظف بالعربي']:
+      targetEmployee.nameAr,
 
-      'القسم':
-        targetEmployee.department,
+    [isEnglish ? 'Employee Name (English)' : 'اسم الموظف بالإنجليزية']:
+      targetEmployee.nameEn,
 
-      'التاريخ':
-        r.date,
+    [isEnglish ? 'Department' : 'القسم']:
+      targetEmployee.department,
 
-      'وقت الدخول':
-        r.checkIn
-          ? formatTime(r.checkIn, lang)
-          : '--:--',
+    [isEnglish ? 'Date' : 'التاريخ']:
+      r.date,
 
-      'وقت الخروج':
-        r.checkOut
-          ? formatTime(r.checkOut, lang)
-          : '--:--',
+    [isEnglish ? 'Check-in Time' : 'وقت الدخول']:
+      r.checkIn
+        ? formatTime(r.checkIn, lang)
+        : '--:--',
 
-      'ساعات العمل':
-        r.checkOut
-          ? formatHoursToHHMM(
-              r.workHours || 0
-            )
-          : '--',
+    [isEnglish ? 'Check-out Time' : 'وقت الخروج']:
+      r.checkOut
+        ? formatTime(r.checkOut, lang)
+        : '--:--',
 
-      'العمل الإضافي':
-        r.checkOut
-          ? formatHoursToHHMM(
-              r.overtimeHours || 0
-            )
-          : '--',
+    [isEnglish ? 'Work Hours' : 'ساعات العمل']:
+      r.checkOut
+        ? formatHoursToHHMM(r.workHours || 0)
+        : '--',
 
-      'ساعات النقص':
-        r.checkOut
-          ? formatHoursToHHMM(
-              (r as any).minusHours || 0
-            )
-          : '--',
+    [isEnglish ? 'Overtime' : 'العمل الإضافي']:
+      r.checkOut
+        ? formatHoursToHHMM(
+            r.overtimeHours || 0
+          )
+        : '--',
 
-      'التأخير بالدقائق':
-        r.lateMinutes || 0,
+    [isEnglish ? 'Shortage Hours' : 'ساعات النقص']:
+      r.checkOut
+        ? formatHoursToHHMM(
+            (r as any).minusHours || 0
+          )
+        : '--',
 
-      'الحالة':
-        getStatusText(
-          r.status,
-          lang,
-          r.leaveType,
-          r.notes
-        ),
+    [isEnglish ? 'Late Minutes' : 'التأخير بالدقائق']:
+      r.lateMinutes || 0,
 
-      'ملاحظات':
-        r.notes || '',
-    }));
+    [isEnglish ? 'Status' : 'الحالة']:
+      getStatusText(
+        r.status,
+        lang,
+        r.leaveType,
+        r.notes
+      ),
 
-    exportToCSV(
-      exportData,
-      `Report_${targetEmployee.code}_${targetEmployee.nameEn.replace(
-        /\s+/g,
-        '_'
-      )}`
-    );
-  };
+    [isEnglish ? 'Notes' : 'ملاحظات']:
+      r.notes || ''
+  }));
 
-  // =========================================================
-  // CHART DATA
-  // =========================================================
+  exportToCSV(
+    exportData,
+    `Report_${targetEmployee.code}_${targetEmployee.nameEn.replace(
+      /\s+/g,
+      '_'
+    )}`
+  );
+};
 
-  const weeklyData = [
-    {
-      day: 'الأحد',
-      present: 7,
-      late: 1,
-      absent: 0
-    },
-    {
-      day: 'الإثنين',
-      present: 8,
-      late: 0,
-      absent: 0
-    },
-    {
-      day: 'الثلاثاء',
-      present: 6,
-      late: 2,
-      absent: 0
-    },
-    {
-      day: 'الأربعاء',
-      present: 7,
-      late: 1,
-      absent: 0
-    },
-    {
-      day: 'الخميس',
-      present: 5,
-      late: 2,
-      absent: 1
-    }
-  ];
 
-  const statusCounts = {
-    on_time:
-      records.filter(
-        r => r.status === 'on_time'
-      ).length,
+// =========================================================
+// CHART DATA
+// =========================================================
 
-    late:
-      records.filter(
-        r =>
-          r.status === 'late' ||
-          (r.lateMinutes &&
-            r.lateMinutes > 0)
-      ).length,
+const weeklyData = [
+  {
+    day: lang === 'en' ? 'Sunday' : 'الأحد',
+    present: 7,
+    late: 1,
+    absent: 0
+  },
+  {
+    day: lang === 'en' ? 'Monday' : 'الإثنين',
+    present: 8,
+    late: 0,
+    absent: 0
+  },
+  {
+    day: lang === 'en' ? 'Tuesday' : 'الثلاثاء',
+    present: 6,
+    late: 2,
+    absent: 0
+  },
+  {
+    day: lang === 'en' ? 'Wednesday' : 'الأربعاء',
+    present: 7,
+    late: 1,
+    absent: 0
+  },
+  {
+    day: lang === 'en' ? 'Thursday' : 'الخميس',
+    present: 5,
+    late: 2,
+    absent: 1
+  }
+];
 
-    early_leave:
-      records.filter(
-        r => r.status === 'early_leave'
-      ).length,
 
-    overtime:
-      records.filter(
-        r =>
-          r.status === 'overtime' ||
-          (r.overtimeHours &&
-            r.overtimeHours > 0)
-      ).length,
+// =========================================================
+// STATUS COUNTS
+// =========================================================
 
-    absent:
-      records.filter(
-        r => r.status === 'absent'
-      ).length,
+const statusCounts = {
+  on_time:
+    records.filter(
+      r => r.status === 'on_time'
+    ).length,
 
-    on_leave:
-      records.filter(
-        r => r.status === 'on_leave'
-      ).length,
-  };
+  late:
+    records.filter(
+      r =>
+        r.status === 'late' ||
+        (r.lateMinutes &&
+          r.lateMinutes > 0)
+    ).length,
 
-  const rawPieData = [
-    {
-      name: 'حاضر في الوقت',
-      value: statusCounts.on_time,
-      color: '#10b981'
-    },
-    {
-      name: 'متأخر',
-      value: statusCounts.late,
-      color: '#f59e0b'
-    },
-    {
-      name: 'ساعات إضافية',
-      value: statusCounts.overtime,
-      color: '#8b5cf6'
-    },
-    {
-      name: 'انصراف مبكر',
-      value: statusCounts.early_leave,
-      color: '#f97316'
-    },
-    {
-      name: 'غائب',
-      value: statusCounts.absent,
-      color: '#ef4444'
-    },
-    {
-      name: 'في إجازة',
-      value: statusCounts.on_leave,
-      color: '#0284c7'
-    }
-  ];
+  early_leave:
+    records.filter(
+      r =>
+        r.status === 'early_leave'
+    ).length,
 
-  const pieData =
-    rawPieData.filter(
-      item => item.value > 0
-    ).length > 0
-      ? rawPieData.filter(
-          item => item.value > 0
-        )
-      : [
-          {
-            name: 'لا توجد بيانات',
-            value: 1,
-            color: '#cbd5e1'
-          }
-        ];
+  overtime:
+    records.filter(
+      r =>
+        r.status === 'overtime' ||
+        (r.overtimeHours &&
+          r.overtimeHours > 0)
+    ).length,
 
-  const deptHoursData = [
-    {
-      department: 'CX',
-      hours: 38.0,
-      overtime: 1.0
-    },
-    {
-      department: 'E-Commerce',
-      hours: 45.0,
-      overtime: 5.5
-    },
-    {
-      department: 'Quality',
-      hours: 40.0,
-      overtime: 0.8
-    }
-  ];
+  absent:
+    records.filter(
+      r => r.status === 'absent'
+    ).length,
 
-  // =========================================================
-  // RENDER
-  // =========================================================
+  on_leave:
+    records.filter(
+      r => r.status === 'on_leave'
+    ).length
+};
 
-  return (
-    <div className="max-w-7xl mx-auto p-4 sm:p-6 space-y-6 animate-fade-in">
+
+// =========================================================
+// PIE CHART
+// =========================================================
+
+const rawPieData = [
+  {
+    name:
+      lang === 'en'
+        ? 'On Time'
+        : 'حاضر في الوقت',
+    value: statusCounts.on_time,
+    color: '#10b981'
+  },
+  {
+    name:
+      lang === 'en'
+        ? 'Late'
+        : 'متأخر',
+    value: statusCounts.late,
+    color: '#f59e0b'
+  },
+  {
+    name:
+      lang === 'en'
+        ? 'Overtime'
+        : 'ساعات إضافية',
+    value: statusCounts.overtime,
+    color: '#8b5cf6'
+  },
+  {
+    name:
+      lang === 'en'
+        ? 'Early Leave'
+        : 'انصراف مبكر',
+    value: statusCounts.early_leave,
+    color: '#f97316'
+  },
+  {
+    name:
+      lang === 'en'
+        ? 'Absent'
+        : 'غائب',
+    value: statusCounts.absent,
+    color: '#ef4444'
+  },
+  {
+    name:
+      lang === 'en'
+        ? 'On Leave'
+        : 'في إجازة',
+    value: statusCounts.on_leave,
+    color: '#0284c7'
+  }
+];
+
+const filteredPieData =
+  rawPieData.filter(
+    item => item.value > 0
+  );
+
+const pieData =
+  filteredPieData.length > 0
+    ? filteredPieData
+    : [
+        {
+          name:
+            lang === 'en'
+              ? 'No Data'
+              : 'لا توجد بيانات',
+          value: 1,
+          color: '#cbd5e1'
+        }
+      ];
+
+
+// =========================================================
+// DEPARTMENT HOURS
+// =========================================================
+
+const deptHoursData = [
+  {
+    department: 'CX',
+    hours: 38,
+    overtime: 1
+  },
+  {
+    department: 'E-Commerce',
+    hours: 45,
+    overtime: 5.5
+  },
+  {
+    department: 'Quality',
+    hours: 40,
+    overtime: 0.8
+  }
+];
+
+
+// =========================================================
+// RENDER
+// =========================================================
+
+return (
+  <div
+    className="max-w-7xl mx-auto p-4 sm:p-6 space-y-6 animate-fade-in"
+    dir={lang === 'ar' ? 'rtl' : 'ltr'}
+  >
 
       {/* =====================================================
           EMPLOYEE REPORT
@@ -628,9 +691,12 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
 
       <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm space-y-6">
 
+        {/* HEADER */}
+
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pb-4 border-b border-slate-100">
 
           <div>
+
             <h2 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2.5 flex-wrap">
 
               <Search className="w-5 h-5 text-emerald-600" />
@@ -645,20 +711,21 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
                 className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#0d2240] text-white text-xs font-bold border border-blue-900 shadow-sm shrink-0"
                 dir="ltr"
               >
+
                 <img
                   src="logo.png"
                   alt="Tech Source"
                   className="w-4 h-4 object-contain bg-white rounded-full p-0.5"
                   onError={e => {
-                    (
-                      e.currentTarget as HTMLElement
-                    ).style.display = 'none';
+                    e.currentTarget.style.display =
+                      'none';
                   }}
                 />
 
                 <span>
                   TECH SOURCE GDS
                 </span>
+
               </span>
 
             </h2>
@@ -668,6 +735,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
                 ? 'البحث عن أي موظف بالاسم أو الكود وعرض تقرير كامل بحضوره وغيابه وتصديره لاكسل'
                 : 'Search any employee by name or code and export detailed report'}
             </p>
+
           </div>
 
           <div className="flex items-center gap-2">
@@ -676,8 +744,10 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
               onClick={
                 handleExportEmployeeReport
               }
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md transition-all"
+              disabled={!targetEmployee}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xs shadow-md transition-all"
             >
+
               <FileSpreadsheet className="w-4 h-4" />
 
               <span>
@@ -685,14 +755,18 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
                   ? 'تصدير التقرير لشيت اكسيل (Excel)'
                   : 'Export Report to Excel'}
               </span>
+
             </button>
 
           </div>
+
         </div>
 
         {/* SEARCH */}
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-200">
+
+          {/* SEARCH INPUT */}
 
           <div className="relative">
 
@@ -723,7 +797,10 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
               />
 
             </div>
+
           </div>
+
+          {/* DEPARTMENT */}
 
           <div>
 
@@ -742,6 +819,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
               }
               className="w-full text-xs bg-white border border-slate-200 rounded-xl px-3 py-2.5 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500 font-sans"
             >
+
               <option value="all">
                 {lang === 'ar'
                   ? 'جميع الأقسام'
@@ -764,11 +842,13 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
 
           </div>
 
+          {/* EMPLOYEE SELECT */}
+
           <div>
 
             <label className="block text-[11px] font-bold text-slate-700 mb-1">
               {lang === 'ar'
-                ? 'اختيار الموظف لعرض التقرير'
+                ? 'اختيار الموظف'
                 : 'Select Employee'}
             </label>
 
@@ -779,916 +859,594 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
                   e.target.value
                 )
               }
-              className="w-full text-xs bg-white border border-slate-200 rounded-xl px-3 py-2.5 font-bold font-sans text-slate-900"
+              className="w-full text-xs bg-white border border-slate-200 rounded-xl px-3 py-2.5 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500 font-sans"
             >
-              {filteredEmployees.map(
-                emp => (
+
+              {filteredEmployees.length > 0 ? (
+                filteredEmployees.map(emp => (
                   <option
                     key={emp.id}
                     value={emp.id}
                   >
-                    {emp.nameAr} ({emp.code}) -{' '}
-                    {emp.department}
+                    {emp.code} - {emp.nameAr}
                   </option>
-                )
+                ))
+              ) : (
+                <option value="">
+                  {lang === 'ar'
+                    ? 'لا يوجد موظفون'
+                    : 'No employees found'}
+                </option>
               )}
+
             </select>
 
           </div>
 
         </div>
 
-        {/* EMPLOYEE */}
+        {/* =====================================================
+            EMPLOYEE SUMMARY CARDS
+        ===================================================== */}
 
-        {targetEmployee ? (
-          <div className="space-y-6">
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
 
-            {/* PROFILE */}
+          {/* PRESENT */}
 
-            <div className="bg-[#0d2240] text-white p-5 rounded-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-md border border-blue-900">
+          <div className="bg-emerald-50/70 p-3.5 rounded-2xl border border-emerald-200 text-emerald-950 space-y-1">
 
-              <div className="flex items-center gap-4">
+            <div className="flex items-center justify-between text-xs font-bold text-emerald-800">
 
-                <UserAvatar
-                  name={
-                    targetEmployee.nameEn ||
-                    targetEmployee.nameAr
-                  }
-                  code={
-                    targetEmployee.code
-                  }
-                  size="xl"
-                />
+              <span>
+                {lang === 'en'
+                  ? 'Actual Attendance Days'
+                  : 'أيام الحضور الفعلية'}
+              </span>
 
-                <div>
-
-                  <div className="flex items-center gap-2">
-
-                    <h3 className="text-xl font-extrabold text-white">
-                      {lang === 'ar'
-                        ? targetEmployee.nameAr
-                        : targetEmployee.nameEn}
-                    </h3>
-
-                    <span className="text-xs bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-mono font-bold px-2 py-0.5 rounded">
-                      #{targetEmployee.code}
-                    </span>
-
-                  </div>
-
-                  <p className="text-xs text-slate-300 mt-0.5">
-                    {targetEmployee.jobTitleAr}{' '}
-                    |{' '}
-                    <span className="text-emerald-400 font-semibold">
-                      {targetEmployee.department}
-                    </span>
-                  </p>
-
-                  <p className="text-[11px] text-slate-400 mt-1 font-mono">
-                    الورديّة:{' '}
-                    <span className="text-emerald-300 font-bold">
-                      09:00 AM - 05:00 PM
-                    </span>{' '}
-                    | الحالة:{' '}
-                    <span className="text-emerald-300">
-                      نشط
-                    </span>
-                  </p>
-
-                </div>
-
-              </div>
-
-              {/* PERIOD */}
-
-              <div className="flex items-center gap-1.5 bg-slate-800/80 p-1 rounded-xl border border-slate-700">
-
-                <button
-                  onClick={() =>
-                    setReportPeriod(
-                      'daily'
-                    )
-                  }
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                    reportPeriod === 'daily'
-                      ? 'bg-emerald-500 text-slate-950'
-                      : 'text-slate-300 hover:text-white'
-                  }`}
-                >
-                  {lang === 'ar'
-                    ? 'تقرير يومي'
-                    : 'Daily'}
-                </button>
-
-                <button
-                  onClick={() =>
-                    setReportPeriod(
-                      'weekly'
-                    )
-                  }
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                    reportPeriod === 'weekly'
-                      ? 'bg-emerald-500 text-slate-950'
-                      : 'text-slate-300 hover:text-white'
-                  }`}
-                >
-                  {lang === 'ar'
-                    ? 'تقرير أسبوعي'
-                    : 'Weekly'}
-                </button>
-
-                <button
-                  onClick={() =>
-                    setReportPeriod(
-                      'monthly'
-                    )
-                  }
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                    reportPeriod === 'monthly'
-                      ? 'bg-emerald-500 text-slate-950'
-                      : 'text-slate-300 hover:text-white'
-                  }`}
-                >
-                  {lang === 'ar'
-                    ? 'تقرير شهري'
-                    : 'Monthly'}
-                </button>
-
-              </div>
+              <UserCheck className="w-4 h-4 text-emerald-600" />
 
             </div>
 
-            {/* KPI */}
+            <div className="text-2xl font-black font-mono text-emerald-700">
+              {toWesternDigits(
+                totalPresentDays
+              )}
+            </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
+            <div className="text-[10px] text-emerald-600 font-medium">
+              {lang === 'en'
+                ? 'Actual Working Days'
+                : 'أيام دوام فعلية'}
+            </div>
 
-              {/* PRESENT */}
+          </div>
 
-              <div className="bg-emerald-50/70 p-3.5 rounded-2xl border border-emerald-200 text-emerald-950 space-y-1">
+          {/* WEEKEND */}
 
-                <div className="flex items-center justify-between text-xs font-bold text-emerald-800">
+          <div className="bg-teal-50/70 p-3.5 rounded-2xl border border-teal-200 text-teal-950 space-y-1">
 
-                  <span>
-                    أيام الحضور الفعلية
-                  </span>
+            <div className="flex items-center justify-between text-xs font-bold text-teal-800">
 
-                  <UserCheck className="w-4 h-4 text-emerald-600" />
+              <span>
+                {lang === 'en'
+                  ? 'Weekly Off Days'
+                  : 'العطلات الأسبوعية'}
+              </span>
 
-                </div>
+              <Palmtree className="w-4 h-4 text-teal-600" />
 
-                <div className="text-2xl font-black font-mono text-emerald-700">
-                  {toWesternDigits(
-                    totalPresentDays
-                  )}
-                </div>
+            </div>
 
-                <div className="text-[10px] text-emerald-600 font-medium">
-                  أيام دوام فعلية
-                </div>
+            <div className="text-2xl font-black font-mono text-teal-700">
+              {toWesternDigits(
+                totalWeekendDays
+              )}
+            </div>
 
-              </div>
+            <div className="text-[10px] text-teal-600 font-medium">
+              {lang === 'en'
+                ? 'Friday & Saturday'
+                : 'جمعة وسبت'}
+            </div>
 
-              {/* WEEKEND */}
+          </div>
 
-              <div className="bg-teal-50/70 p-3.5 rounded-2xl border border-teal-200 text-teal-950 space-y-1">
+          {/* ABSENT */}
 
-                <div className="flex items-center justify-between text-xs font-bold text-teal-800">
+          <div className="bg-rose-50/70 p-3.5 rounded-2xl border border-rose-200 text-rose-950 space-y-1">
 
-                  <span>
-                    العطلات الأسبوعية
-                  </span>
+            <div className="flex items-center justify-between text-xs font-bold text-rose-800">
 
-                  <Palmtree className="w-4 h-4 text-teal-600" />
+              <span>
+                {lang === 'en'
+                  ? 'Absent Days'
+                  : 'عدد أيام الغياب'}
+              </span>
 
-                </div>
+              <UserX className="w-4 h-4 text-rose-600" />
 
-                <div className="text-2xl font-black font-mono text-teal-700">
-                  {toWesternDigits(
-                    totalWeekendDays
-                  )}
-                </div>
+            </div>
 
-                <div className="text-[10px] text-teal-600 font-medium">
-                  جمعة وسبت
-                </div>
+            <div className="text-2xl font-black font-mono text-rose-700">
+              {toWesternDigits(
+                totalAbsentDays
+              )}
+            </div>
 
-              </div>
+            <div className="text-[10px] text-rose-600 font-medium">
+              {lang === 'en'
+                ? 'Without Approved Leave'
+                : 'بدون إجازة معتمدة'}
+            </div>
 
-              {/* ABSENT */}
+          </div>
 
-              <div className="bg-rose-50/70 p-3.5 rounded-2xl border border-rose-200 text-rose-950 space-y-1">
+          {/* LATE */}
 
-                <div className="flex items-center justify-between text-xs font-bold text-rose-800">
+          <div className="bg-amber-50/70 p-3.5 rounded-2xl border border-amber-200 text-amber-950 space-y-1">
 
-                  <span>
-                    عدد أيام الغياب
-                  </span>
+            <div className="flex items-center justify-between text-xs font-bold text-amber-800">
 
-                  <UserX className="w-4 h-4 text-rose-600" />
+              <span>
+                {lang === 'en'
+                  ? 'Late Days'
+                  : 'أيام التأخير'}
+              </span>
 
-                </div>
+              <Clock className="w-4 h-4 text-amber-600" />
 
-                <div className="text-2xl font-black font-mono text-rose-700">
-                  {toWesternDigits(
-                    totalAbsentDays
-                  )}
-                </div>
+            </div>
 
-                <div className="text-[10px] text-rose-600 font-medium">
-                  بدون إجازة معتمدة
-                </div>
+            <div className="text-2xl font-black font-mono text-amber-700">
+              {toWesternDigits(
+                totalLateDays
+              )}
+            </div>
 
-              </div>
+            <div className="text-[10px] text-amber-600 font-medium">
 
-              {/* LATE */}
-
-              <div className="bg-amber-50/70 p-3.5 rounded-2xl border border-amber-200 text-amber-950 space-y-1">
-
-                <div className="flex items-center justify-between text-xs font-bold text-amber-800">
-
-                  <span>
-                    أيام التأخير
-                  </span>
-
-                  <Clock className="w-4 h-4 text-amber-600" />
-
-                </div>
-
-                <div className="text-2xl font-black font-mono text-amber-700">
-                  {toWesternDigits(
-                    totalLateDays
-                  )}
-                </div>
-
-                <div className="text-[10px] text-amber-600 font-medium">
-                  إجمالي{' '}
-                  {toWesternDigits(
+              {lang === 'en'
+                ? `Total ${toWesternDigits(
                     totalLateMinutes
-                  )}{' '}
-                  دقيقة
-                </div>
+                  )} Minutes`
+                : `إجمالي ${toWesternDigits(
+                    totalLateMinutes
+                  )} دقيقة`}
 
-              </div>
+            </div>
 
-              {/* REGULAR */}
+          </div>
 
-              <div className="bg-emerald-100/80 p-3.5 rounded-2xl border border-emerald-300 text-emerald-950 space-y-1">
+          {/* REGULAR */}
 
-                <div className="flex items-center justify-between text-xs font-bold text-emerald-900">
+          <div className="bg-emerald-100/80 p-3.5 rounded-2xl border border-emerald-300 text-emerald-950 space-y-1">
 
-                  <span>
-                    إجازة اعتيادية
-                  </span>
+            <div className="flex items-center justify-between text-xs font-bold text-emerald-900">
 
-                  <Palmtree className="w-4 h-4 text-emerald-700" />
+              <span>
+                {lang === 'en'
+                  ? 'Annual Leave'
+                  : 'إجازة اعتيادية'}
+              </span>
 
-                </div>
+              <Palmtree className="w-4 h-4 text-emerald-700" />
 
-                <div className="text-2xl font-black font-mono text-emerald-800">
-                  {toWesternDigits(
-                    usedRegularDays
-                  )}
-                </div>
+            </div>
 
-                <div className="text-[10px] text-emerald-700 font-medium">
-                  الرصيد:{' '}
-                  {toWesternDigits(
+            <div className="text-2xl font-black font-mono text-emerald-800">
+              {toWesternDigits(
+                usedRegularDays
+              )}
+            </div>
+
+            <div className="text-[10px] text-emerald-700 font-medium">
+
+              {lang === 'en'
+                ? `Balance: ${toWesternDigits(
                     regularBalance
-                  )}{' '}
-                  يوم
-                </div>
+                  )} Days`
+                : `الرصيد: ${toWesternDigits(
+                    regularBalance
+                  )} يوم`}
 
-              </div>
+            </div>
 
-              {/* CASUAL */}
+          </div>
 
-              <div className="bg-amber-100/80 p-3.5 rounded-2xl border border-amber-300 text-amber-950 space-y-1">
+          {/* CASUAL */}
 
-                <div className="flex items-center justify-between text-xs font-bold text-amber-900">
+          <div className="bg-amber-100/80 p-3.5 rounded-2xl border border-amber-300 text-amber-950 space-y-1">
 
-                  <span>
-                    إجازة عارضة
-                  </span>
+            <div className="flex items-center justify-between text-xs font-bold text-amber-900">
 
-                  <Zap className="w-4 h-4 text-amber-700" />
+              <span>
+                {lang === 'en'
+                  ? 'Casual Leave'
+                  : 'إجازة عارضة'}
+              </span>
 
-                </div>
+              <Zap className="w-4 h-4 text-amber-700" />
 
-                <div className="text-2xl font-black font-mono text-amber-800">
-                  {toWesternDigits(
-                    usedCasualDays
-                  )}
-                </div>
+            </div>
 
-                <div className="text-[10px] text-amber-700 font-medium">
-                  الرصيد:{' '}
-                  {toWesternDigits(
+            <div className="text-2xl font-black font-mono text-amber-800">
+              {toWesternDigits(
+                usedCasualDays
+              )}
+            </div>
+
+            <div className="text-[10px] text-amber-700 font-medium">
+
+              {lang === 'en'
+                ? `Balance: ${toWesternDigits(
                     casualBalance
-                  )}{' '}
-                  يوم
-                </div>
+                  )} Days`
+                : `الرصيد: ${toWesternDigits(
+                    casualBalance
+                  )} يوم`}
 
-              </div>
+            </div>
 
-              {/* SICK */}
+          </div>
 
-              <div className="bg-rose-100/80 p-3.5 rounded-2xl border border-rose-300 text-rose-950 space-y-1">
+          {/* SICK */}
 
-                <div className="flex items-center justify-between text-xs font-bold text-rose-900">
+          <div className="bg-rose-100/80 p-3.5 rounded-2xl border border-rose-300 text-rose-950 space-y-1">
 
-                  <span>
-                    إجازة مرضية
-                  </span>
+            <div className="flex items-center justify-between text-xs font-bold text-rose-900">
 
-                  <Activity className="w-4 h-4 text-rose-700" />
+              <span>
+                {lang === 'en'
+                  ? 'Sick Leave'
+                  : 'إجازة مرضية'}
+              </span>
 
-                </div>
+              <Activity className="w-4 h-4 text-rose-700" />
 
-                <div className="text-2xl font-black font-mono text-rose-800">
-                  {toWesternDigits(
-                    usedSickDays
-                  )}
-                </div>
+            </div>
 
-                <div className="text-[10px] text-rose-700 font-medium">
-                  الرصيد:{' '}
-                  {toWesternDigits(
+            <div className="text-2xl font-black font-mono text-rose-800">
+              {toWesternDigits(
+                usedSickDays
+              )}
+            </div>
+
+            <div className="text-[10px] text-rose-700 font-medium">
+
+              {lang === 'en'
+                ? `Balance: ${toWesternDigits(
                     sickBalance
-                  )}{' '}
-                  يوم
-                </div>
-
-              </div>
-
-              {/* WORK HOURS */}
-
-              <div className="bg-blue-50/70 p-3.5 rounded-2xl border border-blue-200 text-blue-950 space-y-1">
-
-                <div className="flex items-center justify-between text-xs font-bold text-blue-800">
-
-                  <span>
-                    ساعات العمل
-                  </span>
-
-                  <Award className="w-4 h-4 text-blue-600" />
-
-                </div>
-
-                <div className="text-2xl font-black font-mono text-blue-700">
-                  {formatHoursToHHMM(
-                    totalWorkedHours
-                  )}
-                </div>
-
-                <div className="text-[10px] text-blue-600 font-medium">
-                  إجمالي ساعات العمل
-                </div>
-
-              </div>
-
-            </div>
-
-            {/* EXTRA HOURS */}
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-
-              <div className="bg-purple-50 p-4 rounded-2xl border border-purple-200">
-
-                <div className="text-xs font-bold text-purple-800">
-                  إجمالي العمل الإضافي
-                </div>
-
-                <div className="text-2xl font-black font-mono text-purple-700 mt-1">
-                  {formatHoursToHHMM(
-                    totalOvertimeHours
-                  )}
-                </div>
-
-              </div>
-
-              <div className="bg-red-50 p-4 rounded-2xl border border-red-200">
-
-                <div className="text-xs font-bold text-red-800">
-                  إجمالي ساعات النقص
-                </div>
-
-                <div className="text-2xl font-black font-mono text-red-700 mt-1">
-                  {formatHoursToHHMM(
-                    totalMinusHours
-                  )}
-                </div>
-
-              </div>
-
-              <div className="bg-slate-900 text-white p-4 rounded-2xl border border-slate-800">
-
-                <div className="text-xs font-bold text-slate-300">
-                  نسبة الالتزام
-                </div>
-
-                <div className="text-2xl font-black font-mono text-emerald-400 mt-1">
-
-                  {totalPresentDays > 0
-                    ? `${toWesternDigits(
-                        Math.max(
-                          0,
-                          Math.round(
-                            (
-                              (
-                                totalPresentDays -
-                                totalLateDays
-                              ) /
-                              totalPresentDays
-                            ) *
-                              100
-                          )
-                        )
-                      )}%`
-                    : '--'}
-
-                </div>
-
-              </div>
-
-            </div>
-
-            {/* ATTENDANCE TABLE */}
-
-            <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white">
-
-              <div className="bg-slate-50 p-3.5 border-b border-slate-200 flex items-center justify-between">
-
-                <h4 className="font-bold text-slate-900 text-xs flex items-center gap-2">
-
-                  <Calendar className="w-4 h-4 text-emerald-600" />
-
-                  <span>
-                    أيام الحضور بالتواريخ ووقت تسجيل الدخول والخروج للموظف (
-                    {targetEmployee.nameAr}
-                    )
-                  </span>
-
-                </h4>
-
-                <span className="text-[11px] font-mono text-slate-500 font-semibold">
-                  {toWesternDigits(
-                    empRecords.length
-                  )}{' '}
-                  سجلات
-                </span>
-
-              </div>
-
-              <div className="overflow-x-auto">
-
-                <table className="w-full text-right text-xs">
-
-                  <thead>
-
-                    <tr className="bg-slate-100 text-slate-600 font-bold border-b border-slate-200 whitespace-nowrap">
-
-                      <th className="py-3 px-4 whitespace-nowrap">
-                        التاريخ
-                      </th>
-
-                      <th className="py-3 px-4 whitespace-nowrap">
-                        وقت تسجيل الدخول (12H)
-                      </th>
-
-                      <th className="py-3 px-4 whitespace-nowrap">
-                        وقت تسجيل الخروج (12H)
-                      </th>
-
-                      <th className="py-3 px-4 whitespace-nowrap">
-                        ساعات العمل
-                      </th>
-
-                      <th className="py-3 px-4 whitespace-nowrap">
-                        العمل الإضافي
-                      </th>
-
-                      <th className="py-3 px-4 whitespace-nowrap">
-                        ساعات النقص
-                      </th>
-
-                      <th className="py-3 px-4 whitespace-nowrap">
-                        دقائق التأخير
-                      </th>
-
-                      <th className="py-3 px-4 whitespace-nowrap">
-                        الحالة
-                      </th>
-
-                    </tr>
-
-                  </thead>
-
-                  <tbody className="divide-y divide-slate-100 font-sans">
-
-                    {empRecords.length > 0 ? (
-
-                      empRecords.map(r => (
-
-                        <tr
-                          key={r.id}
-                          className="hover:bg-slate-50 transition-colors"
-                        >
-
-                          <td className="py-3 px-4 font-mono font-bold text-slate-800">
-                            {toWesternDigits(
-                              r.date
-                            )}
-                          </td>
-
-                          <td className="py-3 px-4 font-mono font-bold text-emerald-700">
-                            {r.checkIn
-                              ? formatTime(
-                                  r.checkIn,
-                                  lang
-                                )
-                              : '--:--'}
-                          </td>
-
-                          <td className="py-3 px-4 font-mono font-bold text-slate-800">
-                            {r.checkOut
-                              ? formatTime(
-                                  r.checkOut,
-                                  lang
-                                )
-                              : '--:--'}
-                          </td>
-
-                          <td className="py-3 px-4 font-mono font-bold text-blue-700">
-                            {r.checkOut
-                              ? formatHoursToHHMM(
-                                  r.workHours ||
-                                    0
-                                )
-                              : '--'}
-                          </td>
-
-                          <td className="py-3 px-4 font-mono font-bold text-purple-700">
-                            {r.checkOut
-                              ? formatHoursToHHMM(
-                                  r.overtimeHours ||
-                                    0
-                                )
-                              : '--'}
-                          </td>
-
-                          <td className="py-3 px-4 font-mono font-bold text-red-600">
-                            {r.checkOut
-                              ? formatHoursToHHMM(
-                                  (r as any)
-                                    .minusHours ||
-                                    0
-                                )
-                              : '--'}
-                          </td>
-
-                          <td className="py-3 px-4 font-mono text-amber-700 font-bold">
-                            {r.lateMinutes
-                              ? `+${toWesternDigits(
-                                  r.lateMinutes
-                                )} د`
-                              : '-'}
-                          </td>
-
-                          <td className="py-3 px-4">
-
-                            <span
-                              className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${getStatusBadgeStyle(
-                                r.status
-                              )}`}
-                            >
-                              {getStatusText(
-                                r.status,
-                                lang,
-                                r.leaveType,
-                                r.notes
-                              )}
-                            </span>
-
-                          </td>
-
-                        </tr>
-
-                      ))
-
-                    ) : (
-
-                      <tr>
-
-                        <td
-                          colSpan={8}
-                          className="py-8 text-center text-slate-400"
-                        >
-                          لا توجد سجلات حضور تاريخية مسجلة لهذا الموظف
-                        </td>
-
-                      </tr>
-
-                    )}
-
-                  </tbody>
-
-                </table>
-
-              </div>
+                  )} Days`
+                : `الرصيد: ${toWesternDigits(
+                    sickBalance
+                  )} يوم`}
 
             </div>
 
           </div>
 
-        ) : (
+          {/* WORK HOURS */}
 
-          <div className="py-12 text-center text-slate-400">
-            يرجى تحديد موظف لعرض التقرير
-          </div>
+          <div className="bg-blue-50/70 p-3.5 rounded-2xl border border-blue-200 text-blue-950 space-y-1">
 
-        )}
-
-      </div>
-
-      {/* =====================================================
-          TEAM LEADER MONTHLY REPORT
-      ===================================================== */}
-
-      <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm space-y-5">
-
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pb-4 border-b border-slate-100">
-
-          <div>
-
-            <h2 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">
-
-              <ShieldCheck className="w-5 h-5 text-amber-500" />
+            <div className="flex items-center justify-between text-xs font-bold text-blue-800">
 
               <span>
-                {lang === 'ar'
-                  ? 'تقارير التيم ليدر والإدارة بالأشهر السابقة'
-                  : 'Team Leader Reports for Previous Months'}
+                {lang === 'en'
+                  ? 'Work Hours'
+                  : 'ساعات العمل'}
               </span>
 
-            </h2>
-
-            <p className="text-xs text-slate-500 mt-1">
-              {lang === 'ar'
-                ? 'عرض الحضور والتأخير والإجازات لجميع أعضاء الفريق مصنفة حسب الشهر المختار'
-                : 'View attendance, late minutes, and leave records per month'}
-            </p>
-
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3">
-
-            <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl">
-
-              <span className="text-xs font-bold text-slate-600">
-                اختيار الشهر:
-              </span>
-
-              <select
-                value={selectedMonth}
-                onChange={e =>
-                  setSelectedMonth(
-                    e.target.value
-                  )
-                }
-                className="text-xs font-bold bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-slate-900 focus:outline-none"
-              >
-
-                <option value="2026-08">
-                  الشهر الحالي (أغسطس 2026)
-                </option>
-
-                <option value="2026-07">
-                  يوليو 2026
-                </option>
-
-                <option value="2026-06">
-                  يونيو 2026
-                </option>
-
-                <option value="2026-05">
-                  مايو 2026
-                </option>
-
-                <option value="2026-04">
-                  أبريل 2026
-                </option>
-
-                <option value="all">
-                  جميع الأشهر
-                </option>
-
-              </select>
+              <Award className="w-4 h-4 text-blue-600" />
 
             </div>
 
-            <button
-              onClick={
-                handleExportTeamMonthlyReport
-              }
-              className="flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-amber-300 border border-amber-500/30 font-bold text-xs rounded-xl shadow-sm transition"
-            >
+            <div className="text-2xl font-black font-mono text-blue-700">
+              {formatHoursToHHMM(
+                totalWorkedHours
+              )}
+            </div>
 
-              <FileSpreadsheet className="w-4 h-4 text-amber-400" />
+            <div className="text-[10px] text-blue-600 font-medium">
 
-              <span>
-                تصدير تقرير الفريق للأكسيل
-              </span>
+              {lang === 'en'
+                ? 'Total Work Hours'
+                : 'إجمالي ساعات العمل'}
 
-            </button>
+            </div>
 
           </div>
 
         </div>
 
+        {/* =====================================================
+            EXTRA HOURS
+        ===================================================== */}
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+
+          {/* OVERTIME */}
+
+          <div className="bg-purple-50 p-4 rounded-2xl border border-purple-200">
+
+            <div className="text-xs font-bold text-purple-800">
+              {lang === 'en'
+                ? 'Total Overtime'
+                : 'إجمالي العمل الإضافي'}
+            </div>
+
+            <div className="text-2xl font-black font-mono text-purple-700 mt-1">
+              {formatHoursToHHMM(
+                totalOvertimeHours
+              )}
+            </div>
+
+          </div>
+
+          {/* SHORTAGE */}
+
+          <div className="bg-red-50 p-4 rounded-2xl border border-red-200">
+
+            <div className="text-xs font-bold text-red-800">
+              {lang === 'en'
+                ? 'Total Shortage Hours'
+                : 'إجمالي ساعات النقص'}
+            </div>
+
+            <div className="text-2xl font-black font-mono text-red-700 mt-1">
+              {formatHoursToHHMM(
+                totalMinusHours
+              )}
+            </div>
+
+          </div>
+
+          {/* COMPLIANCE */}
+
+          <div className="bg-slate-900 text-white p-4 rounded-2xl border border-slate-800">
+
+            <div className="text-xs font-bold text-slate-300">
+              {lang === 'en'
+                ? 'Compliance Rate'
+                : 'نسبة الالتزام'}
+            </div>
+
+            <div className="text-2xl font-black font-mono text-emerald-400 mt-1">
+
+              {totalPresentDays > 0
+                ? `${toWesternDigits(
+                    Math.max(
+                      0,
+                      Math.round(
+                        (
+                          (
+                            totalPresentDays -
+                            totalLateDays
+                          ) /
+                          totalPresentDays
+                        ) *
+                          100
+                      )
+                    )
+                  )}%`
+                : '--'}
+
+            </div>
+
+          </div>
+
+        </div>
+
+        {/* =====================================================
+            ATTENDANCE TABLE
+        ===================================================== */}
+
         <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white">
+
+          <div className="bg-slate-50 p-3.5 border-b border-slate-200 flex items-center justify-between">
+
+            <h4 className="font-bold text-slate-900 text-xs flex items-center gap-2">
+
+              <Calendar className="w-4 h-4 text-emerald-600" />
+
+              <span>
+                {lang === 'ar'
+                  ? `أيام الحضور بالتواريخ ووقت تسجيل الدخول والخروج للموظف (${
+                      targetEmployee?.nameAr || ''
+                    })`
+                  : `Attendance details for ${
+                      targetEmployee?.nameEn || ''
+                    }`}
+              </span>
+
+            </h4>
+
+            <span className="text-[11px] font-mono text-slate-500 font-semibold">
+
+              {toWesternDigits(
+                empRecords.length
+              )}{' '}
+
+              {lang === 'ar'
+                ? 'سجلات'
+                : 'records'}
+
+            </span>
+
+          </div>
 
           <div className="overflow-x-auto">
 
             <table className="w-full text-right text-xs">
 
-              <thead className="bg-slate-900 text-white font-bold whitespace-nowrap">
+              <thead>
+  <tr className="bg-slate-100 text-slate-600 font-bold border-b border-slate-200 whitespace-nowrap">
 
-                <tr>
+    <th className="py-3 px-4 whitespace-nowrap">
+      {lang === 'ar' ? 'التاريخ' : 'Date'}
+    </th>
 
-                  <th className="p-3 whitespace-nowrap">
-                    الموظف
-                  </th>
+    <th className="py-3 px-4 whitespace-nowrap">
+      {lang === 'ar'
+        ? 'وقت تسجيل الدخول (12H)'
+        : 'Check-in Time (12H)'}
+    </th>
 
-                  <th className="p-3 whitespace-nowrap">
-                    القسم / الدور
-                  </th>
+    <th className="py-3 px-4 whitespace-nowrap">
+      {lang === 'ar'
+        ? 'وقت تسجيل الخروج (12H)'
+        : 'Check-out Time (12H)'}
+    </th>
 
-                  <th className="p-3 text-center whitespace-nowrap">
-                    أيام الحضور
-                  </th>
+    <th className="py-3 px-4 whitespace-nowrap">
+      {lang === 'ar'
+        ? 'ساعات العمل'
+        : 'Work Hours'}
+    </th>
 
-                  <th className="p-3 text-center whitespace-nowrap">
-                    أيام التأخير
-                  </th>
+    <th className="py-3 px-4 whitespace-nowrap">
+      {lang === 'ar'
+        ? 'العمل الإضافي'
+        : 'Overtime'}
+    </th>
 
-                  <th className="p-3 text-center whitespace-nowrap">
-                    إجمالي دقائق التأخير
-                  </th>
+    <th className="py-3 px-4 whitespace-nowrap">
+      {lang === 'ar'
+        ? 'ساعات النقص'
+        : 'Shortage Hours'}
+    </th>
 
-                  <th className="p-3 text-center whitespace-nowrap">
-                    أيام الغياب
-                  </th>
+    <th className="py-3 px-4 whitespace-nowrap">
+      {lang === 'ar'
+        ? 'دقائق التأخير'
+        : 'Late Minutes'}
+    </th>
 
-                  <th className="p-3 text-center whitespace-nowrap">
-                    الإجازات
-                  </th>
+    <th className="py-3 px-4 whitespace-nowrap">
+      {lang === 'ar'
+        ? 'الحالة'
+        : 'Status'}
+    </th>
 
-                  <th className="p-3 text-center whitespace-nowrap">
-                    إجمالي ساعات العمل
-                  </th>
+  </tr>
+</thead>
 
-                  <th className="p-3 text-center whitespace-nowrap">
-                    إجمالي العمل الإضافي
-                  </th>
+              <tbody className="divide-y divide-slate-100 font-sans">
 
-                  <th className="p-3 text-center whitespace-nowrap">
-                    ساعات النقص
-                  </th>
+                {empRecords.length > 0 ? (
 
-                  <th className="p-3 text-center whitespace-nowrap">
-                    نسبة الالتزام
-                  </th>
+                  empRecords.map(r => (
 
-                </tr>
+                    <tr
+                      key={r.id}
+                      className="hover:bg-slate-50 transition-colors"
+                    >
 
-              </thead>
+                      <td className="py-3 px-4 font-mono font-bold text-slate-800">
+                        {toWesternDigits(
+                          r.date
+                        )}
+                      </td>
 
-              <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                      <td className="py-3 px-4 font-mono font-bold text-emerald-700">
 
-                {teamMonthlyData.map(
-                  ({
-                    emp,
-                    presentDays,
-                    absentDays,
-                    lateDays,
-                    leaveDays,
-                    lateMins,
-                    workedHours,
-                    overtimeHoursTotal,
-                    minusHoursTotal
-                  }) => {
+                        {r.checkIn
+                          ? formatTime(
+                              r.checkIn,
+                              lang
+                            )
+                          : '--:--'}
 
-                    const totalDays =
-                      presentDays +
-                      absentDays;
+                      </td>
 
-                    const score =
-                      totalDays > 0
-                        ? Math.round(
-                            (
-                              (
-                                presentDays -
-                                lateDays
-                              ) /
-                              Math.max(
-                                1,
-                                totalDays
-                              )
-                            ) *
-                              100
-                          )
-                        : 100;
+                      <td className="py-3 px-4 font-mono font-bold text-slate-800">
 
-                    return (
+                        {r.checkOut
+                          ? formatTime(
+                              r.checkOut,
+                              lang
+                            )
+                          : '--:--'}
 
-                      <tr
-                        key={emp.id}
-                        className="hover:bg-slate-50 transition"
-                      >
+                      </td>
 
-                        <td className="p-3 font-bold text-slate-900">
+                      <td className="py-3 px-4 font-mono font-bold text-blue-700">
 
-                          <div className="flex items-center gap-2">
+                        {r.checkOut
+                          ? formatHoursToHHMM(
+                              r.workHours ||
+                                0
+                            )
+                          : '--'}
 
-                            <span>
-                              {emp.nameAr}
-                            </span>
+                      </td>
 
-                            {emp.role ===
-                              'leader' && (
+                      <td className="py-3 px-4 font-mono font-bold text-purple-700">
 
-                              <span className="text-[10px] bg-amber-100 text-amber-900 border border-amber-300 px-2 py-0.5 rounded-full font-bold">
-                                تيم ليدر
-                              </span>
+                        {r.checkOut
+                          ? formatHoursToHHMM(
+                              r.overtimeHours ||
+                                0
+                            )
+                          : '--'}
 
-                            )}
+                      </td>
 
-                          </div>
+                      <td className="py-3 px-4 font-mono font-bold text-red-700">
 
-                        </td>
+                        {r.checkOut
+                          ? formatHoursToHHMM(
+                              (r as any)
+                                .minusHours ||
+                                0
+                            )
+                          : '--'}
 
-                        <td className="p-3 text-slate-500">
-                          {emp.department}
-                        </td>
+                      </td>
 
-                        <td className="p-3 text-center font-mono font-bold text-emerald-700">
-                          {presentDays} يوم
-                        </td>
+                      <td className="py-3 px-4 font-mono font-bold text-amber-700">
 
-                        <td className="p-3 text-center font-mono font-bold text-amber-700">
-                          {lateDays} يوم
-                        </td>
+                        {toWesternDigits(
+                          r.lateMinutes ||
+                            0
+                        )}
 
-                        <td className="p-3 text-center font-mono font-bold text-amber-800">
-                          {lateMins} دقيقة
-                        </td>
+                      </td>
 
-                        <td className="p-3 text-center font-mono font-bold text-rose-700">
-                          {absentDays} يوم
-                        </td>
+                      <td className="py-3 px-4">
 
-                        <td className="p-3 text-center font-mono font-bold text-sky-700">
-                          {leaveDays} يوم
-                        </td>
-
-                        <td className="p-3 text-center font-mono font-bold text-slate-900">
-                          {formatHoursToHHMM(
-                            workedHours
+                        <span
+                          className="inline-flex items-center px-2.5 py-1 rounded-lg text-[10px] font-bold whitespace-nowrap"
+                        >
+                          {getStatusText(
+                            r.status,
+                            lang,
+                            r.leaveType,
+                            r.notes
                           )}
-                        </td>
+                        </span>
 
-                        <td className="p-3 text-center font-mono font-bold text-purple-700">
-                          {formatHoursToHHMM(
-                            overtimeHoursTotal
-                          )}
-                        </td>
+                      </td>
 
-                        <td className="p-3 text-center font-mono font-bold text-red-700">
-                          {formatHoursToHHMM(
-                            minusHoursTotal
-                          )}
-                        </td>
+                    </tr>
 
-                        <td className="p-3 text-center font-mono font-bold">
+                  ))
 
-                          <span
-                            className={`px-2 py-1 rounded text-[11px] ${
-                              score >= 90
-                                ? 'bg-emerald-100 text-emerald-800'
-                                : score >= 75
-                                ? 'bg-amber-100 text-amber-800'
-                                : 'bg-rose-100 text-rose-800'
-                            }`}
-                          >
-                            {score}%
-                          </span>
+                ) : (
 
-                        </td>
+                  <tr>
 
-                      </tr>
+                    <td
+                      colSpan={8}
+                      className="py-10 text-center text-slate-400 font-medium"
+                    >
+                      {lang === 'ar'
+                        ? 'لا توجد سجلات حضور لهذا الموظف'
+                        : 'No attendance records found for this employee'}
+                    </td>
 
-                    );
-                  }
+                  </tr>
+
                 )}
 
               </tbody>
@@ -1731,7 +1489,9 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
 
       </div>
 
-      {/* CHARTS */}
+      {/* =====================================================
+          CHARTS
+      ===================================================== */}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
@@ -1748,7 +1508,9 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
             </h3>
 
             <span className="text-xs text-slate-400 font-mono">
-              الأسبوع الحالي
+              {lang === 'ar'
+                ? 'الأسبوع الحالي'
+                : 'Current Week'}
             </span>
 
           </div>
@@ -1797,36 +1559,21 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
                   dataKey="present"
                   name="حاضر في الوقت"
                   fill="#10b981"
-                  radius={[
-                    6,
-                    6,
-                    0,
-                    0
-                  ]}
+                  radius={[6, 6, 0, 0]}
                 />
 
                 <Bar
                   dataKey="late"
                   name="متأخر"
                   fill="#f59e0b"
-                  radius={[
-                    6,
-                    6,
-                    0,
-                    0
-                  ]}
+                  radius={[6, 6, 0, 0]}
                 />
 
                 <Bar
                   dataKey="absent"
                   name="غائب"
                   fill="#ef4444"
-                  radius={[
-                    6,
-                    6,
-                    0,
-                    0
-                  ]}
+                  radius={[6, 6, 0, 0]}
                 />
 
               </BarChart>
@@ -1870,9 +1617,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
                     (entry, index) => (
                       <Cell
                         key={`cell-${index}`}
-                        fill={
-                          entry.color
-                        }
+                        fill={entry.color}
                       />
                     )
                   )}
@@ -1902,7 +1647,9 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
 
       </div>
 
-      {/* DEPARTMENT */}
+      {/* =====================================================
+          DEPARTMENT
+      ===================================================== */}
 
       <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
 

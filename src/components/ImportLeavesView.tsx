@@ -197,46 +197,6 @@ export const ImportLeavesView: React.FC<ImportLeavesViewProps> = ({
       setIsProcessingBackup(false);
     }
   };
-
-  const handleRestoreBackupFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setIsProcessingBackup(true);
-    setBackupError('');
-    setBackupSuccess('');
-
-    const reader = new FileReader();
-    reader.onload = async (evt) => {
-      try {
-        const text = evt.target?.result as string;
-        const backupObj = JSON.parse(text);
-        if (!backupObj || (!backupObj.employees && !Array.isArray(backupObj))) {
-          throw new Error('ملف النسخة الاحتياطية غير صالح');
-        }
-
-        const res = await fetch('/api/backup/restore', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(backupObj)
-        });
-        const data = await res.json();
-        if (data.success) {
-          setBackupSuccess(lang === 'ar' ? 'تم استعادة النسخة الاحتياطية بنجاح! جاري تحديث الشاشة...' : 'Database restored successfully! Reloading...');
-          setTimeout(() => {
-            window.location.reload();
-          }, 1500);
-        } else {
-          setBackupError(data.error || 'فشلت عملية الاستعادة');
-        }
-      } catch (err: any) {
-        setBackupError(err.message || 'Error parsing backup file');
-      } finally {
-        setIsProcessingBackup(false);
-      }
-    };
-    reader.readAsText(file);
-  };
-
   // Column matching keys (supports exact & common variations)
   const findColumnValue = (row: Record<string, any>, targetKeys: string[]): string => {
     const keys = Object.keys(row);
@@ -543,41 +503,9 @@ export const ImportLeavesView: React.FC<ImportLeavesViewProps> = ({
                 <span>{lang === 'ar' ? 'تحميل النسخة الاحتياطية الآن (JSON)' : 'Download Backup File Now (JSON)'}</span>
               </button>
             </div>
-
-            {/* Card 2: Restore Backup */}
-            <div className="bg-slate-950/60 border border-slate-800 rounded-2xl p-6 space-y-4 hover:border-sky-500/50 transition">
-              <div className="w-12 h-12 rounded-xl bg-sky-500/10 border border-sky-500/20 text-sky-400 flex items-center justify-center">
-                <Database className="w-6 h-6" />
-              </div>
-              <div className="space-y-1">
-                <h3 className="text-base font-bold text-white">
-                  {lang === 'ar' ? 'استعادة قاعدة البيانات من ملف' : 'Restore Database from File'}
-                </h3>
-                <p className="text-xs text-slate-400">
-                  {lang === 'ar'
-                    ? 'حدد ملف النسخة الاحتياطية (server_data_backup_*.json) للاستعادة الآمنة.'
-                    : 'Select a backup file (server_data_backup_*.json) for safe database restoration.'}
-                </p>
-              </div>
-              <label className="w-full py-3 px-4 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold transition flex items-center justify-center gap-2 text-sm shadow-md cursor-pointer text-center">
-                <Database className="w-4 h-4" />
-                <span>{lang === 'ar' ? 'اختر ملف النسخة الاحتياطية للاستعادة' : 'Select Backup File to Restore'}</span>
-                <input
-                  type="file"
-                  accept=".json"
-                  onChange={handleRestoreBackupFile}
-                  disabled={isProcessingBackup}
-                  className="hidden"
-                />
-              </label>
-            </div>
-
             {/* Card 3: Delete Future Attendance Records */}
             {onDeleteFutureRecords && (
               <div className="bg-slate-950/60 border border-slate-800 rounded-2xl p-6 space-y-4 hover:border-amber-500/50 transition md:col-span-2">
-                <div className="w-12 h-12 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center">
-                  <AlertTriangle className="w-6 h-6" />
-                </div>
                 <div className="space-y-1">
                   <h3 className="text-base font-bold text-white flex items-center gap-2">
                     <span>{lang === 'ar' ? 'تنظيف السجلات المستقبلية (مسح الأخطاء)' : 'Clean Future Attendance Records'}</span>

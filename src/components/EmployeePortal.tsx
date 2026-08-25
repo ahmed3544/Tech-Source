@@ -661,8 +661,7 @@ export const EmployeePortal: React.FC<EmployeePortalProps> = ({
       verifiedByFace: true,
     };
 
-    onUpdateRecord(recordData);
-    setShowPastDateModal(false);
+onUpdateRecord?.(recordData);    setShowPastDateModal(false);
 
     // Switch view to selected past month
     const recordMonth = pastDate.slice(0, 7);
@@ -908,8 +907,7 @@ export const EmployeePortal: React.FC<EmployeePortalProps> = ({
                 <span className="text-emerald-800 bg-emerald-100 px-3 py-1 rounded-full border border-emerald-300 font-bold inline-flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
                   <span>حاضر ({formatTime(todayRecord.checkIn, lang)})</span>
-                  <WorkTimer checkIn={todayRecord.checkIn} checkOut={todayRecord.checkOut} breakStart={todayRecord.breakStart} breakEnd={todayRecord.breakEnd} showIcon={false} className="text-emerald-900 font-mono text-xs border-r border-emerald-300 pr-1.5 mr-1" />
-                </span>
+<WorkTimer checkIn={todayRecord.checkIn} checkOut={todayRecord.checkOut ?? undefined} breakStart={todayRecord.breakStart ?? undefined} breakEnd={todayRecord.breakEnd ?? undefined} showIcon={false} className="text-emerald-900 font-mono text-xs border-r border-emerald-300 pr-1.5 mr-1" />                </span>
               ) : todayRecord?.checkOut ? (
                 <span className="text-slate-700 bg-slate-100 px-3 py-1 rounded-full border border-slate-200">تم الانصراف ({formatTime(todayRecord.checkOut, lang)})</span>
               ) : (
@@ -946,7 +944,7 @@ export const EmployeePortal: React.FC<EmployeePortalProps> = ({
                 <span className="text-[10px] text-emerald-800 block font-bold">
                   {lang === 'ar' ? 'مدة التواجد بالحضور:' : 'Live Elapsed Duration:'}
                 </span>
-                <WorkTimer variant="box" shift={shifts.find(s => s.id === (emp?.shiftId || 'default'))} checkIn={todayRecord.checkIn} checkOut={todayRecord.checkOut} breakStart={todayRecord.breakStart} breakEnd={todayRecord.breakEnd} />
+                <WorkTimer variant="box" shift={shifts.find(s => s.id === (emp?.shiftId || 'default'))} checkIn={todayRecord.checkIn} checkOut={todayRecord.checkOut ?? undefined} breakStart={todayRecord.breakStart} breakEnd={todayRecord.breakEnd} />
               </div>
             </div>
           </div>
@@ -1683,16 +1681,38 @@ export const EmployeePortal: React.FC<EmployeePortalProps> = ({
             <div className="overflow-x-auto border border-slate-200 rounded-2xl">
               <table className="w-full text-xs text-right border-collapse">
                 <thead>
-                  <tr className="bg-slate-900 text-white font-bold">
-                    <th className="py-3 px-4">التاريخ (Day)</th>
-                    <th className="py-3 px-4 text-center">وقت الحضور (12H)</th>
-                    <th className="py-3 px-4 text-center">الاستراحة (Break)</th>
-                    <th className="py-3 px-4 text-center">وقت الانصراف (12H)</th>
-                    <th className="py-3 px-4 text-center">ساعات العمل</th>
-                    <th className="py-3 px-4 text-center">دقائق التأخير</th>
-                    <th className="py-3 px-4 text-center">حالة اليوم</th>
-                  </tr>
-                </thead>
+  <tr className="bg-slate-100 text-slate-600 font-bold border-b border-slate-200 whitespace-nowrap">
+
+    <th className="py-3 px-4">
+      {lang === 'ar' ? 'التاريخ (Day)' : 'Date (Day)'}
+    </th>
+
+    <th className="py-3 px-4">
+      {lang === 'ar' ? 'وقت الحضور (12H)' : 'Check-in Time (12H)'}
+    </th>
+
+    <th className="py-3 px-4">
+      {lang === 'ar' ? 'الاستراحة (Break)' : 'Break'}
+    </th>
+
+    <th className="py-3 px-4">
+      {lang === 'ar' ? 'وقت الانصراف (12H)' : 'Check-out Time (12H)'}
+    </th>
+
+    <th className="py-3 px-4">
+      {lang === 'ar' ? 'ساعات العمل' : 'Work Hours'}
+    </th>
+
+    <th className="py-3 px-4">
+      {lang === 'ar' ? 'دقائق التأخير' : 'Late Minutes'}
+    </th>
+
+    <th className="py-3 px-4">
+      {lang === 'ar' ? 'حالة اليوم' : 'Day Status'}
+    </th>
+
+  </tr>
+</thead>
                 <tbody className="divide-y divide-slate-100">
                   {filteredMonthRecords.length > 0 ? (
                     filteredMonthRecords.map((r) => (

@@ -56,26 +56,17 @@ function loadState(): State {
     return {
       ...emptyState(),
       ...d,
-
-      employees: Array.isArray(d.employees)
-        ? d.employees
-        : [],
-
+      employees: Array.isArray(d.employees) ? d.employees : [],
       attendanceRecords: Array.isArray(d.attendanceRecords)
         ? d.attendanceRecords
         : [],
-
       leaveRequests: Array.isArray(d.leaveRequests)
         ? d.leaveRequests
         : [],
-
       overtimeRequests: Array.isArray(d.overtimeRequests)
         ? d.overtimeRequests
         : [],
-
-      shifts: Array.isArray(d.shifts)
-        ? d.shifts
-        : [],
+      shifts: Array.isArray(d.shifts) ? d.shifts : [],
     };
   } catch {
     return emptyState();
@@ -120,6 +111,7 @@ function clock() {
       if (x.type !== "literal") {
         a[x.type] = x.value;
       }
+
       return a;
     }, {});
 
@@ -170,6 +162,12 @@ function shiftFor(e: any) {
   );
 }
 
+/*
+=========================================================
+ATTENDANCE SANITIZE
+=========================================================
+*/
+
 function sanitize(r: any) {
   const e = localState.employees.find(
     (x: any) =>
@@ -192,6 +190,7 @@ function sanitize(r: any) {
 
     if (r.breakStart) {
       let c = mins(r.breakStart);
+
       let d = r.breakEnd
         ? mins(r.breakEnd)
         : b;
@@ -301,6 +300,12 @@ function sanitize(r: any) {
   };
 }
 
+/*
+=========================================================
+ATTENDANCE MERGE
+=========================================================
+*/
+
 function mergeAttendance(
   a: any[] = [],
   b: any[] = []
@@ -351,6 +356,134 @@ function mergeAttendance(
   return [...m.values()];
 }
 
+/*
+=========================================================
+LEAVE HELPERS
+=========================================================
+*/
+
+/*
+  توحيد بيانات الإجازة.
+
+  السبب:
+  بعض الأجهزة ممكن تبعت startDate/endDate
+  وبعض النسخ القديمة من الواجهة ممكن يكون عندها
+  createdAt أو status بصيغة مختلفة.
+
+  هنا نضمن إن كل الأجهزة تقرأ نفس الشكل.
+*/
+
+function normalizeLeave(x: any) {
+  return {
+    ...x,
+
+    id: String(x.id),
+
+    employeeId:
+      String(x.employeeId),
+
+    type:
+      x.type ?? null,
+
+    startDate:
+      x.startDate
+        ? String(x.startDate).slice(0, 10)
+        : null,
+
+    endDate:
+      x.endDate
+        ? String(x.endDate).slice(0, 10)
+        : null,
+
+    reason:
+      x.reason ?? null,
+
+    status:
+      x.status ?? "pending",
+
+    createdAt:
+      x.createdAt ||
+      new Date().toISOString(),
+
+    hours:
+      x.hours == null
+        ? null
+        : Number(x.hours),
+
+    permissionSlot:
+      x.permissionSlot ?? null,
+
+    attachmentUrl:
+      x.attachmentUrl ?? null,
+
+    attachmentName:
+      x.attachmentName ?? null,
+
+    reviewedBy:
+      x.reviewedBy ?? null,
+
+    reviewNotes:
+      x.reviewNotes ?? null,
+  };
+}
+
+/*
+  هل الموظف في إجازة في تاريخ معين؟
+
+  مهم:
+  الإجازة لازم تكون APPROVED فقط.
+*/
+
+function isEmployeeOnLeave(
+  leave: any,
+  date: string
+) {
+  if (!leave) {
+    return false;
+  }
+
+  if (
+    String(leave.status || "").toLowerCase() !==
+    "approved"
+  ) {
+    return false;
+  }
+
+  if (!leave.startDate) {
+    return false;
+  }
+
+  const start =
+    String(leave.startDate).slice(0, 10);
+
+  const end =
+    String(
+      leave.endDate || leave.startDate
+    ).slice(0, 10);
+
+  return (
+    date >= start &&
+    date <= end
+  );
+}
+
+function getActiveLeaves(
+  leaves: any[],
+  date: string
+) {
+  return leaves
+    .map(normalizeLeave)
+    .filter((x: any) =>
+      isEmployeeOnLeave(x, date)
+    );
+}
+
+/*
+=========================================================
+SETTINGS
+=========================================================
+*/
+
 async function setting(
   key: string,
   value: any
@@ -369,25 +502,38 @@ async function setting(
     });
 }
 
+/*
+=========================================================
+EMPLOYEE UPSERT
+=========================================================
+*/
+
 async function employeeUpsert(
   e: any
 ) {
   const v = {
     id: String(e.id),
-    code: e.code ?? null,
 
-    nameAr: String(
-      e.nameAr ?? ""
-    ),
+    code:
+      e.code ?? null,
 
-    nameEn: String(
-      e.nameEn ?? ""
-    ),
+    nameAr:
+      String(e.nameAr ?? ""),
 
-    avatar: e.avatar ?? null,
-    email: e.email ?? null,
-    phone: e.phone ?? null,
-    department: e.department ?? null,
+    nameEn:
+      String(e.nameEn ?? ""),
+
+    avatar:
+      e.avatar ?? null,
+
+    email:
+      e.email ?? null,
+
+    phone:
+      e.phone ?? null,
+
+    department:
+      e.department ?? null,
 
     jobTitleAr:
       e.jobTitleAr ?? null,
@@ -435,24 +581,61 @@ async function employeeUpsert(
     });
 }
 
+/*
+=========================================================
+FIND ATTENDANCE
+=========================================================
+*/
+
+async function findAttendance(
+  employeeId: string,
+  date: string
+) {
+  const rows =
+    await db
+      .select()
+      .from(
+        schema.attendanceRecords
+      )
+      .where(
+        sql`
+          ${schema.attendanceRecords.employeeId}
+          = ${employeeId}
+          AND
+          ${schema.attendanceRecords.date}
+          = ${date}
+        `
+      );
+
+  return rows[0] || null;
+}
+
+/*
+=========================================================
+ATTENDANCE UPSERT
+=========================================================
+*/
+
 async function attendanceUpsert(
   r: any
 ) {
   r = sanitize(r);
 
+  const employeeId =
+    String(r.employeeId);
+
+  const date =
+    String(r.date);
+
   const v = {
     id: String(
       r.id ||
-        `rec-${norm(
-          r.employeeId
-        )}-${r.date}`
+        `rec-${norm(employeeId)}-${date}`
     ),
 
-    employeeId:
-      String(r.employeeId),
+    employeeId,
 
-    date:
-      String(r.date),
+    date,
 
     checkIn:
       r.checkIn ?? null,
@@ -520,10 +703,14 @@ async function attendanceUpsert(
       r.notes ?? null,
 
     verifiedByFace:
-      Boolean(r.verifiedByFace),
+      Boolean(
+        r.verifiedByFace
+      ),
 
     isExcused:
-      Boolean(r.isExcused),
+      Boolean(
+        r.isExcused
+      ),
 
     excusedBy:
       r.excusedBy ?? null,
@@ -541,84 +728,82 @@ async function attendanceUpsert(
       ),
   };
 
-  await db
-    .insert(schema.attendanceRecords)
-    .values(v as any)
-    .onConflictDoUpdate({
-      target: [
-        schema.attendanceRecords.employeeId,
-        schema.attendanceRecords.date,
-      ],
-      set: v as any,
-    });
+  const existing =
+    await findAttendance(
+      employeeId,
+      date
+    );
 
-  return v;
+  if (existing) {
+    const [updated] =
+      await db
+        .update(
+          schema.attendanceRecords
+        )
+        .set({
+          ...v,
+
+          id: existing.id,
+        } as any)
+        .where(
+          sql`
+            ${schema.attendanceRecords.id}
+            = ${existing.id}
+          `
+        )
+        .returning();
+
+    return updated;
+  }
+
+  const [inserted] =
+    await db
+      .insert(
+        schema.attendanceRecords
+      )
+      .values(v as any)
+      .returning();
+
+  return inserted;
 }
+
+/*
+=========================================================
+LEAVE UPSERT
+=========================================================
+*/
 
 async function leaveUpsert(
   x: any
 ) {
-  const v = {
-    id: String(x.id),
-
-    employeeId:
-      String(x.employeeId),
-
-    type:
-      x.type ?? null,
-
-    startDate:
-      x.startDate ?? null,
-
-    endDate:
-      x.endDate ?? null,
-
-    reason:
-      x.reason ?? null,
-
-    status:
-      x.status ?? "pending",
-
-    createdAt:
-      x.createdAt ||
-      new Date().toISOString(),
-
-    hours:
-      x.hours == null
-        ? null
-        : Number(x.hours),
-
-    permissionSlot:
-      x.permissionSlot ?? null,
-
-    attachmentUrl:
-      x.attachmentUrl ?? null,
-
-    attachmentName:
-      x.attachmentName ?? null,
-
-    reviewedBy:
-      x.reviewedBy ?? null,
-
-    reviewNotes:
-      x.reviewNotes ?? null,
-  };
+  const v =
+    normalizeLeave(x);
 
   await db
-    .insert(schema.leaveRequests)
+    .insert(
+      schema.leaveRequests
+    )
     .values(v as any)
     .onConflictDoUpdate({
       target:
         schema.leaveRequests.id,
+
       set: v as any,
     });
 }
+
+/*
+=========================================================
+OVERTIME UPSERT
+=========================================================
+*/
 
 async function overtimeUpsert(
   x: any
 ) {
   const v = {
-    id: String(x.id),
+    id:
+      String(x.id),
 
     employeeId:
       String(x.employeeId),
@@ -658,14 +843,23 @@ async function overtimeUpsert(
   };
 
   await db
-    .insert(schema.overtimeRequests)
+    .insert(
+      schema.overtimeRequests
+    )
     .values(v as any)
     .onConflictDoUpdate({
       target:
         schema.overtimeRequests.id,
+
       set: v as any,
     });
 }
+
+/*
+=========================================================
+LOAD ALL DATABASE DATA
+=========================================================
+*/
 
 async function data() {
   const [
@@ -707,9 +901,12 @@ async function data() {
       .from(schema.settings),
   ]);
 
-  // مهم:
-  // نحمل الموظفين والشفتات أولاً
-  // قبل حساب attendance
+  /*
+  IMPORTANT:
+  employees + shifts first
+  before sanitize attendance.
+  */
+
   localState.employees =
     employees;
 
@@ -717,7 +914,9 @@ async function data() {
     shifts;
 
   localState.leaveRequests =
-    leaveRequests;
+    leaveRequests.map(
+      normalizeLeave
+    );
 
   localState.overtimeRequests =
     overtimeRequests;
@@ -728,17 +927,26 @@ async function data() {
     );
 
   for (const s of settings) {
-    if (s.key === "companyNameAr") {
+    if (
+      s.key ===
+      "companyNameAr"
+    ) {
       localState.companyNameAr =
         s.value;
     }
 
-    if (s.key === "companyNameEn") {
+    if (
+      s.key ===
+      "companyNameEn"
+    ) {
       localState.companyNameEn =
         s.value;
     }
 
-    if (s.key === "urgentNotice") {
+    if (
+      s.key ===
+      "urgentNotice"
+    ) {
       localState.urgentNotice =
         s.value;
     }
@@ -747,39 +955,47 @@ async function data() {
   localState.lastUpdated =
     Date.now();
 
+  /*
+  إضافة activeLeaves بدون التأثير
+  على البيانات القديمة التي تستخدمها الواجهة.
+  */
+
+  const today =
+    clock().date;
+
+  const activeLeaves =
+    getActiveLeaves(
+      localState.leaveRequests,
+      today
+    );
+
   return {
     ...localState,
+
+    /*
+    كل الأجهزة هتستقبل نفس
+    leaveRequests من Supabase.
+    */
+
+    leaveRequests:
+      localState.leaveRequests,
+
+    /*
+    الإجازات الفعالة اليوم.
+    */
+
+    activeLeaves,
+
     lastUpdated:
       localState.lastUpdated,
   };
 }
 
-async function findAttendance(
-  employeeId: string,
-  date: string
-) {
-  const rows =
-    await db
-      .select()
-      .from(
-        schema.attendanceRecords
-      )
-      .where(
-        sql`
-          ${schema.attendanceRecords.employeeId}
-          = ${employeeId}
-          AND
-          ${schema.attendanceRecords.date}
-          = ${date}
-        `
-      );
-
-  return rows[0] || null;
-}
-
-/* =========================
-   MIDDLEWARE
-========================= */
+/*
+=========================================================
+MIDDLEWARE
+=========================================================
+*/
 
 app.disable(
   "x-powered-by"
@@ -796,7 +1012,7 @@ app.use(
   (_req, res, next) => {
     res.setHeader(
       "Cache-Control",
-      "no-store, no-cache, must-revalidate, proxy-revalidate"
+      "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0"
     );
 
     res.setHeader(
@@ -813,9 +1029,11 @@ app.use(
   }
 );
 
-/* =========================
-   HEALTH
-========================= */
+/*
+=========================================================
+HEALTH
+=========================================================
+*/
 
 app.get(
   "/api/health",
@@ -841,22 +1059,33 @@ app.get(
       success: true,
       status: "ok",
       database,
-      serverTime: clock(),
+      serverTime:
+        clock(),
     });
   }
 );
 
-/* =========================
-   DATA
-========================= */
+/*
+=========================================================
+DATA
+=========================================================
+*/
 
 app.get(
   "/api/data",
   async (_req, res) => {
     try {
-      const result = USE_DATABASE
-        ? await data()
-        : localState;
+      const result =
+        USE_DATABASE
+          ? await data()
+          : {
+              ...localState,
+              activeLeaves:
+                getActiveLeaves(
+                  localState.leaveRequests,
+                  clock().date
+                ),
+            };
 
       res.json({
         success: true,
@@ -877,9 +1106,106 @@ app.get(
   }
 );
 
-/* =========================
-   LOGIN
-========================= */
+/*
+=========================================================
+LEAVES - GET
+=========================================================
+*/
+
+app.get(
+  "/api/leaves",
+  async (req, res) => {
+    try {
+      const requestedDate =
+        String(
+          req.query.date ||
+            clock().date
+        );
+
+      if (USE_DATABASE) {
+        /*
+        نقرأ الإجازات مباشرة من Supabase
+        كل مرة.
+        */
+
+        const rows =
+          await db
+            .select()
+            .from(
+              schema.leaveRequests
+            );
+
+        const normalized =
+          rows.map(
+            normalizeLeave
+          );
+
+        const active =
+          getActiveLeaves(
+            normalized,
+            requestedDate
+          );
+
+        return res.json({
+          success: true,
+
+          leaveRequests:
+            normalized,
+
+          activeLeaves:
+            active,
+
+          date:
+            requestedDate,
+
+          lastUpdated:
+            Date.now(),
+        });
+      }
+
+      const normalized =
+        localState.leaveRequests.map(
+          normalizeLeave
+        );
+
+      res.json({
+        success: true,
+
+        leaveRequests:
+          normalized,
+
+        activeLeaves:
+          getActiveLeaves(
+            normalized,
+            requestedDate
+          ),
+
+        date:
+          requestedDate,
+
+        lastUpdated:
+          Date.now(),
+      });
+    } catch (e) {
+      console.error(
+        "GET /api/leaves:",
+        e
+      );
+
+      res.status(500).json({
+        success: false,
+        error:
+          "Failed to load leaves",
+      });
+    }
+  }
+);
+
+/*
+=========================================================
+LOGIN
+=========================================================
+*/
 
 app.post(
   "/api/login",
@@ -923,8 +1249,10 @@ app.post(
         e =
           employees.find(
             (x: any) =>
-              x.role === "leader" ||
-              x.code === "EMP011"
+              x.role ===
+                "leader" ||
+              x.code ===
+                "EMP011"
           ) ||
           employees[0];
       } else {
@@ -1024,9 +1352,11 @@ app.post(
             "0"
           )}` ||
 
-        pass === "1234" ||
+        pass ===
+          "1234" ||
 
-        pass === "tech_123";
+        pass ===
+          "tech_123";
 
       if (!valid) {
         return res.status(401).json({
@@ -1063,15 +1393,18 @@ app.post(
 
       res.status(500).json({
         success: false,
-        error: "Login failed",
+        error:
+          "Login failed",
       });
     }
   }
 );
 
-/* =========================
-   PUNCH
-========================= */
+/*
+=========================================================
+PUNCH
+=========================================================
+*/
 
 app.post(
   "/api/punch",
@@ -1094,7 +1427,8 @@ app.post(
       const eid =
         String(employeeId).trim();
 
-      const c = clock();
+      const c =
+        clock();
 
       const date =
         action === "update" &&
@@ -1166,7 +1500,9 @@ app.post(
             eid
           )}-${date}`,
 
-        employeeId: eid,
+        employeeId:
+          eid,
+
         date,
 
         updatedAt:
@@ -1177,7 +1513,8 @@ app.post(
         action === "check_in" &&
         !r.checkIn
       ) {
-        r.checkIn = c.time;
+        r.checkIn =
+          c.time;
       }
 
       if (
@@ -1214,7 +1551,8 @@ app.post(
         r.overtimeHours = 0;
       }
 
-      r = sanitize(r);
+      r =
+        sanitize(r);
 
       if (USE_DATABASE) {
         await attendanceUpsert(
@@ -1223,12 +1561,16 @@ app.post(
 
         return res.json({
           success: true,
+
           record:
             await findAttendance(
               eid,
               date
             ),
-          serverTime: c,
+
+          serverTime:
+            c,
+
           lastUpdated:
             Date.now(),
         });
@@ -1271,9 +1613,11 @@ app.post(
   }
 );
 
-/* =========================
-   ATTENDANCE
-========================= */
+/*
+=========================================================
+ATTENDANCE
+=========================================================
+*/
 
 app.post(
   "/api/attendance",
@@ -1304,31 +1648,56 @@ app.post(
         });
       }
 
-      const s = sanitize({
-        ...r,
-        id:
-          r.id ||
-          `rec-${norm(
-            r.employeeId
-          )}-${r.date}`,
-      });
+      const s =
+        sanitize({
+          ...r,
+
+          id:
+            r.id ||
+            `rec-${norm(
+              r.employeeId
+            )}-${r.date}`,
+        });
 
       if (USE_DATABASE) {
         await attendanceUpsert(
           s
         );
 
+        const freshData =
+          await data();
+
         return res.json({
           success: true,
+
           record:
             await findAttendance(
               String(
                 r.employeeId
               ),
-              String(
-                r.date
-              )
+              String(r.date)
             ),
+
+          attendanceRecords:
+            freshData.attendanceRecords,
+
+          employees:
+            freshData.employees,
+
+          shifts:
+            freshData.shifts,
+
+          /*
+          مهم:
+          رجوع الإجازات مع الحضور
+          */
+
+          leaveRequests:
+            freshData.leaveRequests,
+
+          activeLeaves:
+            freshData.activeLeaves,
+
           lastUpdated:
             Date.now(),
         });
@@ -1347,10 +1716,15 @@ app.post(
 
       res.json({
         success: true,
+
         attendanceRecords:
           localState.attendanceRecords,
+
+        leaveRequests:
+          localState.leaveRequests,
+
         lastUpdated:
-          localState.lastUpdated,
+          Date.now(),
       });
     } catch (e) {
       console.error(
@@ -1361,15 +1735,19 @@ app.post(
       res.status(500).json({
         success: false,
         error:
-          "Failed to save attendance",
+          e instanceof Error
+            ? e.message
+            : "Failed to save attendance",
       });
     }
   }
 );
 
-/* =========================
-   SYNC
-========================= */
+/*
+=========================================================
+SYNC
+=========================================================
+*/
 
 app.post(
   "/api/sync",
@@ -1413,6 +1791,12 @@ app.post(
             );
           }
         }
+
+        /*
+        الإجازات:
+        كل جهاز يرفع التغييرات إلى Supabase،
+        وبعدها نرجع الداتا الكاملة من Supabase.
+        */
 
         for (
           const x of
@@ -1501,9 +1885,18 @@ app.post(
           );
         }
 
+        /*
+        الأهم:
+        لا نرجع بيانات الجهاز.
+        نرجع أحدث بيانات Supabase.
+        */
+
+        const fresh =
+          await data();
+
         return res.json({
           success: true,
-          ...(await data()),
+          ...fresh,
         });
       }
 
@@ -1538,7 +1931,9 @@ app.post(
         )
       ) {
         localState.leaveRequests =
-          b.leaveRequests;
+          b.leaveRequests.map(
+            normalizeLeave
+          );
       }
 
       if (
@@ -1602,7 +1997,14 @@ app.post(
 
       res.json({
         success: true,
+
         ...localState,
+
+        activeLeaves:
+          getActiveLeaves(
+            localState.leaveRequests,
+            clock().date
+          ),
       });
     } catch (e) {
       console.error(
@@ -1612,15 +2014,18 @@ app.post(
 
       res.status(500).json({
         success: false,
-        error: "Sync failed",
+        error:
+          "Sync failed",
       });
     }
   }
 );
 
-/* =========================
-   EMPLOYEES
-========================= */
+/*
+=========================================================
+EMPLOYEES
+=========================================================
+*/
 
 app.put(
   "/api/employees/:id",
@@ -1720,9 +2125,11 @@ app.put(
   }
 );
 
-/* =========================
-   SHIFTS
-========================= */
+/*
+=========================================================
+SHIFTS
+=========================================================
+*/
 
 app.delete(
   "/api/shifts/:id",
@@ -1773,9 +2180,11 @@ app.delete(
   }
 );
 
-/* =========================
-   CLEAR TODAY
-========================= */
+/*
+=========================================================
+CLEAR TODAY
+=========================================================
+*/
 
 app.post(
   "/api/attendance/clear-today",
@@ -1808,10 +2217,12 @@ app.post(
 
         return res.json({
           success: true,
+
           attendanceRecords:
             rows.map(
               sanitize
             ),
+
           lastUpdated:
             Date.now(),
         });
@@ -1828,8 +2239,10 @@ app.post(
 
       res.json({
         success: true,
+
         attendanceRecords:
           localState.attendanceRecords,
+
         lastUpdated:
           Date.now(),
       });
@@ -1848,9 +2261,11 @@ app.post(
   }
 );
 
-/* =========================
-   DELETE FUTURE
-========================= */
+/*
+=========================================================
+DELETE FUTURE
+=========================================================
+*/
 
 app.post(
   "/api/attendance/delete-future",
@@ -1889,9 +2304,13 @@ app.post(
 
         return res.json({
           success: true,
+
           deletedCount:
             f.length,
-          cutoffDate: d,
+
+          cutoffDate:
+            d,
+
           lastUpdated:
             Date.now(),
         });
@@ -1915,9 +2334,13 @@ app.post(
 
       res.json({
         success: true,
+
         deletedCount:
           f.length,
-        cutoffDate: d,
+
+        cutoffDate:
+          d,
+
         lastUpdated:
           Date.now(),
       });
@@ -1936,9 +2359,11 @@ app.post(
   }
 );
 
-/* =========================
-   LEAVES
-========================= */
+/*
+=========================================================
+LEAVES - CREATE / UPDATE
+=========================================================
+*/
 
 app.post(
   "/api/leaves",
@@ -1958,19 +2383,75 @@ app.post(
         });
       }
 
+      const normalized =
+        normalizeLeave(x);
+
       if (USE_DATABASE) {
+        /*
+        احفظ في Supabase.
+        */
+
         await leaveUpsert(
-          x
+          normalized
         );
+
+        /*
+        اقرأ Supabase مرة أخرى
+        بعد الحفظ مباشرة.
+
+        ده مهم جدًا عشان أي جهاز
+        يفتح بعد كده ياخد نفس البيانات.
+        */
+
+        const fresh =
+          await data();
 
         return res.json({
           success: true,
+
+          /*
+          الإجازة التي تم حفظها
+          */
+
+          leaveRequest:
+            fresh.leaveRequests.find(
+              (a: any) =>
+                String(a.id) ===
+                String(
+                  normalized.id
+                )
+            ) || null,
+
+          /*
+          كل الإجازات
+          */
+
           leaveRequests:
-            await db
-              .select()
-              .from(
-                schema.leaveRequests
-              ),
+            fresh.leaveRequests,
+
+          /*
+          إجازات اليوم
+          */
+
+          activeLeaves:
+            fresh.activeLeaves,
+
+          /*
+          باقي البيانات المهمة
+          */
+
+          employees:
+            fresh.employees,
+
+          attendanceRecords:
+            fresh.attendanceRecords,
+
+          shifts:
+            fresh.shifts,
+
+          overtimeRequests:
+            fresh.overtimeRequests,
+
           lastUpdated:
             Date.now(),
         });
@@ -1980,17 +2461,34 @@ app.post(
         ...localState.leaveRequests.filter(
           (a: any) =>
             String(a.id) !==
-            String(x.id)
+            String(
+              normalized.id
+            )
         ),
-        x,
+
+        normalized,
       ];
+
+      localState.lastUpdated =
+        Date.now();
 
       saveLocalState();
 
       res.json({
         success: true,
+
+        leaveRequest:
+          normalized,
+
         leaveRequests:
           localState.leaveRequests,
+
+        activeLeaves:
+          getActiveLeaves(
+            localState.leaveRequests,
+            clock().date
+          ),
+
         lastUpdated:
           Date.now(),
       });
@@ -2003,11 +2501,19 @@ app.post(
       res.status(500).json({
         success: false,
         error:
-          "Failed to save leave",
+          e instanceof Error
+            ? e.message
+            : "Failed to save leave",
       });
     }
   }
 );
+
+/*
+=========================================================
+LEAVE STATUS
+=========================================================
+*/
 
 app.put(
   "/api/leaves/:id/status",
@@ -2045,19 +2551,59 @@ app.put(
             )
             .returning();
 
-        return x
-          ? res.json({
-              success: true,
-              leaveRequest:
-                x,
-              lastUpdated:
-                Date.now(),
-            })
-          : res.status(404).json({
-              success: false,
-              error:
-                "Leave request not found",
-            });
+        if (!x) {
+          return res.status(404).json({
+            success: false,
+            error:
+              "Leave request not found",
+          });
+        }
+
+        /*
+        مهم جدًا:
+        بعد تغيير حالة الإجازة
+        نقرأ كل البيانات من Supabase.
+        */
+
+        const fresh =
+          await data();
+
+        return res.json({
+          success: true,
+
+          leaveRequest:
+            fresh.leaveRequests.find(
+              (a: any) =>
+                String(a.id) ===
+                id
+            ) || null,
+
+          /*
+          نرجع كل الإجازات
+          وليس السجل المعدل فقط.
+          */
+
+          leaveRequests:
+            fresh.leaveRequests,
+
+          activeLeaves:
+            fresh.activeLeaves,
+
+          employees:
+            fresh.employees,
+
+          attendanceRecords:
+            fresh.attendanceRecords,
+
+          shifts:
+            fresh.shifts,
+
+          overtimeRequests:
+            fresh.overtimeRequests,
+
+          lastUpdated:
+            Date.now(),
+        });
       }
 
       const i =
@@ -2076,19 +2622,34 @@ app.put(
       }
 
       localState.leaveRequests[i] =
-        {
+        normalizeLeave({
           ...localState
             .leaveRequests[i],
+
           ...b,
-        };
+        });
+
+      localState.lastUpdated =
+        Date.now();
 
       saveLocalState();
 
       res.json({
         success: true,
+
         leaveRequest:
           localState
             .leaveRequests[i],
+
+        leaveRequests:
+          localState.leaveRequests,
+
+        activeLeaves:
+          getActiveLeaves(
+            localState.leaveRequests,
+            clock().date
+          ),
+
         lastUpdated:
           Date.now(),
       });
@@ -2107,9 +2668,11 @@ app.put(
   }
 );
 
-/* =========================
-   OVERTIME
-========================= */
+/*
+=========================================================
+OVERTIME
+=========================================================
+*/
 
 app.post(
   "/api/overtime",
@@ -2137,12 +2700,14 @@ app.post(
 
         return res.json({
           success: true,
+
           overtimeRequests:
             await db
               .select()
               .from(
                 schema.overtimeRequests
               ),
+
           lastUpdated:
             Date.now(),
         });
@@ -2154,6 +2719,7 @@ app.post(
             String(a.id) !==
             String(x.id)
         ),
+
         x,
       ];
 
@@ -2161,8 +2727,10 @@ app.post(
 
       res.json({
         success: true,
+
         overtimeRequests:
           localState.overtimeRequests,
+
         lastUpdated:
           Date.now(),
       });
@@ -2180,6 +2748,12 @@ app.post(
     }
   }
 );
+
+/*
+=========================================================
+OVERTIME STATUS
+=========================================================
+*/
 
 app.put(
   "/api/overtime/:id/status",
@@ -2201,6 +2775,7 @@ app.put(
             )
             .set({
               ...b,
+
               updatedAt:
                 new Date().toISOString(),
             } as any)
@@ -2217,6 +2792,14 @@ app.put(
               success: true,
               overtimeRequest:
                 x,
+
+              overtimeRequests:
+                await db
+                  .select()
+                  .from(
+                    schema.overtimeRequests
+                  ),
+
               lastUpdated:
                 Date.now(),
             })
@@ -2246,7 +2829,9 @@ app.put(
         {
           ...localState
             .overtimeRequests[i],
+
           ...b,
+
           updatedAt:
             new Date().toISOString(),
         };
@@ -2255,9 +2840,14 @@ app.put(
 
       res.json({
         success: true,
+
         overtimeRequest:
           localState
             .overtimeRequests[i],
+
+        overtimeRequests:
+          localState.overtimeRequests,
+
         lastUpdated:
           Date.now(),
       });
@@ -2276,9 +2866,11 @@ app.put(
   }
 );
 
-/* =========================
-   BACKUP
-========================= */
+/*
+=========================================================
+BACKUP
+=========================================================
+*/
 
 app.get(
   "/api/backup",
@@ -2291,9 +2883,12 @@ app.get(
 
       const b = {
         ...d,
+
         backupTimestamp:
           new Date().toISOString(),
-        version: "2.0",
+
+        version:
+          "3.0",
       };
 
       fs.mkdirSync(
@@ -2350,9 +2945,11 @@ app.get(
   }
 );
 
-/* =========================
-   RESTORE
-========================= */
+/*
+=========================================================
+RESTORE
+=========================================================
+*/
 
 app.post(
   "/api/backup/restore",
@@ -2376,7 +2973,8 @@ app.post(
 
       if (USE_DATABASE) {
         for (
-          const x of b.employees
+          const x of
+          b.employees
         ) {
           if (x?.id) {
             await employeeUpsert(
@@ -2435,6 +3033,7 @@ app.post(
 
         return res.json({
           success: true,
+
           ...(await data()),
         });
       }
@@ -2458,8 +3057,12 @@ app.post(
           ),
 
         leaveRequests:
-          b.leaveRequests ||
-          [],
+          (
+            b.leaveRequests ||
+            []
+          ).map(
+            normalizeLeave
+          ),
 
         overtimeRequests:
           b.overtimeRequests ||
@@ -2477,7 +3080,14 @@ app.post(
 
       res.json({
         success: true,
+
         ...localState,
+
+        activeLeaves:
+          getActiveLeaves(
+            localState.leaveRequests,
+            clock().date
+          ),
       });
     } catch (e) {
       console.error(
@@ -2494,21 +3104,27 @@ app.post(
   }
 );
 
-/* =========================
-   FRONTEND / VITE
-========================= */
-
-/* =========================
-   START / FRONTEND
-========================= */
+/*
+=========================================================
+START / FRONTEND
+=========================================================
+*/
 
 async function start() {
   if (USE_DATABASE) {
     try {
-      await db.execute(sql`select 1`);
-      console.log("Database connection successful.");
+      await db.execute(
+        sql`select 1`
+      );
+
+      console.log(
+        "Database connection successful."
+      );
     } catch (e) {
-      console.error("Database connection failed:", e);
+      console.error(
+        "Database connection failed:",
+        e
+      );
     }
   } else {
     console.warn(
@@ -2516,56 +3132,125 @@ async function start() {
     );
   }
 
-  // Local development with Vite
-  if (!process.env.VERCEL && process.env.NODE_ENV !== "production") {
-    const { createServer: createViteServer } = await import("vite");
+  /*
+  Local development with Vite
+  */
 
-    const vite = await createViteServer({
-      server: {
-        middlewareMode: true,
-      },
-      appType: "spa",
-    });
+  if (
+    !process.env.VERCEL &&
+    process.env.NODE_ENV !==
+      "production"
+  ) {
+    const {
+      createServer:
+        createViteServer,
+    } = await import(
+      "vite"
+    );
 
-    app.use(vite.middlewares);
+    const vite =
+      await createViteServer({
+        server: {
+          middlewareMode:
+            true,
+        },
+
+        appType:
+          "spa",
+      });
+
+    app.use(
+      vite.middlewares
+    );
   } else {
-    // Production / Vercel
-    const dist = path.join(process.cwd(), "dist");
+    /*
+    Production / Vercel
+    */
 
-    app.use(express.static(dist));
+    const dist =
+      path.join(
+        process.cwd(),
+        "dist"
+      );
 
-    app.get("/", (_req, res) => {
-      res.sendFile(path.join(dist, "index.html"));
-    });
+    app.use(
+      express.static(
+        dist
+      )
+    );
 
-    app.get("*", (req, res) => {
-      if (req.path.startsWith("/api/")) {
-        return res.status(404).json({
-          error: "API endpoint not found",
-        });
+    app.get(
+      "/",
+      (_req, res) => {
+        res.sendFile(
+          path.join(
+            dist,
+            "index.html"
+          )
+        );
       }
+    );
 
-      res.sendFile(path.join(dist, "index.html"));
-    });
+    app.get(
+      "*",
+      (req, res) => {
+        if (
+          req.path.startsWith(
+            "/api/"
+          )
+        ) {
+          return res
+            .status(404)
+            .json({
+              error:
+                "API endpoint not found",
+            });
+        }
+
+        res.sendFile(
+          path.join(
+            dist,
+            "index.html"
+          )
+        );
+      }
+    );
   }
 }
 
-/* =========================
-   LOCAL SERVER
-========================= */
+/*
+=========================================================
+LOCAL SERVER
+=========================================================
+*/
 
 if (!process.env.VERCEL) {
   start()
     .then(() => {
-      app.listen(PORT, "0.0.0.0", () => {
-        console.log(`Server running on port ${PORT}`);
-        console.log(
-          `Database: ${USE_DATABASE ? "SUPABASE" : "LOCAL JSON"}`
-        );
-      });
+      app.listen(
+        PORT,
+        "0.0.0.0",
+        () => {
+          console.log(
+            `Server running on port ${PORT}`
+          );
+
+          console.log(
+            `Database: ${
+              USE_DATABASE
+                ? "SUPABASE"
+                : "LOCAL JSON"
+            }`
+          );
+        }
+      );
     })
     .catch((e) => {
-      console.error("Server startup failed:", e);
+      console.error(
+        "Server startup failed:",
+        e
+      );
+
       process.exit(1);
     });
 }
