@@ -1111,7 +1111,10 @@ app.get(
 LEAVES - GET
 =========================================================
 */
-
+app.use((req, res, next) => {
+  console.log("VERCEL REQUEST:", req.method, req.originalUrl, req.url);
+  next();
+});
 app.get(
   "/api/leaves",
   async (req, res) => {
