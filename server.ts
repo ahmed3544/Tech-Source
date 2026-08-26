@@ -402,10 +402,14 @@ function normalizeLeave(x: any) {
       x.status ?? "pending",
 
     createdAt:
-      x.createdAt ||
-      new Date().toISOString(),
+  x.createdAt ||
+  new Date().toISOString(),
 
-    hours:
+updatedAt:
+  x.updatedAt ||
+  x.createdAt ||
+  null,
+hours:
       x.hours == null
         ? null
         : Number(x.hours),
@@ -773,23 +777,89 @@ LEAVE UPSERT
 =========================================================
 */
 
-async function leaveUpsert(
-  x: any
-) {
-  const v =
-    normalizeLeave(x);
+async function leaveUpsert(x: any) {
+  const incoming = normalizeLeave({
+    ...x,
+    updatedAt:
+      x?.updatedAt ||
+      x?.createdAt ||
+      new Date().toISOString(),
+  });
+
+  const id = String(incoming.id);
+
+  const existingRows = await db
+    .select()
+    .from(schema.leaveRequests)
+    .where(
+      sql`
+        ${schema.leaveRequests.id} = ${id}
+      `
+    );
+
+  const existing = existingRows[0];
+
+  // الطلب جديد
+  if (!existing) {
+    await db
+      .insert(schema.leaveRequests)
+      .values(incoming as any);
+
+    return;
+  }
+
+  const currentStatus = String(
+    (existing as any).status || "pending"
+  ).toLowerCase();
+
+  const incomingStatus = String(
+    incoming.status || "pending"
+  ).toLowerCase();
+
+  const incomingTime = new Date(
+    incoming.updatedAt ||
+      incoming.createdAt ||
+      0
+  ).getTime();
+
+  const existingTime = new Date(
+    (existing as any).updatedAt ||
+      (existing as any).createdAt ||
+      0
+  ).getTime();
+
+  /*
+   * حماية مهمة جدًا:
+   *
+   * لو الطلب في Supabase أصبح approved أو rejected
+   * والجهاز الآخر عنده نسخة pending قديمة،
+   * ممنوع الـ pending القديمة ترجع الطلب.
+   */
+  if (
+    (
+      currentStatus === "approved" ||
+      currentStatus === "rejected"
+    ) &&
+    incomingStatus === "pending"
+  ) {
+    return;
+  }
+
+  /*
+   * أي تحديث أحدث فقط هو الذي يُحفظ.
+   */
+  if (incomingTime <= existingTime) {
+    return;
+  }
 
   await db
-    .insert(
-      schema.leaveRequests
-    )
-    .values(v as any)
-    .onConflictDoUpdate({
-      target:
-        schema.leaveRequests.id,
-
-      set: v as any,
-    });
+    .update(schema.leaveRequests)
+    .set(incoming as any)
+    .where(
+      sql`
+        ${schema.leaveRequests.id} = ${id}
+      `
+    );
 }
 
 /*
@@ -1001,14 +1071,10 @@ app.disable(
   "x-powered-by"
 );
 
-app.use(
-  express.json({
-    limit: "50mb",
-  })
-);
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
-app.use(
-  "/api",
+app.use(  "/api",
   (_req, res, next) => {
     res.setHeader(
       "Cache-Control",
@@ -1798,83 +1864,35 @@ app.post(
         /*
         الإجازات:
         كل جهاز يرفع التغييرات إلى Supabase،
-        وبعدها نرجع الداتا الكاملة من Supabase.
+        و leaveUpsert تمنع النسخة القديمة
+        من الكتابة فوق النسخة الأحدث.
         */
 
         for (
           const x of
-          Array.isArray(
-            b.leaveRequests
-          )
+          Array.isArray(b.leaveRequests)
             ? b.leaveRequests
             : []
         ) {
           if (
-            x?.id &&
-            x?.employeeId
+            !x?.id ||
+            !x?.employeeId
           ) {
-            await leaveUpsert(
-              x
-            );
+            continue;
           }
-        }
 
-        for (
-          const x of
-          Array.isArray(
-            b.overtimeRequests
-          )
-            ? b.overtimeRequests
-            : []
-        ) {
-          if (
-            x?.id &&
-            x?.employeeId &&
-            x?.date
-          ) {
-            await overtimeUpsert(
-              x
-            );
-          }
-        }
+          const incoming =
+            normalizeLeave({
+              ...x,
 
-        for (
-          const id of
-          Array.isArray(
-            b.deletedAttendanceIds
-          )
-            ? b.deletedAttendanceIds
-            : []
-        ) {
-          await db
-            .delete(
-              schema.attendanceRecords
-            )
-            .where(
-              sql`
-                ${schema.attendanceRecords.id}
-                = ${String(id)}
-              `
-            );
-        }
+              updatedAt:
+                x.updatedAt ||
+                x.createdAt ||
+                new Date().toISOString(),
+            });
 
-        if (
-          b.companyNameAr !==
-          undefined
-        ) {
-          await setting(
-            "companyNameAr",
-            b.companyNameAr
-          );
-        }
-
-        if (
-          b.companyNameEn !==
-          undefined
-        ) {
-          await setting(
-            "companyNameEn",
-            b.companyNameEn
+          await leaveUpsert(
+            incoming
           );
         }
 
@@ -2182,7 +2200,69 @@ app.delete(
     }
   }
 );
+/*
+=========================================================
+DELETE LEAVE
+=========================================================
+*/
 
+app.delete(
+  "/api/leaves/:id",
+  async (req, res) => {
+    try {
+      const id = String(req.params.id);
+
+      if (USE_DATABASE) {
+        await db
+          .delete(schema.leaveRequests)
+          .where(
+            sql`
+              ${schema.leaveRequests.id}
+              = ${id}
+            `
+          );
+
+        const rows =
+          await db
+            .select()
+            .from(schema.leaveRequests);
+
+        return res.json({
+          success: true,
+          leaveRequests: rows,
+          lastUpdated: Date.now(),
+        });
+      }
+
+      localState.leaveRequests =
+        localState.leaveRequests.filter(
+          (x: any) =>
+            String(x.id) !== id
+        );
+
+      saveLocalState();
+
+      return res.json({
+        success: true,
+        leaveRequests:
+          localState.leaveRequests,
+        lastUpdated: Date.now(),
+      });
+
+    } catch (e) {
+      console.error(
+        "DELETE /api/leaves/:id:",
+        e
+      );
+
+      return res.status(500).json({
+        success: false,
+        error:
+          "Failed to delete leave request",
+      });
+    }
+  }
+);
 /*
 =========================================================
 CLEAR TODAY
@@ -2386,17 +2466,74 @@ app.post(
         });
       }
 
-      const normalized =
-        normalizeLeave(x);
+const normalized =
+  normalizeLeave({
+    ...x,
 
-      if (USE_DATABASE) {
+    updatedAt:
+      x.updatedAt ||
+      new Date().toISOString(),
+  });      if (USE_DATABASE) {
         /*
         احفظ في Supabase.
         */
 
-        await leaveUpsert(
-          normalized
-        );
+const existing =
+  await db
+    .select()
+    .from(
+      schema.leaveRequests
+    )
+    .where(
+      sql`
+        ${schema.leaveRequests.id}
+        = ${String(normalized.id)}
+      `
+    );
+
+if (
+  existing.length > 0
+) {
+  const currentStatus =
+    String(
+      existing[0].status || ""
+    ).toLowerCase();
+
+  const incomingStatus =
+    String(
+      normalized.status || ""
+    ).toLowerCase();
+
+  /*
+  لا تسمح لنسخة قديمة من الجهاز
+  بإرجاع الطلب من approved/rejected
+  إلى pending.
+  */
+
+  if (
+    (
+      currentStatus ===
+        "approved" ||
+      currentStatus ===
+        "rejected"
+    ) &&
+    incomingStatus ===
+      "pending"
+  ) {
+    normalized.status =
+      existing[0].status;
+
+    normalized.reviewedBy =
+      existing[0].reviewedBy;
+
+    normalized.reviewNotes =
+      existing[0].reviewNotes;
+  }
+}
+
+await leaveUpsert(
+  normalized
+);
 
         /*
         اقرأ Supabase مرة أخرى
@@ -2537,15 +2674,18 @@ app.put(
               schema.leaveRequests
             )
             .set({
-              status:
-                b.status,
+  status:
+    b.status,
 
-              reviewNotes:
-                b.reviewNotes,
+  reviewNotes:
+    b.reviewNotes ?? null,
 
-              reviewedBy:
-                b.reviewedBy,
-            } as any)
+  reviewedBy:
+    b.reviewedBy ?? null,
+
+  updatedAt:
+    new Date().toISOString(),
+} as any)
             .where(
               sql`
                 ${schema.leaveRequests.id}
@@ -2974,7 +3114,20 @@ app.post(
         });
       }
 
+      /*
+      =====================================================
+      DATABASE RESTORE - SUPABASE
+      =====================================================
+      */
+
       if (USE_DATABASE) {
+
+        /*
+        =========================
+        EMPLOYEES
+        =========================
+        */
+
         for (
           const x of
           b.employees
@@ -2986,42 +3139,55 @@ app.post(
           }
         }
 
-        for (
-          const x of
-          b.attendanceRecords ||
-          []
-        ) {
-          if (
-            x?.employeeId &&
-            x?.date &&
-            String(x.date) <=
-              clock().date
-          ) {
-            await attendanceUpsert(
-              x
-            );
-          }
-        }
+        /*
+        =========================
+        LEAVE REQUESTS
+        =========================
+        */
 
         for (
           const x of
-          b.leaveRequests ||
-          []
+          Array.isArray(
+            b.leaveRequests
+          )
+            ? b.leaveRequests
+            : []
         ) {
           if (
-            x?.id &&
-            x?.employeeId
+            !x?.id ||
+            !x?.employeeId
           ) {
-            await leaveUpsert(
-              x
-            );
+            continue;
           }
+
+          const incoming =
+            normalizeLeave({
+              ...x,
+
+              updatedAt:
+                x.updatedAt ||
+                x.createdAt ||
+                new Date().toISOString(),
+            });
+
+          await leaveUpsert(
+            incoming
+          );
         }
+
+        /*
+        =========================
+        OVERTIME REQUESTS
+        =========================
+        */
 
         for (
           const x of
-          b.overtimeRequests ||
-          []
+          Array.isArray(
+            b.overtimeRequests
+          )
+            ? b.overtimeRequests
+            : []
         ) {
           if (
             x?.id &&
@@ -3034,46 +3200,152 @@ app.post(
           }
         }
 
+        /*
+        =========================
+        SETTINGS
+        =========================
+        */
+
+        if (
+          b.companyNameAr !==
+          undefined
+        ) {
+          await setting(
+            "companyNameAr",
+            b.companyNameAr
+          );
+        }
+
+        if (
+          b.companyNameEn !==
+          undefined
+        ) {
+          await setting(
+            "companyNameEn",
+            b.companyNameEn
+          );
+        }
+
+        if (
+          b.urgentNotice !==
+          undefined
+        ) {
+          await setting(
+            "urgentNotice",
+            b.urgentNotice
+          );
+        }
+
+        /*
+        =========================
+        ATTENDANCE RECORDS
+        =========================
+        */
+
+        for (
+          const r of
+          Array.isArray(
+            b.attendanceRecords
+          )
+            ? b.attendanceRecords
+            : []
+        ) {
+          if (
+            r?.employeeId &&
+            r?.date &&
+            String(r.date) <=
+              clock().date
+          ) {
+            await attendanceUpsert(
+              r
+            );
+          }
+        }
+
+        /*
+        =========================
+        RETURN FRESH DATABASE DATA
+        =========================
+        */
+
+        const fresh =
+          await data();
+
         return res.json({
           success: true,
 
-          ...(await data()),
+          ...fresh,
         });
       }
 
+      /*
+      =====================================================
+      LOCAL JSON RESTORE
+      =====================================================
+      */
+
       localState = {
         ...emptyState(),
+
         ...b,
 
         employees:
-          b.employees ||
-          [],
+          Array.isArray(
+            b.employees
+          )
+            ? b.employees
+            : [],
 
         attendanceRecords:
           (
-            b.attendanceRecords ||
-            []
+            Array.isArray(
+              b.attendanceRecords
+            )
+              ? b.attendanceRecords
+              : []
           ).filter(
             (x: any) =>
+              x?.date &&
               String(x.date) <=
-              clock().date
+                clock().date
           ),
 
         leaveRequests:
           (
-            b.leaveRequests ||
-            []
+            Array.isArray(
+              b.leaveRequests
+            )
+              ? b.leaveRequests
+              : []
           ).map(
             normalizeLeave
           ),
 
         overtimeRequests:
-          b.overtimeRequests ||
-          [],
+          Array.isArray(
+            b.overtimeRequests
+          )
+            ? b.overtimeRequests
+            : [],
 
         shifts:
-          b.shifts ||
-          [],
+          Array.isArray(
+            b.shifts
+          )
+            ? b.shifts
+            : [],
+
+        companyNameAr:
+          b.companyNameAr ??
+          null,
+
+        companyNameEn:
+          b.companyNameEn ??
+          null,
+
+        urgentNotice:
+          b.urgentNotice ??
+          null,
 
         lastUpdated:
           Date.now(),
@@ -3081,7 +3353,7 @@ app.post(
 
       saveLocalState();
 
-      res.json({
+      return res.json({
         success: true,
 
         ...localState,
@@ -3092,16 +3364,20 @@ app.post(
             clock().date
           ),
       });
+
     } catch (e) {
       console.error(
         "restore:",
         e
       );
 
-      res.status(500).json({
+      return res.status(500).json({
         success: false,
+
         error:
-          "Failed to restore backup",
+          e instanceof Error
+            ? e.message
+            : "Failed to restore backup",
       });
     }
   }
@@ -3136,89 +3412,82 @@ async function start() {
   }
 
   /*
-  Local development with Vite
+  =========================================================
+  LOCAL DEVELOPMENT WITH VITE
+  =========================================================
   */
 
   if (
     !process.env.VERCEL &&
-    process.env.NODE_ENV !==
-      "production"
+    process.env.NODE_ENV !== "production"
   ) {
     const {
-      createServer:
-        createViteServer,
-    } = await import(
-      "vite"
-    );
+      createServer: createViteServer,
+    } = await import("vite");
 
     const vite =
       await createViteServer({
         server: {
-          middlewareMode:
-            true,
+          middlewareMode: true,
         },
-
-        appType:
-          "spa",
+        appType: "spa",
       });
 
-    app.use(
-      vite.middlewares
-    );
-  } else {
-    /*
-    Production / Vercel
-    */
+    app.use(vite.middlewares);
 
-    const dist =
-      path.join(
-        process.cwd(),
-        "dist"
-      );
-
-    app.use(
-      express.static(
-        dist
-      )
-    );
-
-    app.get(
-      "/",
-      (_req, res) => {
-        res.sendFile(
-          path.join(
-            dist,
-            "index.html"
-          )
-        );
-      }
-    );
-
-    app.get(
-      "*",
-      (req, res) => {
-        if (
-          req.path.startsWith(
-            "/api/"
-          )
-        ) {
-          return res
-            .status(404)
-            .json({
-              error:
-                "API endpoint not found",
-            });
-        }
-
-        res.sendFile(
-          path.join(
-            dist,
-            "index.html"
-          )
-        );
-      }
-    );
+    return;
   }
+
+  /*
+  =========================================================
+  PRODUCTION SERVER
+  =========================================================
+  */
+
+  const dist =
+    path.join(
+      process.cwd(),
+      "dist"
+    );
+
+  app.use(
+    express.static(dist)
+  );
+
+  app.get(
+    "/",
+    (_req, res) => {
+      res.sendFile(
+        path.join(
+          dist,
+          "index.html"
+        )
+      );
+    }
+  );
+
+  app.get(
+    "*",
+    (req, res) => {
+      if (
+        req.path.startsWith("/api/")
+      ) {
+        return res
+          .status(404)
+          .json({
+            error:
+              "API endpoint not found",
+          });
+      }
+
+      res.sendFile(
+        path.join(
+          dist,
+          "index.html"
+        )
+      );
+    }
+  );
 }
 
 /*
@@ -3248,7 +3517,7 @@ if (!process.env.VERCEL) {
         }
       );
     })
-    .catch((e) => {
+    .catch((e: unknown) => {
       console.error(
         "Server startup failed:",
         e
