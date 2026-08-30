@@ -1,5 +1,5 @@
 import { AttendanceRecord, Shift, AttendanceStatus, PermissionSlot, LeaveRequest } from '../types';
-
+import * as XLSX from 'xlsx';
 const APP_TIME_ZONE = 'Africa/Cairo';
 
 function getCairoParts(date: Date): Record<string, string> {
@@ -1049,4 +1049,64 @@ export function generateCSVString(
     csvContent += [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
   }
   return csvContent;
+}
+export function exportToExcel(
+  data: AttendanceRecord[] | Record<string, any>[],
+  fileName: string = `attendance_report_${getTodayString()}.xlsx`
+) {
+  if (!data || data.length === 0) return;
+
+  const firstItem = data[0];
+
+  let rows: Record<string, any>[];
+
+  // لو البيانات بالفعل عبارة عن تقرير Overall
+  if (
+    typeof firstItem === 'object' &&
+    !('employeeId' in firstItem)
+  ) {
+    rows = data as Record<string, any>[];
+  } else {
+    // تحويل AttendanceRecord إلى بيانات Excel
+    rows = (data as AttendanceRecord[]).map(r => ({
+      'التاريخ': toWesternDigits(r.date || ''),
+      'اسم الموظف': r.employeeId || '',
+      'الحضور': formatTime(r.checkIn ?? undefined),
+      'الانصراف': formatTime(r.checkOut ?? undefined),
+      'ساعات العمل': Number(r.workHours || 0).toFixed(1),
+      'العمل الإضافي': Number(r.overtimeHours || 0).toFixed(1),
+      'التأخير بالدقائق': Number(r.lateMinutes || 0),
+      'الانصراف المبكر بالدقائق': Number(r.earlyLeaveMinutes || 0),
+      'الحالة': getStatusText(
+        r.status,
+        'ar',
+        r.leaveType,
+        r.notes
+      ),
+    }));
+  }
+
+  const worksheet = XLSX.utils.json_to_sheet(rows);
+
+  // ضبط عرض الأعمدة
+  const columnWidths = Object.keys(rows[0]).map(key => ({
+    wch: Math.max(
+      key.length + 2,
+      ...rows.map(row =>
+        String(row[key] ?? '').length + 2
+      )
+    ),
+  }));
+
+  worksheet['!cols'] = columnWidths;
+
+  const workbook = XLSX.utils.book_new();
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    worksheet,
+    'Monthly Report'
+  );
+
+  XLSX.writeFile(workbook, fileName);
 }

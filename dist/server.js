@@ -142,16 +142,24 @@ var createPool = () => {
   if (!global._postgresPool) {
     const connectionString = process.env.SUPABASE_DB_URL;
     if (!connectionString) {
-      console.warn("SUPABASE_DB_URL is not set. Database operations will fail if invoked.");
+      console.warn(
+        "SUPABASE_DB_URL is not set. Database operations will fail if invoked."
+      );
     }
     global._postgresPool = new Pool({
       connectionString,
       max: 10,
       connectionTimeoutMillis: 15e3
     });
-    global._postgresPool.on("error", (err) => {
-      console.error("Unexpected error on idle SQL pool client:", err);
-    });
+    global._postgresPool.on(
+      "error",
+      (err) => {
+        console.error(
+          "Unexpected error on idle SQL pool client:",
+          err
+        );
+      }
+    );
   }
   return global._postgresPool;
 };
@@ -378,6 +386,7 @@ function normalizeLeave(x) {
     reason: x.reason ?? null,
     status: x.status ?? "pending",
     createdAt: x.createdAt || (/* @__PURE__ */ new Date()).toISOString(),
+    updatedAt: x.updatedAt || x.createdAt || null,
     hours: x.hours == null ? null : Number(x.hours),
     permissionSlot: x.permissionSlot ?? null,
     attachmentUrl: x.attachmentUrl ?? null,
@@ -538,13 +547,56 @@ async function attendanceUpsert(r) {
   return inserted;
 }
 async function leaveUpsert(x) {
-  const v = normalizeLeave(x);
-  await db.insert(
-    leaveRequests
-  ).values(v).onConflictDoUpdate({
-    target: leaveRequests.id,
-    set: v
+  const incoming = normalizeLeave({
+    ...x,
+    updatedAt: x?.updatedAt || x?.createdAt || (/* @__PURE__ */ new Date()).toISOString()
   });
+  const id = String(incoming.id);
+  const existingRows = await db.select().from(leaveRequests).where(
+    sql`
+        ${leaveRequests.id} = ${id}
+      `
+  );
+  const existing = existingRows[0];
+  if (!existing) {
+    await db.insert(leaveRequests).values(incoming);
+    return;
+  }
+  const currentStatus = String(
+    existing.status || "pending"
+  ).toLowerCase();
+  const incomingStatus = String(
+    incoming.status || "pending"
+  ).toLowerCase();
+  if (incomingStatus === "pending" && (currentStatus === "approved" || currentStatus === "rejected")) {
+    console.log(
+      "BLOCKED OLD PENDING LEAVE:",
+      id,
+      "current:",
+      currentStatus,
+      "incoming:",
+      incomingStatus
+    );
+    return;
+  }
+  const incomingTime = new Date(
+    incoming.updatedAt || incoming.createdAt || 0
+  ).getTime();
+  const existingTime = new Date(
+    existing.updatedAt || existing.createdAt || 0
+  ).getTime();
+  if ((currentStatus === "approved" || currentStatus === "rejected") && (incomingStatus === "approved" || incomingStatus === "rejected") && incomingTime <= existingTime) {
+    console.log(
+      "BLOCKED OLDER FINAL LEAVE:",
+      id
+    );
+    return;
+  }
+  await db.update(leaveRequests).set(incoming).where(
+    sql`
+        ${leaveRequests.id} = ${id}
+      `
+  );
 }
 async function overtimeUpsert(x) {
   const v = {
@@ -636,11 +688,8 @@ async function data() {
 app.disable(
   "x-powered-by"
 );
-app.use(
-  express.json({
-    limit: "50mb"
-  })
-);
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use(
   "/api",
   (_req, res, next) => {
@@ -711,6 +760,10 @@ app.get(
     }
   }
 );
+app.use((req, res, next) => {
+  console.log("VERCEL REQUEST:", req.method, req.originalUrl, req.url);
+  next();
+});
 app.get(
   "/api/leaves",
   async (req, res) => {
@@ -1079,46 +1132,16 @@ app.post(
             );
           }
         }
-        for (const x of Array.isArray(
-          b.leaveRequests
-        ) ? b.leaveRequests : []) {
-          if (x?.id && x?.employeeId) {
-            await leaveUpsert(
-              x
-            );
+        for (const x of Array.isArray(b.leaveRequests) ? b.leaveRequests : []) {
+          if (!x?.id || !x?.employeeId) {
+            continue;
           }
-        }
-        for (const x of Array.isArray(
-          b.overtimeRequests
-        ) ? b.overtimeRequests : []) {
-          if (x?.id && x?.employeeId && x?.date) {
-            await overtimeUpsert(
-              x
-            );
-          }
-        }
-        for (const id of Array.isArray(
-          b.deletedAttendanceIds
-        ) ? b.deletedAttendanceIds : []) {
-          await db.delete(
-            attendanceRecords
-          ).where(
-            sql`
-                ${attendanceRecords.id}
-                = ${String(id)}
-              `
-          );
-        }
-        if (b.companyNameAr !== void 0) {
-          await setting(
-            "companyNameAr",
-            b.companyNameAr
-          );
-        }
-        if (b.companyNameEn !== void 0) {
-          await setting(
-            "companyNameEn",
-            b.companyNameEn
+          const incoming = normalizeLeave({
+            ...x,
+            updatedAt: x.updatedAt || x.createdAt || (/* @__PURE__ */ new Date()).toISOString()
+          });
+          await leaveUpsert(
+            incoming
           );
         }
         if (b.urgentNotice !== void 0) {
@@ -1306,6 +1329,46 @@ app.delete(
     }
   }
 );
+app.delete(
+  "/api/leaves/:id",
+  async (req, res) => {
+    try {
+      const id = String(req.params.id);
+      if (USE_DATABASE) {
+        await db.delete(leaveRequests).where(
+          sql`
+              ${leaveRequests.id}
+              = ${id}
+            `
+        );
+        const rows = await db.select().from(leaveRequests);
+        return res.json({
+          success: true,
+          leaveRequests: rows,
+          lastUpdated: Date.now()
+        });
+      }
+      localState.leaveRequests = localState.leaveRequests.filter(
+        (x) => String(x.id) !== id
+      );
+      saveLocalState();
+      return res.json({
+        success: true,
+        leaveRequests: localState.leaveRequests,
+        lastUpdated: Date.now()
+      });
+    } catch (e) {
+      console.error(
+        "DELETE /api/leaves/:id:",
+        e
+      );
+      return res.status(500).json({
+        success: false,
+        error: "Failed to delete leave request"
+      });
+    }
+  }
+);
 app.post(
   "/api/attendance/clear-today",
   async (req, res) => {
@@ -1421,8 +1484,32 @@ app.post(
           error: "Invalid leave request"
         });
       }
-      const normalized = normalizeLeave(x);
+      const normalized = normalizeLeave({
+        ...x,
+        updatedAt: x.updatedAt || (/* @__PURE__ */ new Date()).toISOString()
+      });
       if (USE_DATABASE) {
+        const existing = await db.select().from(
+          leaveRequests
+        ).where(
+          sql`
+        ${leaveRequests.id}
+        = ${String(normalized.id)}
+      `
+        );
+        if (existing.length > 0) {
+          const currentStatus = String(
+            existing[0].status || ""
+          ).toLowerCase();
+          const incomingStatus = String(
+            normalized.status || ""
+          ).toLowerCase();
+          if ((currentStatus === "approved" || currentStatus === "rejected") && incomingStatus === "pending") {
+            normalized.status = existing[0].status;
+            normalized.reviewedBy = existing[0].reviewedBy;
+            normalized.reviewNotes = existing[0].reviewNotes;
+          }
+        }
         await leaveUpsert(
           normalized
         );
@@ -1496,12 +1583,23 @@ app.put(
       );
       const b = req.body || {};
       if (USE_DATABASE) {
+        const newStatus = String(
+          b.status || ""
+        ).trim().toLowerCase();
+        if (newStatus !== "approved" && newStatus !== "rejected" && newStatus !== "pending") {
+          return res.status(400).json({
+            success: false,
+            error: "Invalid leave status"
+          });
+        }
+        const now = (/* @__PURE__ */ new Date()).toISOString();
         const [x] = await db.update(
           leaveRequests
         ).set({
-          status: b.status,
-          reviewNotes: b.reviewNotes,
-          reviewedBy: b.reviewedBy
+          status: newStatus,
+          reviewNotes: b.reviewNotes ?? null,
+          reviewedBy: b.reviewedBy ?? null,
+          updatedAt: now
         }).where(
           sql`
                 ${leaveRequests.id}
@@ -1520,10 +1618,6 @@ app.put(
           leaveRequest: fresh.leaveRequests.find(
             (a) => String(a.id) === id
           ) || null,
-          /*
-          نرجع كل الإجازات
-          وليس السجل المعدل فقط.
-          */
           leaveRequests: fresh.leaveRequests,
           activeLeaves: fresh.activeLeaves,
           employees: fresh.employees,
@@ -1544,11 +1638,12 @@ app.put(
       }
       localState.leaveRequests[i] = normalizeLeave({
         ...localState.leaveRequests[i],
-        ...b
+        ...b,
+        updatedAt: (/* @__PURE__ */ new Date()).toISOString()
       });
       localState.lastUpdated = Date.now();
       saveLocalState();
-      res.json({
+      return res.json({
         success: true,
         leaveRequest: localState.leaveRequests[i],
         leaveRequests: localState.leaveRequests,
@@ -1563,7 +1658,7 @@ app.put(
         "leave status:",
         e
       );
-      res.status(500).json({
+      return res.status(500).json({
         success: false,
         error: "Failed to update leave status"
       });
@@ -1758,48 +1853,91 @@ app.post(
             );
           }
         }
-        for (const x of b.attendanceRecords || []) {
-          if (x?.employeeId && x?.date && String(x.date) <= clock().date) {
-            await attendanceUpsert(
-              x
-            );
+        for (const x of Array.isArray(
+          b.leaveRequests
+        ) ? b.leaveRequests : []) {
+          if (!x?.id || !x?.employeeId) {
+            continue;
           }
+          const incoming = normalizeLeave({
+            ...x,
+            updatedAt: x.updatedAt || x.createdAt || (/* @__PURE__ */ new Date()).toISOString()
+          });
+          await leaveUpsert(
+            incoming
+          );
         }
-        for (const x of b.leaveRequests || []) {
-          if (x?.id && x?.employeeId) {
-            await leaveUpsert(
-              x
-            );
-          }
-        }
-        for (const x of b.overtimeRequests || []) {
+        for (const x of Array.isArray(
+          b.overtimeRequests
+        ) ? b.overtimeRequests : []) {
           if (x?.id && x?.employeeId && x?.date) {
             await overtimeUpsert(
               x
             );
           }
         }
+        if (b.companyNameAr !== void 0) {
+          await setting(
+            "companyNameAr",
+            b.companyNameAr
+          );
+        }
+        if (b.companyNameEn !== void 0) {
+          await setting(
+            "companyNameEn",
+            b.companyNameEn
+          );
+        }
+        if (b.urgentNotice !== void 0) {
+          await setting(
+            "urgentNotice",
+            b.urgentNotice
+          );
+        }
+        for (const r of Array.isArray(
+          b.attendanceRecords
+        ) ? b.attendanceRecords : []) {
+          if (r?.employeeId && r?.date && String(r.date) <= clock().date) {
+            await attendanceUpsert(
+              r
+            );
+          }
+        }
+        const fresh = await data();
         return res.json({
           success: true,
-          ...await data()
+          ...fresh
         });
       }
       localState = {
         ...emptyState(),
         ...b,
-        employees: b.employees || [],
-        attendanceRecords: (b.attendanceRecords || []).filter(
-          (x) => String(x.date) <= clock().date
+        employees: Array.isArray(
+          b.employees
+        ) ? b.employees : [],
+        attendanceRecords: (Array.isArray(
+          b.attendanceRecords
+        ) ? b.attendanceRecords : []).filter(
+          (x) => x?.date && String(x.date) <= clock().date
         ),
-        leaveRequests: (b.leaveRequests || []).map(
+        leaveRequests: (Array.isArray(
+          b.leaveRequests
+        ) ? b.leaveRequests : []).map(
           normalizeLeave
         ),
-        overtimeRequests: b.overtimeRequests || [],
-        shifts: b.shifts || [],
+        overtimeRequests: Array.isArray(
+          b.overtimeRequests
+        ) ? b.overtimeRequests : [],
+        shifts: Array.isArray(
+          b.shifts
+        ) ? b.shifts : [],
+        companyNameAr: b.companyNameAr ?? null,
+        companyNameEn: b.companyNameEn ?? null,
+        urgentNotice: b.urgentNotice ?? null,
         lastUpdated: Date.now()
       };
       saveLocalState();
-      res.json({
+      return res.json({
         success: true,
         ...localState,
         activeLeaves: getActiveLeaves(
@@ -1812,9 +1950,9 @@ app.post(
         "restore:",
         e
       );
-      res.status(500).json({
+      return res.status(500).json({
         success: false,
-        error: "Failed to restore backup"
+        error: e instanceof Error ? e.message : "Failed to restore backup"
       });
     }
   }
@@ -1849,49 +1987,43 @@ async function start() {
       },
       appType: "spa"
     });
-    app.use(
-      vite.middlewares
-    );
-  } else {
-    const dist = path.join(
-      process.cwd(),
-      "dist"
-    );
-    app.use(
-      express.static(
-        dist
-      )
-    );
-    app.get(
-      "/",
-      (_req, res) => {
-        res.sendFile(
-          path.join(
-            dist,
-            "index.html"
-          )
-        );
-      }
-    );
-    app.get(
-      "*",
-      (req, res) => {
-        if (req.path.startsWith(
-          "/api/"
-        )) {
-          return res.status(404).json({
-            error: "API endpoint not found"
-          });
-        }
-        res.sendFile(
-          path.join(
-            dist,
-            "index.html"
-          )
-        );
-      }
-    );
+    app.use(vite.middlewares);
+    return;
   }
+  const dist = path.join(
+    process.cwd(),
+    "dist"
+  );
+  app.use(
+    express.static(dist)
+  );
+  app.get(
+    "/",
+    (_req, res) => {
+      res.sendFile(
+        path.join(
+          dist,
+          "index.html"
+        )
+      );
+    }
+  );
+  app.get(
+    "*",
+    (req, res) => {
+      if (req.path.startsWith("/api/")) {
+        return res.status(404).json({
+          error: "API endpoint not found"
+        });
+      }
+      res.sendFile(
+        path.join(
+          dist,
+          "index.html"
+        )
+      );
+    }
+  );
 }
 if (!process.env.VERCEL) {
   start().then(() => {

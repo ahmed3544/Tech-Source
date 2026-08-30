@@ -216,51 +216,7 @@ export default function App() {
     });
   }, [leaveRequests]);
 
-  // Sync helper function to send state mutations to Express backend server
-  const pushSync = async (overrides?: {
-    employees?: Employee[];
-    attendanceRecords?: AttendanceRecord[];
-    leaveRequests?: LeaveRequest[];
-    companyNameAr?: string;
-    companyNameEn?: string;
-    urgentNotice?: UrgentNotice | null;
-    deletedAttendanceIds?: string[];
-    deletedEmployeeIds?: string[];
-    deletedLeaveIds?: string[];
-    replaceAttendance?: boolean;
-  }) => {
-    try {
-      const now = Date.now();
-      const payload: Record<string, any> = {
-        lastUpdated: now,
-      };
-
-      if (overrides?.employees !== undefined) payload.employees = overrides.employees;
-      if (overrides?.attendanceRecords !== undefined) payload.attendanceRecords = overrides.attendanceRecords;
-      if (overrides?.leaveRequests !== undefined) payload.leaveRequests = overrides.leaveRequests;
-      if (overrides?.companyNameAr !== undefined) payload.companyNameAr = overrides.companyNameAr;
-      if (overrides?.companyNameEn !== undefined) payload.companyNameEn = overrides.companyNameEn;
-      if (overrides?.urgentNotice !== undefined) payload.urgentNotice = overrides.urgentNotice;
-      if (overrides?.deletedAttendanceIds) payload.deletedAttendanceIds = overrides.deletedAttendanceIds;
-      if (overrides?.deletedEmployeeIds) payload.deletedEmployeeIds = overrides.deletedEmployeeIds;
-      if (overrides?.deletedLeaveIds) payload.deletedLeaveIds = overrides.deletedLeaveIds;
-      if (overrides?.replaceAttendance) payload.replaceAttendance = true;
-
-      const res = await fetch('/api/sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data && data.lastUpdated) {
-          lastLocalUpdateRef.current = data.lastUpdated;
-        }
-      }
-    } catch {
-      // Ignore network errors
-    }
-  };
+// Sync helper function to send state mutations to Express backend server
 
   const handleSaveUrgentNotice = (newNotice: UrgentNotice | null) => {
     urgentNoticeRef.current = newNotice;
@@ -282,140 +238,138 @@ export default function App() {
   };
 
   // Poll server every 1.5s to fetch live updates from central authoritative database
-  useEffect(() => {
-    let isMounted = true;
-    const fetchLatestData = async () => {
-      try {
-        const res = await fetch('/api/data', {
-          headers: {
-            'Cache-Control': 'no-cache',
-            'Pragma': 'no-cache',
-          },
-          cache: 'no-store',
-        });
-        if (!res.ok) return;
-        const data = await res.json();
-        if (data.success && isMounted) {
-          if (data.leaveRequests && Array.isArray(data.leaveRequests)) {
-  const serverLeaves = data.leaveRequests;
+  // =========================================================
+// SAFE SYNC HELPER
+// Prevents duplicate/pending sync requests
+// =========================================================
 
-  setLeaveRequests(serverLeaves);
-  leaveRequestsRef.current = serverLeaves;
+const syncInFlightRef = useRef(false);
+const syncQueuedPayloadRef = useRef<Record<string, any> | null>(null);
+
+const pushSync = async (overrides?: {
+  employees?: Employee[];
+  attendanceRecords?: AttendanceRecord[];
+  leaveRequests?: LeaveRequest[];
+  companyNameAr?: string;
+  companyNameEn?: string;
+  urgentNotice?: UrgentNotice | null;
+  deletedAttendanceIds?: string[];
+  deletedEmployeeIds?: string[];
+  deletedLeaveIds?: string[];
+  replaceAttendance?: boolean;
+}) => {
+  const now = Date.now();
+
+  lastLocalUpdateRef.current = now;
+
+  const payload: Record<string, any> = {
+    lastUpdated: now,
+  };
+
+  if (overrides?.employees !== undefined) {
+    payload.employees = overrides.employees;
+  }
+
+  if (overrides?.attendanceRecords !== undefined) {
+    payload.attendanceRecords = overrides.attendanceRecords;
+  }
+
+  if (overrides?.leaveRequests !== undefined) {
+    payload.leaveRequests = overrides.leaveRequests;
+  }
+
+  if (overrides?.companyNameAr !== undefined) {
+    payload.companyNameAr = overrides.companyNameAr;
+  }
+
+  if (overrides?.companyNameEn !== undefined) {
+    payload.companyNameEn = overrides.companyNameEn;
+  }
+
+  if (overrides?.urgentNotice !== undefined) {
+    payload.urgentNotice = overrides.urgentNotice;
+  }
+
+  if (overrides?.deletedAttendanceIds) {
+    payload.deletedAttendanceIds = overrides.deletedAttendanceIds;
+  }
+
+  if (overrides?.deletedEmployeeIds) {
+    payload.deletedEmployeeIds = overrides.deletedEmployeeIds;
+  }
+
+  if (overrides?.deletedLeaveIds) {
+    payload.deletedLeaveIds = overrides.deletedLeaveIds;
+  }
+
+  if (overrides?.replaceAttendance) {
+    payload.replaceAttendance = true;
+  }
+
+  // If another sync is already running,
+  // keep only the latest mutation.
+  if (syncInFlightRef.current) {
+    syncQueuedPayloadRef.current = {
+      ...(syncQueuedPayloadRef.current || {}),
+      ...payload,
+      lastUpdated: now,
+    };
+    return;
+  }
+
+  syncInFlightRef.current = true;
 
   try {
-    localStorage.setItem(
-      'attendance_leaves',
-      JSON.stringify(serverLeaves)
-    );
-  } catch (error) {
-    console.warn(
-      'Could not save leave requests cache locally:',
-      error
-    );
+    const controller = new AbortController();
+
+    const timeout = window.setTimeout(() => {
+      controller.abort();
+    }, 10000);
+
+    try {
+      const res = await fetch('/api/sync', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+        cache: 'no-store',
+      });
+
+      if (!res.ok) {
+        throw new Error(`Sync failed: ${res.status}`);
+      }
+
+      const data = await res.json();
+
+      if (
+        data?.lastUpdated &&
+        data.lastUpdated > lastLocalUpdateRef.current
+      ) {
+        lastLocalUpdateRef.current = data.lastUpdated;
+      }
+    } finally {
+      window.clearTimeout(timeout);
+    }
+  } catch (error: any) {
+    if (error?.name === 'AbortError') {
+      console.warn('Sync request timed out.');
+    } else {
+      console.warn('Sync request failed:', error);
+    }
+  } finally {
+    syncInFlightRef.current = false;
+
+    // Send only the newest queued mutation.
+    const queued = syncQueuedPayloadRef.current;
+    syncQueuedPayloadRef.current = null;
+
+    if (queued) {
+      void pushSync(queued);
+    }
   }
-}
-          // If server response is older than our latest local mutation, skip overriding to avoid race conditions
-          if (data.lastUpdated && lastLocalUpdateRef.current && data.lastUpdated < lastLocalUpdateRef.current) {
-            return;
-          }
-
-          let deletedIds: string[] = [];
-          try {
-            deletedIds = JSON.parse(localStorage.getItem('deleted_employee_ids') || '[]');
-          } catch {}
-          const deletedSet = new Set(deletedIds);
-
-          if (data.employees && Array.isArray(data.employees)) {
-            const cleanEmps = data.employees.filter((e: Employee) => e && e.id && !deletedSet.has(e.id));
-            setEmployees(cleanEmps);
-            employeesRef.current = cleanEmps;
-            localStorage.setItem('attendance_employees', JSON.stringify(cleanEmps));
-            setCurrentUser(prevUser => {
-              if (!prevUser) return null;
-              const match = cleanEmps.find((e: Employee) => e.id === prevUser.id);
-              if (!match || match.status === 'inactive') {
-                localStorage.removeItem('logged_in_user');
-                return null;
-              }
-              localStorage.setItem('logged_in_user', JSON.stringify(match));
-              return match;
-            });
-          }
-
-if (data.attendanceRecords && Array.isArray(data.attendanceRecords)) {
-  const sanitizedRecs = data.attendanceRecords
-    .filter((r: AttendanceRecord) => !deletedSet.has(r.employeeId))
-    .map(ensureSanitizedRecord);
-
-  const serverRecords = sanitizedRecs;
-
-  setAttendanceRecords(serverRecords);
-  attendanceRecordsRef.current = serverRecords;
-
-  try {
-    const recentRecords = [...serverRecords]
-      .filter(r => r && r.date)
-      .sort((a, b) =>
-        (b.date || '').localeCompare(a.date || '')
-      )
-      .slice(0, 100);
-
-    localStorage.setItem(
-      'attendance_records',
-      JSON.stringify(recentRecords)
-    );
-  } catch (error) {
-    console.warn(
-      'Could not save attendance cache locally:',
-      error
-    );
-  }
-}
-if (data.companyNameAr) {
-  setCompanyNameAr(data.companyNameAr);
-  localStorage.setItem('company_name_ar', data.companyNameAr);
-}
-
-if (data.companyNameEn) {
-  setCompanyNameEn(data.companyNameEn);
-  localStorage.setItem('company_name_en', data.companyNameEn);
-}
-
-if (data.urgentNotice !== undefined && !isNoticeModalOpen) {
-  urgentNoticeRef.current = data.urgentNotice;
-  setUrgentNotice(data.urgentNotice);
-
-  if (
-    data.urgentNotice &&
-    data.urgentNotice.active !== false
-  ) {
-    localStorage.setItem(
-      'urgent_notice',
-      JSON.stringify(data.urgentNotice)
-    );
-  } else {
-    localStorage.removeItem('urgent_notice');
-  }
-} // إغلاق if urgentNotice
-
-} // إغلاق if (data.success && isMounted)
-
-} catch (error) {
-  console.warn('Failed to fetch latest data:', error);
-}
-
-}; // إغلاق fetchLatestData
-
-fetchLatestData();
-
-const interval = setInterval(fetchLatestData, 1500);
-
-return () => {
-  isMounted = false;
-  clearInterval(interval);
 };
-
-}, [isNoticeModalOpen]);
 
 useEffect(() => {
   try {

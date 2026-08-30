@@ -788,6 +788,12 @@ async function leaveUpsert(x: any) {
 
   const id = String(incoming.id);
 
+  /*
+  =========================================================
+  NEW REQUEST
+  =========================================================
+  */
+
   const existingRows = await db
     .select()
     .from(schema.leaveRequests)
@@ -799,7 +805,6 @@ async function leaveUpsert(x: any) {
 
   const existing = existingRows[0];
 
-  // الطلب جديد
   if (!existing) {
     await db
       .insert(schema.leaveRequests)
@@ -816,6 +821,52 @@ async function leaveUpsert(x: any) {
     incoming.status || "pending"
   ).toLowerCase();
 
+  /*
+  =========================================================
+  IMPORTANT PROTECTION
+  =========================================================
+
+  لو Supabase بالفعل فيه:
+
+    approved
+    rejected
+
+  وموبايل / جهاز قديم بعت:
+
+    pending
+
+  ممنوع تمامًا تحديث الطلب.
+
+  والأهم:
+  الشرط ده لازم يكون داخل UPDATE نفسه
+  وليس مجرد SELECT قبل UPDATE.
+  */
+
+  if (
+    incomingStatus === "pending" &&
+    (
+      currentStatus === "approved" ||
+      currentStatus === "rejected"
+    )
+  ) {
+    console.log(
+      "BLOCKED OLD PENDING LEAVE:",
+      id,
+      "current:",
+      currentStatus,
+      "incoming:",
+      incomingStatus
+    );
+
+    return;
+  }
+
+  /*
+  =========================================================
+  TIMESTAMP PROTECTION
+  =========================================================
+  */
+
   const incomingTime = new Date(
     incoming.updatedAt ||
       incoming.createdAt ||
@@ -829,28 +880,34 @@ async function leaveUpsert(x: any) {
   ).getTime();
 
   /*
-   * حماية مهمة جدًا:
-   *
-   * لو الطلب في Supabase أصبح approved أو rejected
-   * والجهاز الآخر عنده نسخة pending قديمة،
-   * ممنوع الـ pending القديمة ترجع الطلب.
-   */
+  لو نفس الحالة النهائية موجودة بالفعل،
+  لا تسمح لنسخة أقدم بالكتابة فوقها.
+  */
+
   if (
     (
       currentStatus === "approved" ||
       currentStatus === "rejected"
     ) &&
-    incomingStatus === "pending"
+    (
+      incomingStatus === "approved" ||
+      incomingStatus === "rejected"
+    ) &&
+    incomingTime <= existingTime
   ) {
+    console.log(
+      "BLOCKED OLDER FINAL LEAVE:",
+      id
+    );
+
     return;
   }
 
   /*
-   * أي تحديث أحدث فقط هو الذي يُحفظ.
-   */
-  if (incomingTime <= existingTime) {
-    return;
-  }
+  =========================================================
+  UPDATE
+  =========================================================
+  */
 
   await db
     .update(schema.leaveRequests)
@@ -2668,24 +2725,46 @@ app.put(
         req.body || {};
 
       if (USE_DATABASE) {
+        const newStatus =
+          String(
+            b.status || ""
+          )
+            .trim()
+            .toLowerCase();
+
+        if (
+          newStatus !== "approved" &&
+          newStatus !== "rejected" &&
+          newStatus !== "pending"
+        ) {
+          return res.status(400).json({
+            success: false,
+            error:
+              "Invalid leave status",
+          });
+        }
+
+        const now =
+          new Date().toISOString();
+
         const [x] =
           await db
             .update(
               schema.leaveRequests
             )
             .set({
-  status:
-    b.status,
+              status:
+                newStatus,
 
-  reviewNotes:
-    b.reviewNotes ?? null,
+              reviewNotes:
+                b.reviewNotes ?? null,
 
-  reviewedBy:
-    b.reviewedBy ?? null,
+              reviewedBy:
+                b.reviewedBy ?? null,
 
-  updatedAt:
-    new Date().toISOString(),
-} as any)
+              updatedAt:
+                now,
+            } as any)
             .where(
               sql`
                 ${schema.leaveRequests.id}
@@ -2703,9 +2782,8 @@ app.put(
         }
 
         /*
-        مهم جدًا:
-        بعد تغيير حالة الإجازة
-        نقرأ كل البيانات من Supabase.
+        بعد تغيير الحالة:
+        نقرأ البيانات من Supabase
         */
 
         const fresh =
@@ -2720,11 +2798,6 @@ app.put(
                 String(a.id) ===
                 id
             ) || null,
-
-          /*
-          نرجع كل الإجازات
-          وليس السجل المعدل فقط.
-          */
 
           leaveRequests:
             fresh.leaveRequests,
@@ -2749,6 +2822,12 @@ app.put(
         });
       }
 
+      /*
+      =====================================================
+      LOCAL JSON
+      =====================================================
+      */
+
       const i =
         localState.leaveRequests.findIndex(
           (x: any) =>
@@ -2770,6 +2849,9 @@ app.put(
             .leaveRequests[i],
 
           ...b,
+
+          updatedAt:
+            new Date().toISOString(),
         });
 
       localState.lastUpdated =
@@ -2777,7 +2859,7 @@ app.put(
 
       saveLocalState();
 
-      res.json({
+      return res.json({
         success: true,
 
         leaveRequest:
@@ -2796,13 +2878,14 @@ app.put(
         lastUpdated:
           Date.now(),
       });
+
     } catch (e) {
       console.error(
         "leave status:",
         e
       );
 
-      res.status(500).json({
+      return res.status(500).json({
         success: false,
         error:
           "Failed to update leave status",
@@ -2810,7 +2893,6 @@ app.put(
     }
   }
 );
-
 /*
 =========================================================
 OVERTIME
