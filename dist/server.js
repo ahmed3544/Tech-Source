@@ -376,23 +376,24 @@ function mergeAttendance(a = [], b = []) {
   return [...m.values()];
 }
 function normalizeLeave(x) {
+  const now = (/* @__PURE__ */ new Date()).toISOString();
   return {
     ...x,
-    id: String(x.id),
-    employeeId: String(x.employeeId),
-    type: x.type ?? null,
-    startDate: x.startDate ? String(x.startDate).slice(0, 10) : null,
-    endDate: x.endDate ? String(x.endDate).slice(0, 10) : null,
-    reason: x.reason ?? null,
-    status: x.status ?? "pending",
-    createdAt: x.createdAt || (/* @__PURE__ */ new Date()).toISOString(),
-    updatedAt: x.updatedAt || x.createdAt || null,
-    hours: x.hours == null ? null : Number(x.hours),
-    permissionSlot: x.permissionSlot ?? null,
-    attachmentUrl: x.attachmentUrl ?? null,
-    attachmentName: x.attachmentName ?? null,
-    reviewedBy: x.reviewedBy ?? null,
-    reviewNotes: x.reviewNotes ?? null
+    id: String(x?.id ?? ""),
+    employeeId: String(x?.employeeId ?? ""),
+    type: x?.type ?? null,
+    startDate: x?.startDate ? String(x.startDate).slice(0, 10) : null,
+    endDate: x?.endDate ? String(x.endDate).slice(0, 10) : null,
+    reason: x?.reason ?? null,
+    status: x?.status ? String(x.status).toLowerCase() : "pending",
+    createdAt: x?.createdAt ?? now,
+    updatedAt: x?.updatedAt ?? x?.createdAt ?? now,
+    hours: x?.hours == null ? null : Number(x.hours),
+    permissionSlot: x?.permissionSlot ?? null,
+    attachmentUrl: x?.attachmentUrl ?? null,
+    attachmentName: x?.attachmentName ?? null,
+    reviewedBy: x?.reviewedBy ?? null,
+    reviewNotes: x?.reviewNotes ?? null
   };
 }
 function isEmployeeOnLeave(leave, date) {
@@ -428,8 +429,13 @@ async function setting(key, value) {
   });
 }
 async function employeeUpsert(e) {
+  const id = String(e.id);
+  const existingRows = await db.select().from(employees).where(
+    sql`${employees.id} = ${id}`
+  );
+  const existing = existingRows[0];
   const v = {
-    id: String(e.id),
+    id,
     code: e.code ?? null,
     nameAr: String(e.nameAr ?? ""),
     nameEn: String(e.nameEn ?? ""),
@@ -450,10 +456,37 @@ async function employeeUpsert(e) {
     sickLeaveBalance: e.sickLeaveBalance ?? null,
     isPhotoRemoved: Boolean(e.isPhotoRemoved)
   };
-  await db.insert(employees).values(v).onConflictDoUpdate({
-    target: employees.id,
-    set: v
-  });
+  if (existing) {
+    const incomingUpdated = new Date(
+      e.updatedAt || e.lastUpdated || 0
+    ).getTime();
+    const existingUpdated = new Date(
+      existing.updatedAt || 0
+    ).getTime();
+    if (Number.isFinite(incomingUpdated) && Number.isFinite(existingUpdated) && incomingUpdated < existingUpdated) {
+      console.log(
+        "BLOCKED OLD EMPLOYEE:",
+        id
+      );
+      return existing;
+    }
+    if (!e.updatedAt && !e.lastUpdated) {
+      return existing;
+    }
+  }
+  const now = e.updatedAt || (/* @__PURE__ */ new Date()).toISOString();
+  const finalValue = {
+    ...v,
+    updatedAt: now
+  };
+  if (!existing) {
+    const [inserted] = await db.insert(employees).values(finalValue).returning();
+    return inserted;
+  }
+  const [updated] = await db.update(employees).set(finalValue).where(
+    sql`${employees.id} = ${id}`
+  ).returning();
+  return updated;
 }
 async function findAttendance(employeeId, date) {
   const rows = await db.select().from(
@@ -470,9 +503,28 @@ async function findAttendance(employeeId, date) {
   return rows[0] || null;
 }
 async function attendanceUpsert(r) {
-  r = sanitize(r);
+  const hasIncomingUpdatedAt = Boolean(
+    r?.updatedAt && String(r.updatedAt).trim()
+  );
   const employeeId = String(r.employeeId);
   const date = String(r.date);
+  const existing = await findAttendance(
+    employeeId,
+    date
+  );
+  if (existing && !hasIncomingUpdatedAt) {
+    console.log(
+      "BLOCKED ATTENDANCE WITHOUT TIMESTAMP:",
+      employeeId,
+      date
+    );
+    return existing;
+  }
+  const source = {
+    ...r,
+    updatedAt: hasIncomingUpdatedAt ? r.updatedAt : (/* @__PURE__ */ new Date()).toISOString()
+  };
+  r = sanitize(source);
   const v = {
     id: String(
       r.id || `rec-${norm(employeeId)}-${date}`
@@ -518,48 +570,79 @@ async function attendanceUpsert(r) {
     ),
     excusedBy: r.excusedBy ?? null,
     excusedReason: r.excusedReason ?? null,
-    updatedAt: r.updatedAt || (/* @__PURE__ */ new Date()).toISOString(),
+    updatedAt: r.updatedAt,
     isExplicitCancelCheckOut: Boolean(
       r.isExplicitCancelCheckOut
     )
   };
-  const existing = await findAttendance(
-    employeeId,
-    date
-  );
-  if (existing) {
-    const [updated] = await db.update(
+  if (!existing) {
+    const [inserted] = await db.insert(
       attendanceRecords
-    ).set({
-      ...v,
-      id: existing.id
-    }).where(
-      sql`
-            ${attendanceRecords.id}
-            = ${existing.id}
-          `
-    ).returning();
-    return updated;
+    ).values(v).returning();
+    return inserted;
   }
-  const [inserted] = await db.insert(
+  const incomingTime = new Date(
+    v.updatedAt
+  ).getTime();
+  const existingTime = new Date(
+    existing.updatedAt || 0
+  ).getTime();
+  if (Number.isFinite(existingTime) && Number.isFinite(incomingTime) && incomingTime <= existingTime) {
+    console.log(
+      "BLOCKED OLD ATTENDANCE:",
+      employeeId,
+      date,
+      "existing:",
+      existing.updatedAt,
+      "incoming:",
+      v.updatedAt
+    );
+    return existing;
+  }
+  const [updated] = await db.update(
     attendanceRecords
-  ).values(v).returning();
-  return inserted;
+  ).set({
+    ...v,
+    id: existing.id
+  }).where(
+    sql`
+          ${attendanceRecords.id}
+          = ${existing.id}
+        `
+  ).returning();
+  return updated;
 }
 async function leaveUpsert(x) {
+  const hasIncomingUpdatedAt = Boolean(
+    x?.updatedAt && String(x.updatedAt).trim()
+  );
   const incoming = normalizeLeave({
     ...x,
-    updatedAt: x?.updatedAt || x?.createdAt || (/* @__PURE__ */ new Date()).toISOString()
+    updatedAt: hasIncomingUpdatedAt ? x.updatedAt : x.createdAt || (/* @__PURE__ */ new Date()).toISOString()
   });
   const id = String(incoming.id);
-  const existingRows = await db.select().from(leaveRequests).where(
+  const existingRows = await db.select().from(
+    leaveRequests
+  ).where(
     sql`
-        ${leaveRequests.id} = ${id}
-      `
+          ${leaveRequests.id}
+          = ${id}
+        `
   );
   const existing = existingRows[0];
   if (!existing) {
-    await db.insert(leaveRequests).values(incoming);
+    await db.insert(
+      leaveRequests
+    ).values(
+      incoming
+    );
+    return;
+  }
+  if (!hasIncomingUpdatedAt) {
+    console.log(
+      "BLOCKED LEAVE WITHOUT TIMESTAMP:",
+      id
+    );
     return;
   }
   const currentStatus = String(
@@ -580,29 +663,53 @@ async function leaveUpsert(x) {
     return;
   }
   const incomingTime = new Date(
-    incoming.updatedAt || incoming.createdAt || 0
+    incoming.updatedAt
   ).getTime();
   const existingTime = new Date(
     existing.updatedAt || existing.createdAt || 0
   ).getTime();
-  if ((currentStatus === "approved" || currentStatus === "rejected") && (incomingStatus === "approved" || incomingStatus === "rejected") && incomingTime <= existingTime) {
+  if (Number.isFinite(existingTime) && Number.isFinite(incomingTime) && incomingTime <= existingTime) {
     console.log(
-      "BLOCKED OLDER FINAL LEAVE:",
-      id
+      "BLOCKED OLD LEAVE:",
+      id,
+      "existing:",
+      existing.updatedAt,
+      "incoming:",
+      incoming.updatedAt
     );
     return;
   }
-  await db.update(leaveRequests).set(incoming).where(
+  await db.update(
+    leaveRequests
+  ).set(
+    incoming
+  ).where(
     sql`
-        ${leaveRequests.id} = ${id}
+        ${leaveRequests.id}
+        = ${id}
       `
   );
 }
 async function overtimeUpsert(x) {
+  const hasIncomingUpdatedAt = Boolean(
+    x?.updatedAt && String(x.updatedAt).trim()
+  );
+  const id = String(x.id);
+  const employeeId = String(x.employeeId);
+  const date = String(x.date);
+  const existingRows = await db.select().from(
+    overtimeRequests
+  ).where(
+    sql`
+          ${overtimeRequests.id}
+          = ${id}
+        `
+  );
+  const existing = existingRows[0];
   const v = {
-    id: String(x.id),
-    employeeId: String(x.employeeId),
-    date: String(x.date),
+    id,
+    employeeId,
+    date,
     type: String(
       x.type || "overtime"
     ),
@@ -614,14 +721,57 @@ async function overtimeUpsert(x) {
     reviewedBy: x.reviewedBy ?? null,
     reviewNotes: x.reviewNotes ?? null,
     createdAt: x.createdAt || (/* @__PURE__ */ new Date()).toISOString(),
-    updatedAt: x.updatedAt || (/* @__PURE__ */ new Date()).toISOString()
+    updatedAt: hasIncomingUpdatedAt ? x.updatedAt : (/* @__PURE__ */ new Date()).toISOString()
   };
-  await db.insert(
+  if (existing && !hasIncomingUpdatedAt) {
+    console.log(
+      "BLOCKED OLD OVERTIME WITHOUT TIMESTAMP:",
+      id
+    );
+    return existing;
+  }
+  if (existing) {
+    const incomingTime = new Date(
+      v.updatedAt
+    ).getTime();
+    const existingTime = new Date(
+      existing.updatedAt || existing.createdAt || 0
+    ).getTime();
+    if (Number.isFinite(
+      existingTime
+    ) && Number.isFinite(
+      incomingTime
+    ) && incomingTime <= existingTime) {
+      console.log(
+        "BLOCKED OLD OVERTIME:",
+        id,
+        "existing:",
+        existing.updatedAt,
+        "incoming:",
+        v.updatedAt
+      );
+      return existing;
+    }
+  }
+  if (!existing) {
+    const [inserted] = await db.insert(
+      overtimeRequests
+    ).values(
+      v
+    ).returning();
+    return inserted;
+  }
+  const [updated] = await db.update(
     overtimeRequests
-  ).values(v).onConflictDoUpdate({
-    target: overtimeRequests.id,
-    set: v
-  });
+  ).set(
+    v
+  ).where(
+    sql`
+          ${overtimeRequests.id}
+          = ${id}
+        `
+  ).returning();
+  return updated;
 }
 async function data() {
   const [
@@ -1240,10 +1390,72 @@ app.put(
       };
       delete changes.id;
       if (USE_DATABASE) {
+        const existingRows = await db.select().from(
+          employees
+        ).where(
+          sql`
+                ${employees.id}
+                = ${id}
+              `
+        );
+        const existing2 = existingRows[0];
+        if (!existing2) {
+          return res.status(404).json({
+            success: false,
+            error: "Employee not found"
+          });
+        }
+        const hasIncomingUpdatedAt2 = Boolean(
+          changes.updatedAt && String(
+            changes.updatedAt
+          ).trim()
+        );
+        if (!hasIncomingUpdatedAt2 && existing2.updatedAt) {
+          console.log(
+            "BLOCKED EMPLOYEE UPDATE WITHOUT TIMESTAMP:",
+            id
+          );
+          return res.status(409).json({
+            success: false,
+            error: "STALE_EMPLOYEE_UPDATE",
+            employee: existing2
+          });
+        }
+        if (hasIncomingUpdatedAt2 && existing2.updatedAt) {
+          const incomingTime = new Date(
+            changes.updatedAt
+          ).getTime();
+          const existingTime = new Date(
+            existing2.updatedAt
+          ).getTime();
+          if (Number.isFinite(
+            incomingTime
+          ) && Number.isFinite(
+            existingTime
+          ) && incomingTime <= existingTime) {
+            console.log(
+              "BLOCKED OLD EMPLOYEE UPDATE:",
+              id,
+              "existing:",
+              existing2.updatedAt,
+              "incoming:",
+              changes.updatedAt
+            );
+            return res.status(409).json({
+              success: false,
+              error: "STALE_EMPLOYEE_UPDATE",
+              employee: existing2
+            });
+          }
+        }
+        const finalChanges = {
+          ...changes,
+          updatedAt: hasIncomingUpdatedAt2 ? changes.updatedAt : (/* @__PURE__ */ new Date()).toISOString()
+        };
         const [x] = await db.update(
           employees
         ).set(
-          changes
+          finalChanges
         ).where(
           sql`
                 ${employees.id}
@@ -1268,14 +1480,44 @@ app.put(
           error: "Employee not found"
         });
       }
+      const existing = localState.employees[i];
+      const hasIncomingUpdatedAt = Boolean(
+        changes.updatedAt && String(
+          changes.updatedAt
+        ).trim()
+      );
+      if (hasIncomingUpdatedAt && existing.updatedAt) {
+        const incomingTime = new Date(
+          changes.updatedAt
+        ).getTime();
+        const existingTime = new Date(
+          existing.updatedAt
+        ).getTime();
+        if (Number.isFinite(
+          incomingTime
+        ) && Number.isFinite(
+          existingTime
+        ) && incomingTime <= existingTime) {
+          console.log(
+            "BLOCKED OLD LOCAL EMPLOYEE UPDATE:",
+            id
+          );
+          return res.status(409).json({
+            success: false,
+            error: "STALE_EMPLOYEE_UPDATE",
+            employee: existing
+          });
+        }
+      }
       localState.employees[i] = {
-        ...localState.employees[i],
+        ...existing,
         ...changes,
-        id: localState.employees[i].id
+        id: existing.id,
+        updatedAt: hasIncomingUpdatedAt ? changes.updatedAt : (/* @__PURE__ */ new Date()).toISOString()
       };
       localState.lastUpdated = Date.now();
       saveLocalState();
-      res.json({
+      return res.json({
         success: true,
         employee: localState.employees[i],
         lastUpdated: localState.lastUpdated
@@ -1583,20 +1825,60 @@ app.put(
       );
       const b = req.body || {};
       if (USE_DATABASE) {
-        const newStatus = String(
+        const newStatus2 = String(
           b.status || ""
         ).trim().toLowerCase();
-        if (newStatus !== "approved" && newStatus !== "rejected" && newStatus !== "pending") {
+        if (newStatus2 !== "approved" && newStatus2 !== "rejected" && newStatus2 !== "pending") {
           return res.status(400).json({
             success: false,
             error: "Invalid leave status"
+          });
+        }
+        const existingRows = await db.select().from(
+          leaveRequests
+        ).where(
+          sql`
+                ${leaveRequests.id}
+                = ${id}
+              `
+        );
+        const existing = existingRows[0];
+        if (!existing) {
+          return res.status(404).json({
+            success: false,
+            error: "Leave request not found"
+          });
+        }
+        const currentStatus2 = String(
+          existing.status || "pending"
+        ).toLowerCase();
+        if ((currentStatus2 === "approved" || currentStatus2 === "rejected") && newStatus2 === "pending") {
+          console.log(
+            "BLOCKED FINAL LEAVE -> PENDING:",
+            id
+          );
+          const fresh2 = await data();
+          return res.json({
+            success: true,
+            blocked: true,
+            reason: "FINAL_STATUS_CANNOT_RETURN_TO_PENDING",
+            leaveRequest: fresh2.leaveRequests.find(
+              (a) => String(a.id) === id
+            ) || null,
+            leaveRequests: fresh2.leaveRequests,
+            activeLeaves: fresh2.activeLeaves,
+            employees: fresh2.employees,
+            attendanceRecords: fresh2.attendanceRecords,
+            shifts: fresh2.shifts,
+            overtimeRequests: fresh2.overtimeRequests,
+            lastUpdated: Date.now()
           });
         }
         const now = (/* @__PURE__ */ new Date()).toISOString();
         const [x] = await db.update(
           leaveRequests
         ).set({
-          status: newStatus,
+          status: newStatus2,
           reviewNotes: b.reviewNotes ?? null,
           reviewedBy: b.reviewedBy ?? null,
           updatedAt: now
@@ -1636,9 +1918,37 @@ app.put(
           error: "Leave request not found"
         });
       }
+      const current = localState.leaveRequests[i];
+      const currentStatus = String(
+        current.status || "pending"
+      ).toLowerCase();
+      const newStatus = String(
+        b.status || ""
+      ).trim().toLowerCase();
+      if (newStatus !== "approved" && newStatus !== "rejected" && newStatus !== "pending") {
+        return res.status(400).json({
+          success: false,
+          error: "Invalid leave status"
+        });
+      }
+      if ((currentStatus === "approved" || currentStatus === "rejected") && newStatus === "pending") {
+        return res.json({
+          success: true,
+          blocked: true,
+          reason: "FINAL_STATUS_CANNOT_RETURN_TO_PENDING",
+          leaveRequest: current,
+          leaveRequests: localState.leaveRequests,
+          activeLeaves: getActiveLeaves(
+            localState.leaveRequests,
+            clock().date
+          ),
+          lastUpdated: Date.now()
+        });
+      }
       localState.leaveRequests[i] = normalizeLeave({
-        ...localState.leaveRequests[i],
+        ...current,
         ...b,
+        status: newStatus,
         updatedAt: (/* @__PURE__ */ new Date()).toISOString()
       });
       localState.lastUpdated = Date.now();

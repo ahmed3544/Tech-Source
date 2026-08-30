@@ -374,60 +374,59 @@ LEAVE HELPERS
 */
 
 function normalizeLeave(x: any) {
+  const now = new Date().toISOString();
+
   return {
     ...x,
 
-    id: String(x.id),
+    id: String(x?.id ?? ""),
 
-    employeeId:
-      String(x.employeeId),
+    employeeId: String(x?.employeeId ?? ""),
 
-    type:
-      x.type ?? null,
+    type: x?.type ?? null,
 
-    startDate:
-      x.startDate
-        ? String(x.startDate).slice(0, 10)
-        : null,
+    startDate: x?.startDate
+      ? String(x.startDate).slice(0, 10)
+      : null,
 
-    endDate:
-      x.endDate
-        ? String(x.endDate).slice(0, 10)
-        : null,
+    endDate: x?.endDate
+      ? String(x.endDate).slice(0, 10)
+      : null,
 
-    reason:
-      x.reason ?? null,
+    reason: x?.reason ?? null,
 
-    status:
-      x.status ?? "pending",
+    status: x?.status
+      ? String(x.status).toLowerCase()
+      : "pending",
 
     createdAt:
-  x.createdAt ||
-  new Date().toISOString(),
+      x?.createdAt ??
+      now,
 
-updatedAt:
-  x.updatedAt ||
-  x.createdAt ||
-  null,
-hours:
-      x.hours == null
+    updatedAt:
+      x?.updatedAt ??
+      x?.createdAt ??
+      now,
+
+    hours:
+      x?.hours == null
         ? null
         : Number(x.hours),
 
     permissionSlot:
-      x.permissionSlot ?? null,
+      x?.permissionSlot ?? null,
 
     attachmentUrl:
-      x.attachmentUrl ?? null,
+      x?.attachmentUrl ?? null,
 
     attachmentName:
-      x.attachmentName ?? null,
+      x?.attachmentName ?? null,
 
     reviewedBy:
-      x.reviewedBy ?? null,
+      x?.reviewedBy ?? null,
 
     reviewNotes:
-      x.reviewNotes ?? null,
+      x?.reviewNotes ?? null,
   };
 }
 
@@ -512,53 +511,35 @@ EMPLOYEE UPSERT
 =========================================================
 */
 
-async function employeeUpsert(
-  e: any
-) {
+async function employeeUpsert(e: any) {
+  const id = String(e.id);
+
+  const existingRows = await db
+    .select()
+    .from(schema.employees)
+    .where(
+      sql`${schema.employees.id} = ${id}`
+    );
+
+  const existing = existingRows[0];
+
   const v = {
-    id: String(e.id),
+    id,
 
-    code:
-      e.code ?? null,
-
-    nameAr:
-      String(e.nameAr ?? ""),
-
-    nameEn:
-      String(e.nameEn ?? ""),
-
-    avatar:
-      e.avatar ?? null,
-
-    email:
-      e.email ?? null,
-
-    phone:
-      e.phone ?? null,
-
-    department:
-      e.department ?? null,
-
-    jobTitleAr:
-      e.jobTitleAr ?? null,
-
-    jobTitleEn:
-      e.jobTitleEn ?? null,
-
-    shiftId:
-      e.shiftId ?? null,
-
-    pin:
-      e.pin ?? null,
-
-    role:
-      e.role ?? null,
-
-    joinedDate:
-      e.joinedDate ?? null,
-
-    status:
-      e.status ?? null,
+    code: e.code ?? null,
+    nameAr: String(e.nameAr ?? ""),
+    nameEn: String(e.nameEn ?? ""),
+    avatar: e.avatar ?? null,
+    email: e.email ?? null,
+    phone: e.phone ?? null,
+    department: e.department ?? null,
+    jobTitleAr: e.jobTitleAr ?? null,
+    jobTitleEn: e.jobTitleEn ?? null,
+    shiftId: e.shiftId ?? null,
+    pin: e.pin ?? null,
+    role: e.role ?? null,
+    joinedDate: e.joinedDate ?? null,
+    status: e.status ?? null,
 
     annualLeaveBalance:
       e.annualLeaveBalance ?? null,
@@ -576,15 +557,83 @@ async function employeeUpsert(
       Boolean(e.isPhotoRemoved),
   };
 
-  await db
-    .insert(schema.employees)
-    .values(v as any)
-    .onConflictDoUpdate({
-      target: schema.employees.id,
-      set: v as any,
-    });
-}
+  /*
+   لو الموظف موجود بالفعل:
+   لا نسمح لنسخة قديمة من جهاز
+   إنها تمسح بيانات أحدث في Supabase.
+  */
 
+  if (existing) {
+    const incomingUpdated =
+      new Date(
+        e.updatedAt ||
+        e.lastUpdated ||
+        0
+      ).getTime();
+
+    const existingUpdated =
+      new Date(
+        (existing as any).updatedAt ||
+        0
+      ).getTime();
+
+    if (
+      Number.isFinite(incomingUpdated) &&
+      Number.isFinite(existingUpdated) &&
+      incomingUpdated < existingUpdated
+    ) {
+      console.log(
+        "BLOCKED OLD EMPLOYEE:",
+        id
+      );
+
+      return existing;
+    }
+
+    /*
+     مهم:
+     لو الـ frontend القديم لا يرسل updatedAt
+     لا نعتبره أحدث من الموجود.
+    */
+
+    if (
+      !e.updatedAt &&
+      !e.lastUpdated
+    ) {
+      return existing;
+    }
+  }
+
+  const now =
+    e.updatedAt ||
+    new Date().toISOString();
+
+  const finalValue = {
+    ...v,
+    updatedAt: now,
+  };
+
+  if (!existing) {
+    const [inserted] =
+      await db
+        .insert(schema.employees)
+        .values(finalValue as any)
+        .returning();
+
+    return inserted;
+  }
+
+  const [updated] =
+    await db
+      .update(schema.employees)
+      .set(finalValue as any)
+      .where(
+        sql`${schema.employees.id} = ${id}`
+      )
+      .returning();
+
+  return updated;
+}
 /*
 =========================================================
 FIND ATTENDANCE
@@ -620,16 +669,62 @@ ATTENDANCE UPSERT
 =========================================================
 */
 
-async function attendanceUpsert(
-  r: any
-) {
-  r = sanitize(r);
+async function attendanceUpsert(r: any) {
+  /*
+  مهم:
+  نحتفظ بمعرفة هل updatedAt جاء فعلًا من الجهاز
+  قبل sanitize، لأن sanitize ممكن ينشئ updatedAt جديد.
+  */
 
-  const employeeId =
-    String(r.employeeId);
+  const hasIncomingUpdatedAt =
+    Boolean(
+      r?.updatedAt &&
+      String(r.updatedAt).trim()
+    );
 
-  const date =
-    String(r.date);
+  const employeeId = String(r.employeeId);
+  const date = String(r.date);
+
+  const existing =
+    await findAttendance(
+      employeeId,
+      date
+    );
+
+  /*
+  لو السجل موجود بالفعل والجهاز لم يرسل updatedAt:
+  نعتبره نسخة قديمة/غير موثوقة ولا نسمح له
+  بالكتابة فوق النسخة الموجودة في Supabase.
+  */
+
+  if (
+    existing &&
+    !hasIncomingUpdatedAt
+  ) {
+    console.log(
+      "BLOCKED ATTENDANCE WITHOUT TIMESTAMP:",
+      employeeId,
+      date
+    );
+
+    return existing;
+  }
+
+  /*
+  بالنسبة لسجل جديد بدون updatedAt:
+  السيرفر ينشئ timestamp حقيقي.
+  */
+
+  const source = {
+    ...r,
+
+    updatedAt:
+      hasIncomingUpdatedAt
+        ? r.updatedAt
+        : new Date().toISOString(),
+  };
+
+  r = sanitize(source);
 
   const v = {
     id: String(
@@ -638,83 +733,58 @@ async function attendanceUpsert(
     ),
 
     employeeId,
-
     date,
 
-    checkIn:
-      r.checkIn ?? null,
+    checkIn: r.checkIn ?? null,
+    checkOut: r.checkOut ?? null,
 
-    checkOut:
-      r.checkOut ?? null,
+    breakStart: r.breakStart ?? null,
+    breakEnd: r.breakEnd ?? null,
 
-    breakStart:
-      r.breakStart ?? null,
+    breaks: r.breaks ?? null,
 
-    breakEnd:
-      r.breakEnd ?? null,
+    totalBreakSeconds: Number(
+      r.totalBreakSeconds ?? 0
+    ),
 
-    breaks:
-      r.breaks ?? null,
+    location: r.location ?? null,
+    deviceInfo: r.deviceInfo ?? null,
 
-    totalBreakSeconds:
-      Number(
-        r.totalBreakSeconds ?? 0
-      ),
+    lateMinutes: Number(
+      r.lateMinutes ?? 0
+    ),
 
-    location:
-      r.location ?? null,
+    lateSeconds: Number(
+      r.lateSeconds ?? 0
+    ),
 
-    deviceInfo:
-      r.deviceInfo ?? null,
+    earlyLeaveMinutes: Number(
+      r.earlyLeaveMinutes ?? 0
+    ),
 
-    lateMinutes:
-      Number(
-        r.lateMinutes ?? 0
-      ),
+    workHours: Number(
+      r.workHours ?? 0
+    ),
 
-    lateSeconds:
-      Number(
-        r.lateSeconds ?? 0
-      ),
+    overtimeHours: Number(
+      r.overtimeHours ?? 0
+    ),
 
-    earlyLeaveMinutes:
-      Number(
-        r.earlyLeaveMinutes ?? 0
-      ),
+    minusHours: Number(
+      r.minusHours ?? 0
+    ),
 
-    workHours:
-      Number(
-        r.workHours ?? 0
-      ),
+    status: r.status ?? null,
+    leaveType: r.leaveType ?? null,
+    notes: r.notes ?? null,
 
-    overtimeHours:
-      Number(
-        r.overtimeHours ?? 0
-      ),
+    verifiedByFace: Boolean(
+      r.verifiedByFace
+    ),
 
-    minusHours:
-      Number(
-        r.minusHours ?? 0
-      ),
-
-    status:
-      r.status ?? null,
-
-    leaveType:
-      r.leaveType ?? null,
-
-    notes:
-      r.notes ?? null,
-
-    verifiedByFace:
-      Boolean(
-        r.verifiedByFace
-      ),
-
-    isExcused:
-      Boolean(
-        r.isExcused
-      ),
+    isExcused: Boolean(
+      r.isExcused
+    ),
 
     excusedBy:
       r.excusedBy ?? null,
@@ -723,8 +793,7 @@ async function attendanceUpsert(
       r.excusedReason ?? null,
 
     updatedAt:
-      r.updatedAt ||
-      new Date().toISOString(),
+      r.updatedAt,
 
     isExplicitCancelCheckOut:
       Boolean(
@@ -732,45 +801,89 @@ async function attendanceUpsert(
       ),
   };
 
-  const existing =
-    await findAttendance(
-      employeeId,
-      date
-    );
+  /*
+  =========================================================
+  NEW RECORD
+  =========================================================
+  */
 
-  if (existing) {
-    const [updated] =
+  if (!existing) {
+    const [inserted] =
       await db
-        .update(
+        .insert(
           schema.attendanceRecords
         )
-        .set({
-          ...v,
-
-          id: existing.id,
-        } as any)
-        .where(
-          sql`
-            ${schema.attendanceRecords.id}
-            = ${existing.id}
-          `
-        )
+        .values(v as any)
         .returning();
 
-    return updated;
+    return inserted;
   }
 
-  const [inserted] =
+  /*
+  =========================================================
+  TIMESTAMP PROTECTION
+  =========================================================
+  */
+
+  const incomingTime =
+    new Date(
+      v.updatedAt
+    ).getTime();
+
+  const existingTime =
+    new Date(
+      (existing as any).updatedAt ||
+        0
+    ).getTime();
+
+  /*
+  النسخة القديمة ممنوعة من الكتابة
+  فوق النسخة الأحدث.
+  */
+
+  if (
+    Number.isFinite(existingTime) &&
+    Number.isFinite(incomingTime) &&
+    incomingTime <= existingTime
+  ) {
+    console.log(
+      "BLOCKED OLD ATTENDANCE:",
+      employeeId,
+      date,
+      "existing:",
+      existing.updatedAt,
+      "incoming:",
+      v.updatedAt
+    );
+
+    return existing;
+  }
+
+  /*
+  =========================================================
+  UPDATE LATEST VERSION
+  =========================================================
+  */
+
+  const [updated] =
     await db
-      .insert(
+      .update(
         schema.attendanceRecords
       )
-      .values(v as any)
+      .set({
+        ...v,
+        id: existing.id,
+      } as any)
+      .where(
+        sql`
+          ${schema.attendanceRecords.id}
+          = ${existing.id}
+        `
+      )
       .returning();
 
-  return inserted;
+  return updated;
 }
-
 /*
 =========================================================
 LEAVE UPSERT
@@ -778,15 +891,52 @@ LEAVE UPSERT
 */
 
 async function leaveUpsert(x: any) {
-  const incoming = normalizeLeave({
-    ...x,
-    updatedAt:
-      x?.updatedAt ||
-      x?.createdAt ||
-      new Date().toISOString(),
-  });
+  /*
+  نحتفظ بمعرفة هل الجهاز أرسل updatedAt
+  بالفعل قبل normalizeLeave.
+  */
 
-  const id = String(incoming.id);
+  const hasIncomingUpdatedAt =
+    Boolean(
+      x?.updatedAt &&
+      String(x.updatedAt).trim()
+    );
+
+  const incoming =
+    normalizeLeave({
+      ...x,
+
+      updatedAt:
+        hasIncomingUpdatedAt
+          ? x.updatedAt
+          : x.createdAt ||
+            new Date().toISOString(),
+    });
+
+  const id =
+    String(incoming.id);
+
+  /*
+  =========================================================
+  FIND EXISTING
+  =========================================================
+  */
+
+  const existingRows =
+    await db
+      .select()
+      .from(
+        schema.leaveRequests
+      )
+      .where(
+        sql`
+          ${schema.leaveRequests.id}
+          = ${id}
+        `
+      );
+
+  const existing =
+    existingRows[0];
 
   /*
   =========================================================
@@ -794,59 +944,67 @@ async function leaveUpsert(x: any) {
   =========================================================
   */
 
-  const existingRows = await db
-    .select()
-    .from(schema.leaveRequests)
-    .where(
-      sql`
-        ${schema.leaveRequests.id} = ${id}
-      `
-    );
-
-  const existing = existingRows[0];
-
   if (!existing) {
     await db
-      .insert(schema.leaveRequests)
-      .values(incoming as any);
+      .insert(
+        schema.leaveRequests
+      )
+      .values(
+        incoming as any
+      );
 
     return;
   }
 
-  const currentStatus = String(
-    (existing as any).status || "pending"
-  ).toLowerCase();
+  /*
+  =========================================================
+  NO TIMESTAMP = OLD/UNTRUSTED DEVICE
+  =========================================================
 
-  const incomingStatus = String(
-    incoming.status || "pending"
-  ).toLowerCase();
+  لو السجل موجود بالفعل والجهاز لم يرسل
+  updatedAt، لا نسمح له بتعديل النسخة
+  الموجودة في Supabase.
+  */
+
+  if (
+    !hasIncomingUpdatedAt
+  ) {
+    console.log(
+      "BLOCKED LEAVE WITHOUT TIMESTAMP:",
+      id
+    );
+
+    return;
+  }
+
+  const currentStatus =
+    String(
+      (existing as any).status ||
+        "pending"
+    ).toLowerCase();
+
+  const incomingStatus =
+    String(
+      incoming.status ||
+        "pending"
+    ).toLowerCase();
 
   /*
   =========================================================
-  IMPORTANT PROTECTION
+  FINAL STATUS PROTECTION
   =========================================================
 
-  لو Supabase بالفعل فيه:
-
-    approved
-    rejected
-
-  وموبايل / جهاز قديم بعت:
-
-    pending
-
-  ممنوع تمامًا تحديث الطلب.
-
-  والأهم:
-  الشرط ده لازم يكون داخل UPDATE نفسه
-  وليس مجرد SELECT قبل UPDATE.
+  approved / rejected
+  لا يمكن إرجاعهم إلى pending.
   */
 
   if (
     incomingStatus === "pending" &&
     (
-      currentStatus === "approved" ||
-      currentStatus === "rejected"
+      currentStatus ===
+        "approved" ||
+      currentStatus ===
+        "rejected"
     )
   ) {
     console.log(
@@ -867,42 +1025,39 @@ async function leaveUpsert(x: any) {
   =========================================================
   */
 
-  const incomingTime = new Date(
-    incoming.updatedAt ||
-      incoming.createdAt ||
-      0
-  ).getTime();
+  const incomingTime =
+    new Date(
+      incoming.updatedAt
+    ).getTime();
 
-  const existingTime = new Date(
-    (existing as any).updatedAt ||
-      (existing as any).createdAt ||
-      0
-  ).getTime();
+  const existingTime =
+    new Date(
+      (existing as any).updatedAt ||
+        (existing as any).createdAt ||
+        0
+    ).getTime();
 
   /*
-  لو نفس الحالة النهائية موجودة بالفعل،
-  لا تسمح لنسخة أقدم بالكتابة فوقها.
+  أي نسخة أقدم أو مساوية ممنوعة
+  من الكتابة فوق الموجودة.
   */
 
   if (
-    (
-      currentStatus === "approved" ||
-      currentStatus === "rejected"
-    ) &&
-    (
-      incomingStatus === "approved" ||
-      incomingStatus === "rejected"
-    ) &&
-    incomingTime <= existingTime
-  ) {
-    console.log(
-      "BLOCKED OLDER FINAL LEAVE:",
-      id
-    );
+  Number.isFinite(existingTime) &&
+  Number.isFinite(incomingTime) &&
+  incomingTime <= existingTime
+) {
+  console.log(
+    "BLOCKED OLD LEAVE:",
+    id,
+    "existing:",
+    (existing as any).updatedAt,
+    "incoming:",
+    incoming.updatedAt
+  );
 
-    return;
-  }
-
+  return;
+}
   /*
   =========================================================
   UPDATE
@@ -910,15 +1065,19 @@ async function leaveUpsert(x: any) {
   */
 
   await db
-    .update(schema.leaveRequests)
-    .set(incoming as any)
+    .update(
+      schema.leaveRequests
+    )
+    .set(
+      incoming as any
+    )
     .where(
       sql`
-        ${schema.leaveRequests.id} = ${id}
+        ${schema.leaveRequests.id}
+        = ${id}
       `
     );
 }
-
 /*
 =========================================================
 OVERTIME UPSERT
@@ -928,60 +1087,194 @@ OVERTIME UPSERT
 async function overtimeUpsert(
   x: any
 ) {
+  const hasIncomingUpdatedAt =
+    Boolean(
+      x?.updatedAt &&
+      String(x.updatedAt).trim()
+    );
+
+  const id =
+    String(x.id);
+
+  const employeeId =
+    String(x.employeeId);
+
+  const date =
+    String(x.date);
+
+  /*
+  =========================================================
+  CHECK EXISTING
+  =========================================================
+  */
+
+  const existingRows =
+    await db
+      .select()
+      .from(
+        schema.overtimeRequests
+      )
+      .where(
+        sql`
+          ${schema.overtimeRequests.id}
+          = ${id}
+        `
+      );
+
+  const existing =
+    existingRows[0];
+
+  /*
+  =========================================================
+  NEW
+  =========================================================
+  */
+
   const v = {
-    id:
-      String(x.id),
+    id,
 
-    employeeId:
-      String(x.employeeId),
+    employeeId,
 
-    date:
-      String(x.date),
+    date,
 
     type:
       String(
-        x.type || "overtime"
+        x.type ||
+          "overtime"
       ),
 
     durationSeconds:
       Number(
-        x.durationSeconds || 0
+        x.durationSeconds ||
+          0
       ),
 
     reason:
-      x.reason ?? null,
+      x.reason ??
+      null,
 
     status:
-      x.status ?? "pending",
+      x.status ??
+      "pending",
 
     reviewedBy:
-      x.reviewedBy ?? null,
+      x.reviewedBy ??
+      null,
 
     reviewNotes:
-      x.reviewNotes ?? null,
+      x.reviewNotes ??
+      null,
 
     createdAt:
       x.createdAt ||
       new Date().toISOString(),
 
     updatedAt:
-      x.updatedAt ||
-      new Date().toISOString(),
+      hasIncomingUpdatedAt
+        ? x.updatedAt
+        : new Date().toISOString(),
   };
 
-  await db
-    .insert(
-      schema.overtimeRequests
-    )
-    .values(v as any)
-    .onConflictDoUpdate({
-      target:
-        schema.overtimeRequests.id,
+  /*
+  =========================================================
+  OLD DEVICE PROTECTION
+  =========================================================
+  */
 
-      set: v as any,
-    });
+  if (
+    existing &&
+    !hasIncomingUpdatedAt
+  ) {
+    console.log(
+      "BLOCKED OLD OVERTIME WITHOUT TIMESTAMP:",
+      id
+    );
+
+    return existing;
+  }
+
+  /*
+  =========================================================
+  TIMESTAMP PROTECTION
+  =========================================================
+  */
+
+  if (existing) {
+    const incomingTime =
+      new Date(
+        v.updatedAt
+      ).getTime();
+
+    const existingTime =
+      new Date(
+        (existing as any)
+          .updatedAt ||
+          (existing as any)
+            .createdAt ||
+          0
+      ).getTime();
+
+    if (
+      Number.isFinite(
+        existingTime
+      ) &&
+      Number.isFinite(
+        incomingTime
+      ) &&
+      incomingTime <=
+        existingTime
+    ) {
+      console.log(
+        "BLOCKED OLD OVERTIME:",
+        id,
+        "existing:",
+        existing.updatedAt,
+        "incoming:",
+        v.updatedAt
+      );
+
+      return existing;
+    }
+  }
+
+  /*
+  =========================================================
+  INSERT / UPDATE
+  =========================================================
+  */
+
+  if (!existing) {
+    const [inserted] =
+      await db
+        .insert(
+          schema.overtimeRequests
+        )
+        .values(
+          v as any
+        )
+        .returning();
+
+    return inserted;
+  }
+
+  const [updated] =
+    await db
+      .update(
+        schema.overtimeRequests
+      )
+      .set(
+        v as any
+      )
+      .where(
+        sql`
+          ${schema.overtimeRequests.id}
+          = ${id}
+        `
+      )
+      .returning();
+
+  return updated;
 }
-
 /*
 =========================================================
 LOAD ALL DATABASE DATA
@@ -1545,21 +1838,17 @@ app.post(
       if (!employeeId) {
         return res.status(400).json({
           success: false,
-          error:
-            "Employee ID is required",
+          error: "Employee ID is required",
         });
       }
 
-      const eid =
-        String(employeeId).trim();
+      const eid = String(employeeId).trim();
 
-      const c =
-        clock();
+      const c = clock();
 
       const date =
-        action === "update" &&
-        record?.date
-          ? String(record.date)
+        action === "update" && record?.date
+          ? String(record.date).trim()
           : c.date;
 
       if (date > c.date) {
@@ -1570,50 +1859,58 @@ app.post(
         });
       }
 
-      const e =
-        USE_DATABASE
-          ? (
-              await db
-                .select()
-                .from(
-                  schema.employees
-                )
-                .where(
-                  sql`
-                    ${schema.employees.id}
-                    = ${eid}
-                  `
-                )
-            )[0]
-          : localState.employees.find(
-              (x: any) =>
-                norm(x.id) ===
-                norm(eid)
-            );
+      /*
+      =====================================================
+      FIND EMPLOYEE
+      =====================================================
+      */
+
+      const e = USE_DATABASE
+        ? (
+            await db
+              .select()
+              .from(schema.employees)
+              .where(
+                sql`
+                  lower(${schema.employees.id})
+                  = lower(${eid})
+                `
+              )
+          )[0]
+        : localState.employees.find(
+            (x: any) =>
+              norm(x.id) === norm(eid)
+          );
 
       if (!e) {
         return res.status(404).json({
           success: false,
-          error:
-            "Employee not found",
+          error: "Employee not found",
         });
       }
 
-      const old =
-        USE_DATABASE
-          ? await findAttendance(
-              eid,
-              date
-            )
-          : localState.attendanceRecords.find(
-              (x: any) =>
-                norm(
-                  x.employeeId
-                ) ===
-                  norm(eid) &&
-                String(x.date) ===
-                  date
-            );
+      /*
+      =====================================================
+      FIND CURRENT ATTENDANCE
+      =====================================================
+      */
+
+      const old = USE_DATABASE
+        ? await findAttendance(
+            String(e.id),
+            date
+          )
+        : localState.attendanceRecords.find(
+            (x: any) =>
+              norm(x.employeeId) === norm(eid) &&
+              String(x.date) === date
+          );
+
+      /*
+      =====================================================
+      BUILD RECORD
+      =====================================================
+      */
 
       let r: any = {
         ...(old || {}),
@@ -1622,32 +1919,40 @@ app.post(
         id:
           old?.id ||
           record?.id ||
-          `rec-${norm(
-            eid
-          )}-${date}`,
+          `rec-${norm(eid)}-${date}`,
 
         employeeId:
-          eid,
+          old?.employeeId ||
+          e.id,
 
         date,
+
+        /*
+        لا نثق في updatedAt القادم من الجهاز
+        في عمليات punch.
+        */
 
         updatedAt:
           new Date().toISOString(),
       };
 
+      /*
+      =====================================================
+      ACTIONS
+      =====================================================
+      */
+
       if (
         action === "check_in" &&
         !r.checkIn
       ) {
-        r.checkIn =
-          c.time;
+        r.checkIn = c.time;
       }
 
       if (
         action === "check_out"
       ) {
-        r.checkOut =
-          c.time;
+        r.checkOut = c.time;
 
         r.isExplicitCancelCheckOut =
           false;
@@ -1656,18 +1961,21 @@ app.post(
       if (
         action === "break_start"
       ) {
-        r.breakStart =
-          c.time;
+        r.breakStart = c.time;
       }
 
       if (
         action === "break_end" ||
-        action ===
-          "force_break_end"
+        action === "force_break_end"
       ) {
-        r.breakEnd =
-          c.time;
+        r.breakEnd = c.time;
       }
+
+      /*
+      =====================================================
+      CANCEL CHECKOUT
+      =====================================================
+      */
 
       if (
         r.isExplicitCancelCheckOut
@@ -1675,24 +1983,55 @@ app.post(
         r.checkOut = null;
         r.workHours = 0;
         r.overtimeHours = 0;
+        r.earlyLeaveMinutes = 0;
       }
 
-      r =
-        sanitize(r);
+      /*
+      =====================================================
+      SANITIZE
+      =====================================================
+      */
+
+      r = sanitize(r);
+
+      /*
+      =====================================================
+      DATABASE
+      =====================================================
+      */
 
       if (USE_DATABASE) {
-        await attendanceUpsert(
-          r
-        );
+        await attendanceUpsert(r);
+
+        const freshRecord =
+          await findAttendance(
+            String(e.id),
+            date
+          );
+
+        const freshData =
+          await data();
 
         return res.json({
           success: true,
 
           record:
-            await findAttendance(
-              eid,
-              date
-            ),
+            freshRecord,
+
+          attendanceRecords:
+            freshData.attendanceRecords,
+
+          employees:
+            freshData.employees,
+
+          shifts:
+            freshData.shifts,
+
+          leaveRequests:
+            freshData.leaveRequests,
+
+          activeLeaves:
+            freshData.activeLeaves,
 
           serverTime:
             c,
@@ -1701,6 +2040,12 @@ app.post(
             Date.now(),
         });
       }
+
+      /*
+      =====================================================
+      LOCAL JSON
+      =====================================================
+      */
 
       localState.attendanceRecords =
         mergeAttendance(
@@ -1713,22 +2058,37 @@ app.post(
 
       saveLocalState();
 
-      res.json({
+      return res.json({
         success: true,
+
         record: r,
+
         attendanceRecords:
           localState.attendanceRecords,
-        serverTime: c,
+
+        leaveRequests:
+          localState.leaveRequests,
+
+        activeLeaves:
+          getActiveLeaves(
+            localState.leaveRequests,
+            c.date
+          ),
+
+        serverTime:
+          c,
+
         lastUpdated:
           localState.lastUpdated,
       });
+
     } catch (e) {
       console.error(
         "POST /api/punch:",
         e
       );
 
-      res.status(500).json({
+      return res.status(500).json({
         success: false,
         error:
           e instanceof Error
@@ -1738,137 +2098,6 @@ app.post(
     }
   }
 );
-
-/*
-=========================================================
-ATTENDANCE
-=========================================================
-*/
-
-app.post(
-  "/api/attendance",
-  async (req, res) => {
-    try {
-      const r =
-        req.body;
-
-      if (
-        !r?.employeeId ||
-        !r?.date
-      ) {
-        return res.status(400).json({
-          success: false,
-          error:
-            "Invalid attendance record",
-        });
-      }
-
-      if (
-        String(r.date) >
-        clock().date
-      ) {
-        return res.status(400).json({
-          success: false,
-          error:
-            "Future attendance dates are not allowed",
-        });
-      }
-
-      const s =
-        sanitize({
-          ...r,
-
-          id:
-            r.id ||
-            `rec-${norm(
-              r.employeeId
-            )}-${r.date}`,
-        });
-
-      if (USE_DATABASE) {
-        await attendanceUpsert(
-          s
-        );
-
-        const freshData =
-          await data();
-
-        return res.json({
-          success: true,
-
-          record:
-            await findAttendance(
-              String(
-                r.employeeId
-              ),
-              String(r.date)
-            ),
-
-          attendanceRecords:
-            freshData.attendanceRecords,
-
-          employees:
-            freshData.employees,
-
-          shifts:
-            freshData.shifts,
-
-          /*
-          مهم:
-          رجوع الإجازات مع الحضور
-          */
-
-          leaveRequests:
-            freshData.leaveRequests,
-
-          activeLeaves:
-            freshData.activeLeaves,
-
-          lastUpdated:
-            Date.now(),
-        });
-      }
-
-      localState.attendanceRecords =
-        mergeAttendance(
-          localState.attendanceRecords,
-          [s]
-        );
-
-      localState.lastUpdated =
-        Date.now();
-
-      saveLocalState();
-
-      res.json({
-        success: true,
-
-        attendanceRecords:
-          localState.attendanceRecords,
-
-        leaveRequests:
-          localState.leaveRequests,
-
-        lastUpdated:
-          Date.now(),
-      });
-    } catch (e) {
-      console.error(
-        "POST /api/attendance:",
-        e
-      );
-
-      res.status(500).json({
-        success: false,
-        error:
-          e instanceof Error
-            ? e.message
-            : "Failed to save attendance",
-      });
-    }
-  }
-);
-
 /*
 =========================================================
 SYNC
@@ -1879,50 +2108,52 @@ app.post(
   "/api/sync",
   async (req, res) => {
     try {
-      const b =
-        req.body || {};
+      const b = req.body || {};
 
       if (USE_DATABASE) {
+
+        /*
+        =====================================================
+        EMPLOYEES
+        =====================================================
+        */
+
         for (
           const e of
-          Array.isArray(
-            b.employees
-          )
+          Array.isArray(b.employees)
             ? b.employees
             : []
         ) {
           if (e?.id) {
-            await employeeUpsert(
-              e
-            );
+            await employeeUpsert(e);
           }
         }
 
+        /*
+        =====================================================
+        ATTENDANCE
+        =====================================================
+        */
+
         for (
           const r of
-          Array.isArray(
-            b.attendanceRecords
-          )
+          Array.isArray(b.attendanceRecords)
             ? b.attendanceRecords
             : []
         ) {
           if (
             r?.employeeId &&
             r?.date &&
-            String(r.date) <=
-              clock().date
+            String(r.date) <= clock().date
           ) {
-            await attendanceUpsert(
-              r
-            );
+            await attendanceUpsert(r);
           }
         }
 
         /*
-        الإجازات:
-        كل جهاز يرفع التغييرات إلى Supabase،
-        و leaveUpsert تمنع النسخة القديمة
-        من الكتابة فوق النسخة الأحدث.
+        =====================================================
+        LEAVES
+        =====================================================
         */
 
         for (
@@ -1941,17 +2172,20 @@ app.post(
           const incoming =
             normalizeLeave({
               ...x,
-
               updatedAt:
                 x.updatedAt ||
                 x.createdAt ||
                 new Date().toISOString(),
             });
 
-          await leaveUpsert(
-            incoming
-          );
-        }
+          await leaveUpsert(incoming);
+        } // ← مهم جدًا: قفل الـ for هنا
+
+        /*
+        =====================================================
+        URGENT NOTICE
+        =====================================================
+        */
 
         if (
           b.urgentNotice !==
@@ -1964,9 +2198,9 @@ app.post(
         }
 
         /*
-        الأهم:
-        لا نرجع بيانات الجهاز.
-        نرجع أحدث بيانات Supabase.
+        =====================================================
+        RETURN FRESH SUPABASE DATA
+        =====================================================
         */
 
         const fresh =
@@ -1977,6 +2211,12 @@ app.post(
           ...fresh,
         });
       }
+
+      /*
+      =====================================================
+      LOCAL JSON
+      =====================================================
+      */
 
       if (
         Array.isArray(
@@ -2068,12 +2308,18 @@ app.post(
           );
       }
 
+      /*
+      =====================================================
+      SAVE LOCAL STATE
+      =====================================================
+      */
+
       localState.lastUpdated =
         Date.now();
 
       saveLocalState();
 
-      res.json({
+      return res.json({
         success: true,
 
         ...localState,
@@ -2084,13 +2330,14 @@ app.post(
             clock().date
           ),
       });
+
     } catch (e) {
       console.error(
         "POST /api/sync:",
         e
       );
 
-      res.status(500).json({
+      return res.status(500).json({
         success: false,
         error:
           "Sync failed",
@@ -2123,13 +2370,142 @@ app.put(
       ).id;
 
       if (USE_DATABASE) {
+        /*
+        =====================================================
+        FIND CURRENT EMPLOYEE
+        =====================================================
+        */
+
+        const existingRows =
+          await db
+            .select()
+            .from(
+              schema.employees
+            )
+            .where(
+              sql`
+                ${schema.employees.id}
+                = ${id}
+              `
+            );
+
+        const existing =
+          existingRows[0];
+
+        if (!existing) {
+          return res.status(404).json({
+            success: false,
+            error:
+              "Employee not found",
+          });
+        }
+
+        /*
+        =====================================================
+        TIMESTAMP PROTECTION
+        =====================================================
+        */
+
+        const hasIncomingUpdatedAt =
+          Boolean(
+            changes.updatedAt &&
+            String(
+              changes.updatedAt
+            ).trim()
+          );
+
+        /*
+        لو الجهاز لا يرسل updatedAt،
+        نستخدم البيانات الموجودة في السيرفر
+        كمرجع، ولا نسمح لنسخة قديمة
+        بالكتابة فوقها.
+
+        */
+
+        if (
+          !hasIncomingUpdatedAt &&
+          (existing as any).updatedAt
+        ) {
+          console.log(
+            "BLOCKED EMPLOYEE UPDATE WITHOUT TIMESTAMP:",
+            id
+          );
+
+          return res.status(409).json({
+            success: false,
+            error:
+              "STALE_EMPLOYEE_UPDATE",
+            employee:
+              existing,
+          });
+        }
+
+        if (
+  hasIncomingUpdatedAt &&
+  (existing as any).updatedAt
+) {
+  const incomingTime =
+    new Date(
+      changes.updatedAt
+    ).getTime();
+
+  const existingTime =
+    new Date(
+      (existing as any)
+        .updatedAt
+    ).getTime();
+
+  if (
+    Number.isFinite(
+      incomingTime
+    ) &&
+    Number.isFinite(
+      existingTime
+    ) &&
+    incomingTime <=
+      existingTime
+  ) {
+    console.log(
+      "BLOCKED OLD EMPLOYEE UPDATE:",
+      id,
+      "existing:",
+      (existing as any).updatedAt,
+      "incoming:",
+      changes.updatedAt
+    );
+
+    return res.status(409).json({
+      success: false,
+      error:
+        "STALE_EMPLOYEE_UPDATE",
+      employee:
+        existing,
+    });
+  }
+}
+
+        /*
+        =====================================================
+        UPDATE
+        =====================================================
+        */
+
+        const finalChanges = {
+          ...changes,
+
+          updatedAt:
+            hasIncomingUpdatedAt
+              ? changes.updatedAt
+              : new Date().toISOString(),
+        };
+
         const [x] =
           await db
             .update(
               schema.employees
             )
             .set(
-              changes as any
+              finalChanges as any
             )
             .where(
               sql`
@@ -2142,7 +2518,9 @@ app.put(
         return x
           ? res.json({
               success: true,
+
               employee: x,
+
               lastUpdated:
                 Date.now(),
             })
@@ -2152,6 +2530,12 @@ app.put(
                 "Employee not found",
             });
       }
+
+      /*
+      =====================================================
+      LOCAL JSON
+      =====================================================
+      */
 
       const i =
         localState.employees.findIndex(
@@ -2168,12 +2552,68 @@ app.put(
         });
       }
 
+      const existing =
+        localState.employees[i];
+
+      const hasIncomingUpdatedAt =
+        Boolean(
+          changes.updatedAt &&
+          String(
+            changes.updatedAt
+          ).trim()
+        );
+
+      if (
+        hasIncomingUpdatedAt &&
+        existing.updatedAt
+      ) {
+        const incomingTime =
+          new Date(
+            changes.updatedAt
+          ).getTime();
+
+        const existingTime =
+          new Date(
+            existing.updatedAt
+          ).getTime();
+
+        if (
+          Number.isFinite(
+            incomingTime
+          ) &&
+          Number.isFinite(
+            existingTime
+          ) &&
+          incomingTime <=
+            existingTime
+        ) {
+          console.log(
+            "BLOCKED OLD LOCAL EMPLOYEE UPDATE:",
+            id
+          );
+
+          return res.status(409).json({
+            success: false,
+            error:
+              "STALE_EMPLOYEE_UPDATE",
+            employee:
+              existing,
+          });
+        }
+      }
+
       localState.employees[i] = {
-        ...localState.employees[i],
+        ...existing,
+
         ...changes,
+
         id:
-          localState.employees[i]
-            .id,
+          existing.id,
+
+        updatedAt:
+          hasIncomingUpdatedAt
+            ? changes.updatedAt
+            : new Date().toISOString(),
       };
 
       localState.lastUpdated =
@@ -2181,10 +2621,12 @@ app.put(
 
       saveLocalState();
 
-      res.json({
+      return res.json({
         success: true,
+
         employee:
           localState.employees[i],
+
         lastUpdated:
           localState.lastUpdated,
       });
@@ -2733,9 +3175,12 @@ app.put(
             .toLowerCase();
 
         if (
-          newStatus !== "approved" &&
-          newStatus !== "rejected" &&
-          newStatus !== "pending"
+          newStatus !==
+            "approved" &&
+          newStatus !==
+            "rejected" &&
+          newStatus !==
+            "pending"
         ) {
           return res.status(400).json({
             success: false,
@@ -2743,6 +3188,115 @@ app.put(
               "Invalid leave status",
           });
         }
+
+        /*
+        =====================================================
+        GET CURRENT VERSION
+        =====================================================
+        */
+
+        const existingRows =
+          await db
+            .select()
+            .from(
+              schema.leaveRequests
+            )
+            .where(
+              sql`
+                ${schema.leaveRequests.id}
+                = ${id}
+              `
+            );
+
+        const existing =
+          existingRows[0];
+
+        if (!existing) {
+          return res.status(404).json({
+            success: false,
+            error:
+              "Leave request not found",
+          });
+        }
+
+        const currentStatus =
+          String(
+            (existing as any)
+              .status ||
+              "pending"
+          ).toLowerCase();
+
+        /*
+        =====================================================
+        FINAL STATUS PROTECTION
+        =====================================================
+
+        approved / rejected
+        لا يرجعوا إلى pending.
+        */
+
+        if (
+          (
+            currentStatus ===
+              "approved" ||
+            currentStatus ===
+              "rejected"
+          ) &&
+          newStatus ===
+            "pending"
+        ) {
+          console.log(
+            "BLOCKED FINAL LEAVE -> PENDING:",
+            id
+          );
+
+          const fresh =
+            await data();
+
+          return res.json({
+            success: true,
+
+            blocked:
+              true,
+
+            reason:
+              "FINAL_STATUS_CANNOT_RETURN_TO_PENDING",
+
+            leaveRequest:
+              fresh.leaveRequests.find(
+                (a: any) =>
+                  String(a.id) ===
+                  id
+              ) || null,
+
+            leaveRequests:
+              fresh.leaveRequests,
+
+            activeLeaves:
+              fresh.activeLeaves,
+
+            employees:
+              fresh.employees,
+
+            attendanceRecords:
+              fresh.attendanceRecords,
+
+            shifts:
+              fresh.shifts,
+
+            overtimeRequests:
+              fresh.overtimeRequests,
+
+            lastUpdated:
+              Date.now(),
+          });
+        }
+
+        /*
+        =====================================================
+        UPDATE STATUS
+        =====================================================
+        */
 
         const now =
           new Date().toISOString();
@@ -2757,10 +3311,12 @@ app.put(
                 newStatus,
 
               reviewNotes:
-                b.reviewNotes ?? null,
+                b.reviewNotes ??
+                null,
 
               reviewedBy:
-                b.reviewedBy ?? null,
+                b.reviewedBy ??
+                null,
 
               updatedAt:
                 now,
@@ -2782,8 +3338,9 @@ app.put(
         }
 
         /*
-        بعد تغيير الحالة:
-        نقرأ البيانات من Supabase
+        =====================================================
+        FRESH SUPABASE DATA
+        =====================================================
         */
 
         const fresh =
@@ -2843,12 +3400,82 @@ app.put(
         });
       }
 
+      const current =
+        localState
+          .leaveRequests[i];
+
+      const currentStatus =
+        String(
+          current.status ||
+            "pending"
+        ).toLowerCase();
+
+      const newStatus =
+        String(
+          b.status || ""
+        )
+          .trim()
+          .toLowerCase();
+
+      if (
+        newStatus !==
+          "approved" &&
+        newStatus !==
+          "rejected" &&
+        newStatus !==
+          "pending"
+      ) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "Invalid leave status",
+        });
+      }
+
+      if (
+        (
+          currentStatus ===
+            "approved" ||
+          currentStatus ===
+            "rejected"
+        ) &&
+        newStatus ===
+          "pending"
+      ) {
+        return res.json({
+          success: true,
+
+          blocked:
+            true,
+
+          reason:
+            "FINAL_STATUS_CANNOT_RETURN_TO_PENDING",
+
+          leaveRequest:
+            current,
+
+          leaveRequests:
+            localState.leaveRequests,
+
+          activeLeaves:
+            getActiveLeaves(
+              localState.leaveRequests,
+              clock().date
+            ),
+
+          lastUpdated:
+            Date.now(),
+        });
+      }
+
       localState.leaveRequests[i] =
         normalizeLeave({
-          ...localState
-            .leaveRequests[i],
+          ...current,
 
           ...b,
+
+          status:
+            newStatus,
 
           updatedAt:
             new Date().toISOString(),
@@ -2867,7 +3494,8 @@ app.put(
             .leaveRequests[i],
 
         leaveRequests:
-          localState.leaveRequests,
+          localState
+            .leaveRequests,
 
         activeLeaves:
           getActiveLeaves(
@@ -2878,7 +3506,6 @@ app.put(
         lastUpdated:
           Date.now(),
       });
-
     } catch (e) {
       console.error(
         "leave status:",
