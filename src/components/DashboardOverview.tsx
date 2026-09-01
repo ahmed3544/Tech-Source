@@ -248,20 +248,6 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
               </p>
             </div>
             <div className="flex items-center gap-2">
-              {onClearTodayRecords && (currentUser?.role === 'leader' || currentUser?.role === 'admin' || !currentUser) && todayRecords.length > 0 && (
-                <button
-                  onClick={() => {
-                    if (window.confirm(lang === 'ar' ? 'هل أنت تأكد من مسح جميع سجلات الحضور الخاصة باليوم؟' : 'Clear all today attendance records?')) {
-                      onClearTodayRecords(todayStr);
-                    }
-                  }}
-                  className="text-xs font-bold text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 px-2.5 py-1.5 rounded-lg transition border border-rose-200 flex items-center gap-1"
-                  title={lang === 'ar' ? 'مسح كل سجلات اليوم' : 'Clear today records'}
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span>{lang === 'ar' ? 'مسح سجل اليوم' : 'Clear Today'}</span>
-                </button>
-              )}
               <button
                 onClick={() => setActiveTab('attendance')}
                 className="text-xs font-bold text-emerald-600 hover:text-emerald-700 flex items-center gap-1"

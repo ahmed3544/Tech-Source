@@ -27,6 +27,7 @@ type State = {
   leaveRequests: any[];
   overtimeRequests: any[];
   shifts: any[];
+  notifications: any[];
   companyNameAr?: any;
   companyNameEn?: any;
   urgentNotice?: any;
@@ -39,6 +40,7 @@ const emptyState = (): State => ({
   leaveRequests: [],
   overtimeRequests: [],
   shifts: [],
+  notifications: [],
   companyNameAr: null,
   companyNameEn: null,
   urgentNotice: null,
@@ -67,6 +69,9 @@ function loadState(): State {
         ? d.overtimeRequests
         : [],
       shifts: Array.isArray(d.shifts) ? d.shifts : [],
+      notifications: Array.isArray(d.notifications)
+        ? d.notifications
+        : [],
     };
   } catch {
     return emptyState();
@@ -1288,6 +1293,7 @@ async function data() {
     leaveRequests,
     overtimeRequests,
     shifts,
+    notifications,
     settings,
   ] = await Promise.all([
     db
@@ -1318,6 +1324,10 @@ async function data() {
 
     db
       .select()
+      .from(schema.notifications),
+
+    db
+      .select()
       .from(schema.settings),
   ]);
 
@@ -1332,6 +1342,9 @@ async function data() {
 
   localState.shifts =
     shifts;
+
+  localState.notifications =
+    notifications;
 
   localState.leaveRequests =
     leaveRequests.map(
@@ -2183,6 +2196,91 @@ app.post(
 
         /*
         =====================================================
+        NOTIFICATIONS
+        =====================================================
+        */
+
+        for (
+          const n of
+          Array.isArray(b.notifications)
+            ? b.notifications
+            : []
+        ) {
+          if (
+            !n?.id ||
+            !n?.recipientId
+          ) {
+            continue;
+          }
+
+          const now =
+            new Date().toISOString();
+
+          const notification = {
+            id: String(n.id),
+            recipientId: String(
+              n.recipientId
+            ),
+            type: String(n.type || ""),
+            title: String(n.title || ""),
+            message: String(
+              n.message || ""
+            ),
+            relatedEmployeeId:
+              n.relatedEmployeeId ?? null,
+            relatedLeaveId:
+              n.relatedLeaveId ?? null,
+            relatedOvertimeId:
+              n.relatedOvertimeId ?? null,
+            isRead: Boolean(n.isRead),
+            createdAt:
+              n.createdAt || now,
+            updatedAt:
+              n.updatedAt || now,
+          };
+
+          const existingRows =
+            await db
+              .select()
+              .from(
+                schema.notifications
+              )
+              .where(
+                sql`
+                  ${schema.notifications.id}
+                  = ${notification.id}
+                `
+              );
+
+          if (
+            !existingRows[0]
+          ) {
+            await db
+              .insert(
+                schema.notifications
+              )
+              .values(
+                notification as any
+              );
+          } else {
+            await db
+              .update(
+                schema.notifications
+              )
+              .set(
+                notification as any
+              )
+              .where(
+                sql`
+                  ${schema.notifications.id}
+                  = ${notification.id}
+                `
+              );
+          }
+        }
+
+        /*
+        =====================================================
         URGENT NOTICE
         =====================================================
         */
@@ -2261,6 +2359,41 @@ app.post(
       ) {
         localState.overtimeRequests =
           b.overtimeRequests;
+      }
+
+      if (
+        Array.isArray(
+          b.notifications
+        )
+      ) {
+        if (
+          !localState.notifications
+        ) {
+          localState.notifications =
+            [];
+        }
+
+        const notifMap =
+          new Map<string, any>();
+
+        for (const n of
+          localState.notifications
+        ) {
+          notifMap.set(n.id, n);
+        }
+
+        for (const n of
+          b.notifications
+        ) {
+          if (n?.id) {
+            notifMap.set(n.id, n);
+          }
+        }
+
+        localState.notifications =
+          Array.from(
+            notifMap.values()
+          );
       }
 
       if (
@@ -4087,6 +4220,271 @@ app.post(
           e instanceof Error
             ? e.message
             : "Failed to restore backup",
+      });
+    }
+  }
+);
+
+/*
+=========================================================
+NOTIFICATIONS
+=========================================================
+*/
+
+app.get(
+  "/api/notifications",
+  async (req, res) => {
+    try {
+      const userId =
+        String(
+          req.query.userId || ""
+        );
+
+      if (!userId) {
+        return res.status(400).json({
+          success: false,
+          error: "userId is required",
+        });
+      }
+
+      if (USE_DATABASE) {
+        const rows =
+          await db
+            .select()
+            .from(
+              schema.notifications
+            )
+            .where(
+              sql`
+                ${schema.notifications.recipientId}
+                = ${userId}
+              `
+            );
+
+        return res.json({
+          success: true,
+          notifications: rows,
+          lastUpdated: Date.now(),
+        });
+      }
+
+      const userNotifications =
+        (
+          localState.notifications ||
+          []
+        ).filter(
+          (n: any) =>
+            String(n.recipientId) ===
+            userId
+        );
+
+      return res.json({
+        success: true,
+        notifications:
+          userNotifications,
+        lastUpdated: Date.now(),
+      });
+    } catch (e) {
+      console.error(
+        "GET /api/notifications:",
+        e
+      );
+
+      res.status(500).json({
+        success: false,
+        error:
+          "Failed to load notifications",
+      });
+    }
+  }
+);
+
+app.put(
+  "/api/notifications/:id/mark-read",
+  async (req, res) => {
+    try {
+      const id =
+        String(
+          req.params.id
+        );
+
+      if (USE_DATABASE) {
+        const [updated] =
+          await db
+            .update(
+              schema.notifications
+            )
+            .set({
+              isRead: true,
+              updatedAt:
+                new Date().toISOString(),
+            } as any)
+            .where(
+              sql`
+                ${schema.notifications.id}
+                = ${id}
+              `
+            )
+            .returning();
+
+        return res.json({
+          success: true,
+          notification: updated,
+          lastUpdated: Date.now(),
+        });
+      }
+
+      const idx =
+        (
+          localState.notifications ||
+          []
+        ).findIndex(
+          (n: any) =>
+            String(n.id) === id
+        );
+
+      if (idx < 0) {
+        return res.status(404).json({
+          success: false,
+          error:
+            "Notification not found",
+        });
+      }
+
+      localState.notifications[idx] =
+        {
+          ...localState.notifications[
+            idx
+          ],
+          isRead: true,
+          updatedAt:
+            new Date().toISOString(),
+        };
+
+      saveLocalState();
+
+      return res.json({
+        success: true,
+        notification:
+          localState.notifications[idx],
+        lastUpdated: Date.now(),
+      });
+    } catch (e) {
+      console.error(
+        "PUT /api/notifications/:id/mark-read:",
+        e
+      );
+
+      res.status(500).json({
+        success: false,
+        error:
+          "Failed to mark notification as read",
+      });
+    }
+  }
+);
+
+app.put(
+  "/api/notifications/mark-all-read",
+  async (req, res) => {
+    try {
+      const userId =
+        String(
+          req.body?.userId || ""
+        );
+
+      if (!userId) {
+        return res.status(400).json({
+          success: false,
+          error: "userId is required",
+        });
+      }
+
+      if (USE_DATABASE) {
+        await db
+          .update(
+            schema.notifications
+          )
+          .set({
+            isRead: true,
+            updatedAt:
+              new Date().toISOString(),
+          } as any)
+          .where(
+            sql`
+              ${schema.notifications.recipientId}
+              = ${userId}
+              AND
+              ${schema.notifications.isRead}
+              = false
+            `
+          );
+
+        const rows =
+          await db
+            .select()
+            .from(
+              schema.notifications
+            )
+            .where(
+              sql`
+                ${schema.notifications.recipientId}
+                = ${userId}
+              `
+            );
+
+        return res.json({
+          success: true,
+          notifications: rows,
+          lastUpdated: Date.now(),
+        });
+      }
+
+      if (!localState.notifications) {
+        localState.notifications = [];
+      }
+
+      localState.notifications =
+        localState.notifications.map(
+          (n: any) =>
+            n.recipientId === userId
+              ? {
+                  ...n,
+                  isRead: true,
+                  updatedAt:
+                    new Date().toISOString(),
+                }
+              : n
+        );
+
+      saveLocalState();
+
+      const userNotifications =
+        (
+          localState.notifications ||
+          []
+        ).filter(
+          (n: any) =>
+            String(n.recipientId) ===
+            userId
+        );
+
+      return res.json({
+        success: true,
+        notifications:
+          userNotifications,
+        lastUpdated: Date.now(),
+      });
+    } catch (e) {
+      console.error(
+        "PUT /api/notifications/mark-all-read:",
+        e
+      );
+
+      res.status(500).json({
+        success: false,
+        error:
+          "Failed to mark all notifications as read",
       });
     }
   }

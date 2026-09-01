@@ -28,6 +28,16 @@ export type LeaveType =
 
 export type LeaveStatus = 'pending' | 'approved' | 'rejected';
 
+export type NotificationType = 
+  | 'leave_requested' 
+  | 'leave_approved' 
+  | 'leave_rejected' 
+  | 'overtime_requested' 
+  | 'overtime_approved' 
+  | 'overtime_rejected' 
+  | 'shift_changed' 
+  | 'admin_notice';
+
 export interface Shift {
   id: string;
   nameAr: string;
@@ -145,5 +155,19 @@ export interface UrgentNotice {
   updatedAt: string;
   active: boolean;
   authorName?: string;
+}
+
+export interface Notification {
+  id: string;
+  recipientId: string;
+  type: NotificationType;
+  title: string;
+  message: string;
+  relatedEmployeeId?: string;
+  relatedLeaveId?: string;
+  relatedOvertimeId?: string;
+  isRead: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 

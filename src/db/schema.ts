@@ -112,3 +112,17 @@ export const shifts = pgTable('shifts', {
   createdAt: text('created_at'),
   updatedAt: text('updated_at'),
 });
+
+export const notifications = pgTable('notifications', {
+  id: text('id').primaryKey(),
+  recipientId: text('recipient_id').notNull(),
+  type: text('type').notNull(), // 'leave_requested', 'leave_approved', 'leave_rejected', 'overtime_requested', 'overtime_approved', 'overtime_rejected', 'shift_changed', 'admin_notice'
+  title: text('title').notNull(),
+  message: text('message').notNull(),
+  relatedEmployeeId: text('related_employee_id'),
+  relatedLeaveId: text('related_leave_id'),
+  relatedOvertimeId: text('related_overtime_id'),
+  isRead: boolean('is_read').default(false),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+});

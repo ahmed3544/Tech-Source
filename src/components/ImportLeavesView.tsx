@@ -504,30 +504,6 @@ export const ImportLeavesView: React.FC<ImportLeavesViewProps> = ({
               </button>
             </div>
             {/* Card 3: Delete Future Attendance Records */}
-            {onDeleteFutureRecords && (
-              <div className="bg-slate-950/60 border border-slate-800 rounded-2xl p-6 space-y-4 hover:border-amber-500/50 transition md:col-span-2">
-                <div className="space-y-1">
-                  <h3 className="text-base font-bold text-white flex items-center gap-2">
-                    <span>{lang === 'ar' ? 'تنظيف السجلات المستقبلية (مسح الأخطاء)' : 'Clean Future Attendance Records'}</span>
-                    <span className="text-[10px] bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full border border-amber-500/30">
-                      {lang === 'ar' ? 'خاص بالليدر' : 'Admin Only'}
-                    </span>
-                  </h3>
-                  <p className="text-xs text-slate-400">
-                    {lang === 'ar'
-                      ? 'حذف جميع سجلات الحضور التي تم إنشاؤها بتواريخ مستقبلية (بعد تاريخ اليوم) دون المساس بأي من سجلات اليوم أو السجلات التاريخية أو بيانات الموظفين والإجازات.'
-                      : 'Delete attendance records accidentally created for future dates after today, preserving all historical records and settings.'}
-                  </p>
-                </div>
-                <button
-                  onClick={onDeleteFutureRecords}
-                  className="py-3 px-6 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold transition flex items-center justify-center gap-2 text-sm shadow-md cursor-pointer"
-                >
-                  <AlertTriangle className="w-4 h-4" />
-                  <span>{lang === 'ar' ? 'حذف سجلات الحضور المستقبلية' : 'Delete Future Attendance Records'}</span>
-                </button>
-              </div>
-            )}
           </div>
         </div>
       )}

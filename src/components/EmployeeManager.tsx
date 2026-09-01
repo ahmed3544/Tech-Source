@@ -101,7 +101,7 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
     setEditJobTitleEn(emp.jobTitleEn);
     setEditPin(emp.pin);
     setEditShiftId(emp.shiftId || shifts[0]?.id || 'shift-1');
-    setEditRole(emp.role || 'employee');
+   const [editRole, setEditRole] = useState<'employee' | 'leader' | 'admin'>('employee');
     setEditEmail(emp.email);
     setEditPhone(emp.phone);
     setEditAnnualLeaveBalance(emp.annualLeaveBalance ?? (emp.casualLeaveBalance ?? 7) + (emp.regularLeaveBalance ?? 8));

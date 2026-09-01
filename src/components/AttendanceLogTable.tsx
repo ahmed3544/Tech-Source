@@ -376,33 +376,6 @@ export const AttendanceLogTable: React.FC<AttendanceLogTableProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
-          {isLeader && onDeleteFutureRecords && (
-            <button
-              onClick={onDeleteFutureRecords}
-              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold text-xs transition border border-amber-200 shadow-xs"
-              title={lang === 'ar' ? 'حذف أي سجلات حضور ذات تواريخ مستقبلية بعد اليوم' : 'Delete future attendance records'}
-            >
-              <Trash2 className="w-4 h-4 text-amber-600" />
-              <span>{lang === 'ar' ? 'حذف سجلات الحضور المستقبلية' : 'Delete Future Attendance Records'}</span>
-            </button>
-          )}
-
-          {isLeader && onClearTodayRecords && (
-            <button
-              onClick={() => {
-                const targetDate = selectedDate || new Date().toISOString().split('T')[0];
-                if (window.confirm(lang === 'ar' ? `هل أنت تأكد من مسح جميع سجلات الحضور لتاريخ (${targetDate})؟` : `Clear all attendance records for (${targetDate})?`)) {
-                  onClearTodayRecords(targetDate);
-                }
-              }}
-              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs transition border border-rose-200"
-              title={lang === 'ar' ? 'مسح كل سجلات الحضور لتاريخ اليوم' : 'Clear attendance records for date'}
-            >
-              <Trash2 className="w-4 h-4 text-rose-600" />
-              <span>{lang === 'ar' ? 'مسح سجل اليوم' : 'Clear Today Log'}</span>
-            </button>
-          )}
-
           {isLeader && (
             <>
               <button

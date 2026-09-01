@@ -19,9 +19,10 @@ import {
   X
 } from 'lucide-react';
 
-import { Employee, Language, AttendanceRecord, LeaveRequest } from '../types';
+import { Employee, Language, AttendanceRecord, LeaveRequest, Notification, NotificationType } from '../types';
 import { TechSourceLogo } from './TechSourceLogo';
 import { UserAvatar } from './UserAvatar';
+import { NotificationCenter } from './NotificationCenter';
 import {
   formatTime,
   formatDate,
@@ -76,6 +77,11 @@ interface HeaderProps {
   employees?: Employee[];
   attendanceRecords?: AttendanceRecord[];
   leaveRequests?: LeaveRequest[];
+
+  notifications?: Notification[];
+  currentUserId?: string;
+  onMarkNotificationAsRead?: (notificationId: string) => void;
+  onMarkAllNotificationsAsRead?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -97,6 +103,10 @@ export const Header: React.FC<HeaderProps> = ({
   employees = [],
   attendanceRecords = [],
   leaveRequests = [],
+  notifications = [],
+  currentUserId,
+  onMarkNotificationAsRead,
+  onMarkAllNotificationsAsRead,
 }) => {
   const [now, setNow] = useState<Date>(new Date());
   const [showAvatarModal, setShowAvatarModal] = useState(false);
@@ -565,6 +575,17 @@ export const Header: React.FC<HeaderProps> = ({
                 {pendingLeavesCount}
               </span>
             </button>
+          )}
+
+          {/* Notification Center */}
+          {currentUser && (
+            <NotificationCenter
+              notifications={notifications}
+              currentUserId={currentUserId || currentUser?.id}
+              lang={lang}
+              onMarkAsRead={onMarkNotificationAsRead}
+              onMarkAllAsRead={onMarkAllNotificationsAsRead}
+            />
           )}
 
         </div>

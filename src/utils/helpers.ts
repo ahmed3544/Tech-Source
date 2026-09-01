@@ -1110,3 +1110,56 @@ export function exportToExcel(
 
   XLSX.writeFile(workbook, fileName);
 }
+
+/**
+ * Export team overall report to Excel with daily attendance stats
+ */
+export function exportTeamReportToExcel(
+  teamName: string,
+  reportData: Record<string, any>[],
+  fileName?: string
+) {
+  if (!reportData || reportData.length === 0) return;
+
+  const rows = reportData.map(row => ({
+    'اسم الموظف': row.employeeName || row.name || '',
+    'الكود': row.code || '',
+    'القسم': row.department || '',
+    'الحالة': row.status || '',
+    'ساعات العمل': Number(row.workHours || 0).toFixed(1),
+    'التأخير': row.lateMinutes || 0,
+    'الانصراف المبكر': row.earlyLeaveMinutes || 0,
+    'ملاحظات': row.notes || '',
+  }));
+
+  const worksheet = XLSX.utils.json_to_sheet(rows);
+
+ // Adjust column widths
+const columnWidths = Object.keys(rows[0]).map(key => ({
+  wch: Math.min(
+    30,
+    Math.max(
+      key.length + 2,
+      ...rows.map(row =>
+        String(
+          (row as Record<string, unknown>)[key] ?? ''
+        ).length + 2
+      )
+    )
+  ),
+}));
+  worksheet['!cols'] = columnWidths;
+
+  const workbook = XLSX.utils.book_new();
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    worksheet,
+    `Team Report - ${teamName}`
+  );
+
+  XLSX.writeFile(
+    workbook,
+    fileName || `team_report_${teamName}_${getTodayString()}.xlsx`
+  );
+}
