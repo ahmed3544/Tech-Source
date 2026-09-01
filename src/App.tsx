@@ -412,6 +412,91 @@ export default function App() {
     useRef<(() => Promise<void>) | null>(null);
 
 
+  /*
+   * Leave status decisions that were applied locally
+   * and are not confirmed by the server yet.
+   *
+   * They win over any incoming server copy so an
+   * approved / rejected request never flickers back
+   * to pending while the server catches up.
+   */
+
+  const pendingLeaveDecisionsRef =
+    useRef<
+      Map<
+        string,
+        {
+          status: LeaveStatus;
+          reviewNotes?: string;
+          expiresAt: number;
+        }
+      >
+    >(new Map());
+
+
+  const applyPendingLeaveDecisions =
+    (
+      serverLeaves: LeaveRequest[]
+    ): LeaveRequest[] => {
+
+      const decisions =
+        pendingLeaveDecisionsRef.current;
+
+
+      if (
+        decisions.size ===
+        0
+      ) {
+        return serverLeaves;
+      }
+
+
+      const now =
+        Date.now();
+
+
+      return serverLeaves.map(
+        leave => {
+
+          const decision =
+            decisions.get(
+              leave.id
+            );
+
+
+          if (!decision) {
+            return leave;
+          }
+
+
+          if (
+            leave.status ===
+              decision.status ||
+            now >
+              decision.expiresAt
+          ) {
+
+            decisions.delete(
+              leave.id
+            );
+
+            return leave;
+          }
+
+
+          return {
+            ...leave,
+            status:
+              decision.status,
+            reviewNotes:
+              decision.reviewNotes ??
+              leave.reviewNotes
+          };
+        }
+      );
+    };
+
+
   /* =========================================================
      KEEP REFS UPDATED
      ========================================================= */
@@ -725,6 +810,17 @@ const pushSync = async (
           true;
 
 
+        /*
+         * Marker of the local state at the moment
+         * this pull started.
+         *
+         * If it changes while the request is in flight,
+         * the response is already stale and must be dropped.
+         */
+        const localMutationMark =
+          lastLocalUpdateRef.current;
+
+
         try {
 
           const res =
@@ -767,6 +863,22 @@ const pushSync = async (
             Number(
               data.lastUpdated || 0
             );
+
+
+          /*
+           * A local mutation happened while this pull
+           * was in flight, so the response cannot contain it.
+           *
+           * This check does not depend on the client and
+           * server clocks being in sync.
+           */
+          if (
+            syncInFlightRef.current ||
+            lastLocalUpdateRef.current !==
+              localMutationMark
+          ) {
+            return;
+          }
 
 
           /*
@@ -864,7 +976,9 @@ const pushSync = async (
              * no local mutation is currently being sent.
              */
             const serverLeaves =
-              data.leaveRequests;
+              applyPendingLeaveDecisions(
+                data.leaveRequests
+              );
 
 
             leaveRequestsRef.current =
@@ -3926,6 +4040,18 @@ const pushSync = async (
 
       lastLocalUpdateRef.current =
         Date.now();
+
+
+      pendingLeaveDecisionsRef.current.set(
+        id,
+        {
+          status,
+          reviewNotes,
+          expiresAt:
+            Date.now() +
+            60000
+        }
+      );
 
 
       let nextEmployees =
