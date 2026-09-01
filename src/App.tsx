@@ -701,392 +701,373 @@ const pushSync = async (
 
 
   /* =========================================================
-   CENTRAL SERVER PULL
-   ========================================================= */
+     CENTRAL SERVER PULL
+     ========================================================= */
 
-useEffect(() => {
+  useEffect(() => {
 
-  let cancelled = false;
+    let cancelled =
+      false;
 
-  const pullFromServer =
-    async () => {
 
-      if (
-        cancelled ||
-        serverSyncInFlightRef.current
-      ) {
-        return;
-      }
-
-      serverSyncInFlightRef.current =
-        true;
-
-      try {
-
-        const res =
-          await fetch(
-            `/api/data?_=${Date.now()}`,
-            {
-              method: 'GET',
-
-              headers: {
-                'Cache-Control':
-                  'no-cache, no-store, max-age=0',
-
-                'Pragma':
-                  'no-cache',
-
-                'Expires':
-                  '0'
-              },
-
-              cache:
-                'no-store'
-            }
-          );
-
-        if (!res.ok) {
-          throw new Error(
-            `Data sync failed: ${res.status}`
-          );
-        }
-
-        const data =
-          await res.json();
+    const pullFromServer =
+      async () => {
 
         if (
           cancelled ||
-          !data
+          serverSyncInFlightRef.current
         ) {
           return;
         }
 
-        const serverLastUpdated =
-          Number(
-            data.lastUpdated || 0
-          );
 
-        /*
-         * لا نسمح لسيرفر قديم
-         * إنه يمسح Mutation أحدث محلياً.
-         */
-        if (
-          serverLastUpdated > 0 &&
-          serverLastUpdated <
-            lastLocalUpdateRef.current
-        ) {
+        serverSyncInFlightRef.current =
+          true;
 
-          return;
-        }
 
-        /* =================================================
-           EMPLOYEES
-           ================================================= */
+        try {
 
-        if (
-          Array.isArray(
-            data.employees
-          )
-        ) {
-
-          employeesRef.current =
-            data.employees;
-
-          setEmployees(
-            data.employees
-          );
-
-          try {
-
-            localStorage.setItem(
-              'attendance_employees',
-              JSON.stringify(
-                data.employees
-              )
+          const res =
+            await fetch(
+              '/api/data',
+              {
+                method: 'GET',
+                headers: {
+                  'Cache-Control':
+                    'no-cache',
+                  'Pragma':
+                    'no-cache'
+                },
+                cache:
+                  'no-store'
+              }
             );
 
-          } catch {}
-        }
 
-        /* =================================================
-           ATTENDANCE
-           ================================================= */
-
-        if (
-          Array.isArray(
-            data.attendanceRecords
-          )
-        ) {
-
-          const sanitized =
-            data.attendanceRecords.map(
-              ensureSanitizedRecord
+          if (!res.ok) {
+            throw new Error(
+              `Data sync failed: ${res.status}`
             );
-
-          attendanceRecordsRef.current =
-            sanitized;
-
-          setAttendanceRecords(
-            sanitized
-          );
-
-          try {
-
-            localStorage.setItem(
-              'attendance_records',
-              JSON.stringify(
-                sanitized
-              )
-            );
-
-          } catch {}
-        }
-
-        /* =================================================
-           LEAVES
-           ================================================= */
-
-        if (
-          Array.isArray(
-            data.leaveRequests
-          )
-        ) {
-
-          const serverLeaves =
-            data.leaveRequests;
-
-          leaveRequestsRef.current =
-            serverLeaves;
-
-          setLeaveRequests(
-            serverLeaves
-          );
-
-          try {
-
-            localStorage.setItem(
-              'attendance_leaves',
-              JSON.stringify(
-                serverLeaves
-              )
-            );
-
-          } catch {}
-        }
-
-        /* =================================================
-           NOTIFICATIONS
-           ================================================= */
-
-        if (
-          Array.isArray(
-            data.notifications
-          )
-        ) {
-
-          /*
-           * Remove duplicates مرة أخرى
-           * قبل عرضها.
-           */
-          const unique =
-            new Map<
-              string,
-              Notification
-            >();
-
-          for (
-            const notification
-            of data.notifications
-          ) {
-
-            const key =
-              `${notification.type}|` +
-              `${notification.recipientId}|` +
-              `${notification.relatedLeaveId || ''}`;
-
-            if (
-              !unique.has(key)
-            ) {
-
-              unique.set(
-                key,
-                notification
-              );
-            }
           }
 
-          const cleanNotifications =
-            Array.from(
-              unique.values()
+
+          const data =
+            await res.json();
+
+
+          if (
+            cancelled ||
+            !data
+          ) {
+            return;
+          }
+
+
+          const serverLastUpdated =
+            Number(
+              data.lastUpdated || 0
             );
 
-          notificationsRef.current =
-            cleanNotifications;
 
-          setNotifications(
-            cleanNotifications
-          );
+          /*
+           * IMPORTANT:
+           * Do not overwrite a newer local mutation.
+           */
+          if (
+            serverLastUpdated > 0 &&
+            serverLastUpdated <
+              lastLocalUpdateRef.current
+          ) {
+            return;
+          }
 
-          try {
 
-            localStorage.setItem(
-              'notifications',
-              JSON.stringify(
-                cleanNotifications
-              )
+          /* =================================================
+             EMPLOYEES
+             ================================================= */
+
+          if (
+            Array.isArray(
+              data.employees
+            )
+          ) {
+
+            employeesRef.current =
+              data.employees;
+
+            setEmployees(
+              data.employees
             );
 
-          } catch {}
-        }
+            try {
+              localStorage.setItem(
+                'attendance_employees',
+                JSON.stringify(
+                  data.employees
+                )
+              );
+            } catch {}
+          }
 
-        /* =================================================
-           COMPANY SETTINGS
-           ================================================= */
 
-        if (
-          typeof data.companyNameAr ===
-          'string'
-        ) {
+          /* =================================================
+             ATTENDANCE
+             ================================================= */
 
-          companyNameArRef.current =
-            data.companyNameAr;
+          if (
+            Array.isArray(
+              data.attendanceRecords
+            )
+          ) {
 
-          setCompanyNameAr(
-            data.companyNameAr
-          );
+            const sanitized =
+              data.attendanceRecords.map(
+                ensureSanitizedRecord
+              );
 
-          try {
 
-            localStorage.setItem(
-              'company_name_ar',
-              data.companyNameAr
+            attendanceRecordsRef.current =
+              sanitized;
+
+            setAttendanceRecords(
+              sanitized
             );
 
-          } catch {}
-        }
 
-        if (
-          typeof data.companyNameEn ===
-          'string'
-        ) {
-
-          companyNameEnRef.current =
-            data.companyNameEn;
-
-          setCompanyNameEn(
-            data.companyNameEn
-          );
-
-          try {
-
-            localStorage.setItem(
-              'company_name_en',
-              data.companyNameEn
-            );
-
-          } catch {}
-        }
-
-        /* =================================================
-           URGENT NOTICE
-           ================================================= */
-
-        if (
-          Object.prototype.hasOwnProperty.call(
-            data,
-            'urgentNotice'
-          )
-        ) {
-
-          const notice =
-            data.urgentNotice ||
-            null;
-
-          urgentNoticeRef.current =
-            notice;
-
-          setUrgentNotice(
-            notice
-          );
-
-          try {
-
-            if (notice) {
+            try {
 
               localStorage.setItem(
-                'urgent_notice',
+                'attendance_records',
                 JSON.stringify(
-                  notice
+                  sanitized
                 )
               );
 
-            } else {
+            } catch {}
+          }
 
-              localStorage.removeItem(
-                'urgent_notice'
-              );
-            }
 
-          } catch {}
-        }
+          /* =================================================
+             LEAVES
+             ================================================= */
 
-        if (
-          serverLastUpdated > 0
-        ) {
+          if (
+            Array.isArray(
+              data.leaveRequests
+            )
+          ) {
 
-          lastLocalUpdateRef.current =
-            Math.max(
-              lastLocalUpdateRef.current,
-              serverLastUpdated
+            /*
+             * Server is authoritative.
+             *
+             * We replace the local list only when
+             * no local mutation is currently being sent.
+             */
+            const serverLeaves =
+              data.leaveRequests;
+
+
+            leaveRequestsRef.current =
+              serverLeaves;
+
+            setLeaveRequests(
+              serverLeaves
             );
+
+
+            try {
+
+              localStorage.setItem(
+                'attendance_leaves',
+                JSON.stringify(
+                  serverLeaves
+                )
+              );
+
+            } catch {}
+          }
+
+
+          /* =================================================
+             NOTIFICATIONS
+             ================================================= */
+
+          if (
+            Array.isArray(
+              data.notifications
+            )
+          ) {
+
+            const serverNotifications =
+              data.notifications;
+
+
+            notificationsRef.current =
+              serverNotifications;
+
+            setNotifications(
+              serverNotifications
+            );
+
+
+            try {
+
+              localStorage.setItem(
+                'notifications',
+                JSON.stringify(
+                  serverNotifications
+                )
+              );
+
+            } catch {}
+          }
+
+
+          /* =================================================
+             COMPANY SETTINGS
+             ================================================= */
+
+          if (
+            typeof data.companyNameAr ===
+            'string'
+          ) {
+
+            companyNameArRef.current =
+              data.companyNameAr;
+
+            setCompanyNameAr(
+              data.companyNameAr
+            );
+
+
+            try {
+              localStorage.setItem(
+                'company_name_ar',
+                data.companyNameAr
+              );
+            } catch {}
+          }
+
+
+          if (
+            typeof data.companyNameEn ===
+            'string'
+          ) {
+
+            companyNameEnRef.current =
+              data.companyNameEn;
+
+            setCompanyNameEn(
+              data.companyNameEn
+            );
+
+
+            try {
+              localStorage.setItem(
+                'company_name_en',
+                data.companyNameEn
+              );
+            } catch {}
+          }
+
+
+          /* =================================================
+             URGENT NOTICE
+             ================================================= */
+
+          if (
+            Object.prototype.hasOwnProperty.call(
+              data,
+              'urgentNotice'
+            )
+          ) {
+
+            const notice =
+              data.urgentNotice ||
+              null;
+
+
+            urgentNoticeRef.current =
+              notice;
+
+            setUrgentNotice(
+              notice
+            );
+
+
+            try {
+
+              if (notice) {
+
+                localStorage.setItem(
+                  'urgent_notice',
+                  JSON.stringify(
+                    notice
+                  )
+                );
+
+              } else {
+
+                localStorage.removeItem(
+                  'urgent_notice'
+                );
+              }
+
+            } catch {}
+          }
+
+
+          if (
+            serverLastUpdated > 0
+          ) {
+
+            lastLocalUpdateRef.current =
+              Math.max(
+                lastLocalUpdateRef.current,
+                serverLastUpdated
+              );
+          }
+
+        } catch (error) {
+
+          console.warn(
+            'Central sync failed:',
+            error
+          );
+
+        } finally {
+
+          serverSyncInFlightRef.current =
+            false;
         }
+      };
 
-      } catch (error) {
 
-        console.warn(
-          'Central sync failed:',
-          error
-        );
+    void pullFromServer();
 
-      } finally {
 
-        serverSyncInFlightRef.current =
-          false;
-      }
+    pullFromServerRef.current =
+      pullFromServer;
+
+
+    const interval =
+      window.setInterval(
+        pullFromServer,
+        1500
+      );
+
+
+    return () => {
+
+      cancelled =
+        true;
+
+      window.clearInterval(
+        interval
+      );
     };
 
-  /*
-   * مهم جداً:
-   * الـ ref مطلوب لكي pushSync
-   * يعمل Pull فوري.
-   */
-  pullFromServerRef.current =
-    pullFromServer;
-
-  /*
-   * Pull أول ما الصفحة تفتح.
-   */
-  void pullFromServer();
-
-  /*
-   * تحديث سريع كل ثانية.
-   */
-  const interval =
-    window.setInterval(
-      pullFromServer,
-      1000
-    );
-
-  return () => {
-
-    cancelled = true;
-
-    window.clearInterval(
-      interval
-    );
-  };
-
-}, []);
+  }, []);
 
 
   /* =========================================================
