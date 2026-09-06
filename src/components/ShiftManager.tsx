@@ -11,8 +11,6 @@ interface ShiftManagerProps {
 }
 
 const DEFAULT_FORM: Partial<Shift> = {
-  nameAr: '',
-  nameEn: '',
   startTime: '09:00',
   endTime: '17:00',
   durationMinutes: 480,
@@ -189,11 +187,6 @@ export const ShiftManager: React.FC<ShiftManagerProps> = ({
             </div>
 
             <div className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <label className="block text-sm font-medium text-gray-700">{lang === 'ar' ? 'اسم الشفت (عربي)' : 'Shift Name (Arabic)'}<input type="text" value={formData.nameAr || ''} onChange={e => setFormData({ ...formData, nameAr: e.target.value })} className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg" /></label>
-                <label className="block text-sm font-medium text-gray-700">{lang === 'ar' ? 'اسم الشفت (إنجليزي)' : 'Shift Name (English)'}<input type="text" value={formData.nameEn || ''} onChange={e => setFormData({ ...formData, nameEn: e.target.value })} className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg" /></label>
-              </div>
-
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <label className="block text-sm font-medium text-gray-700">{lang === 'ar' ? 'وقت بداية الشفت' : 'Shift Start'}<input type="time" value={formData.startTime || '09:00'} onChange={e => setFormData({ ...formData, startTime: e.target.value })} className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg" /></label>
                 <label className="block text-sm font-medium text-gray-700">{lang === 'ar' ? 'وقت نهاية الشفت' : 'Shift End'}<input type="time" value={formData.endTime || '17:00'} onChange={e => setFormData({ ...formData, endTime: e.target.value })} className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg" /></label>
