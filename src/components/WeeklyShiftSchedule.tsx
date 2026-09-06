@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { CalendarDays, Check, ChevronLeft, ChevronRight, Clock3, Coffee, Save, Users, X } from 'lucide-react';
 import { Employee, Language, Shift, DailyShiftAssignment } from '../types';
+import { INITIAL_SHIFTS } from '../mockData';
 
 interface WeeklyShiftScheduleProps {
   employees?: Employee[];
@@ -36,7 +37,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
   onClose,
 }) => {
   const [employees, setEmployees] = useState<Employee[]>(suppliedEmployees || []);
-  const [shifts, setShifts] = useState<Shift[]>(suppliedShifts || []);
+  const [shifts, setShifts] = useState<Shift[]>(suppliedShifts?.length ? suppliedShifts : INITIAL_SHIFTS);
   const [assignments, setAssignments] = useState<DailyShiftAssignment[]>(suppliedAssignments || []);
   const [currentUser, setCurrentUser] = useState<Employee | null>(suppliedUser || null);
   const [weekStart, setWeekStart] = useState(() => startOfSundayWeek(new Date()));
@@ -50,7 +51,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
 
   useEffect(() => {
     if (suppliedEmployees) setEmployees(suppliedEmployees);
-    if (suppliedShifts) setShifts(suppliedShifts);
+    if (suppliedShifts?.length) setShifts(suppliedShifts);
     if (suppliedAssignments) setAssignments(suppliedAssignments);
     if (suppliedUser) {
       setCurrentUser(suppliedUser);
@@ -81,7 +82,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
             const data = await response.json();
             if (!cancelled) {
               if (Array.isArray(data.employees)) setEmployees(data.employees);
-              if (Array.isArray(data.shifts)) setShifts(data.shifts);
+              if (Array.isArray(data.shifts) && data.shifts.length > 0) setShifts(data.shifts);
               if (Array.isArray(data.dailyShiftAssignments)) setAssignments(data.dailyShiftAssignments);
             }
           }
