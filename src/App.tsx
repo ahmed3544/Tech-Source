@@ -245,10 +245,12 @@ export default function App() {
     });
 
 
-  const [shifts] =
-    useState<Shift[]>(
-      INITIAL_SHIFTS
-    );
+  const [shifts, setShifts] = useState<Shift[]>(() => {
+    try {
+      const saved = localStorage.getItem('attendance_shifts');
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
 
   const [dailyShiftAssignments, setDailyShiftAssignments] =
     useState<DailyShiftAssignment[]>(() => {
@@ -570,6 +572,7 @@ const pushSync = async (
     companyNameEn?: string;
     urgentNotice?: UrgentNotice | null;
     dailyShiftAssignments?: DailyShiftAssignment[];
+    shifts?: Shift[];
     deletedAttendanceIds?: string[];
     deletedEmployeeIds?: string[];
     deletedLeaveIds?: string[];
@@ -621,6 +624,9 @@ const pushSync = async (
 
   if (overrides?.dailyShiftAssignments !== undefined) {
     payload.dailyShiftAssignments = overrides.dailyShiftAssignments;
+  }
+  if (overrides?.shifts !== undefined) {
+    payload.shifts = overrides.shifts;
   }
 
   if (overrides?.deletedAttendanceIds) {
@@ -979,6 +985,10 @@ const pushSync = async (
           if (Array.isArray(data.dailyShiftAssignments)) {
             setDailyShiftAssignments(data.dailyShiftAssignments);
             localStorage.setItem('daily_shift_assignments', JSON.stringify(data.dailyShiftAssignments));
+          }
+          if (Array.isArray(data.shifts)) {
+            setShifts(data.shifts);
+            localStorage.setItem('attendance_shifts', JSON.stringify(data.shifts));
           }
 
 

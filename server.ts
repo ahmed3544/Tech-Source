@@ -1367,6 +1367,9 @@ async function data() {
     if (s.key === "dailyShiftAssignments") {
       localState.dailyShiftAssignments = Array.isArray(s.value) ? s.value : [];
     }
+    if (s.key === "shiftTemplates" && Array.isArray(s.value)) {
+      localState.shifts = s.value;
+    }
   }
 
   localState.lastUpdated =
@@ -2281,6 +2284,9 @@ app.post(
 
         if (Array.isArray(b.dailyShiftAssignments)) {
           await setting("dailyShiftAssignments", b.dailyShiftAssignments);
+        }
+        if (Array.isArray(b.shifts)) {
+          await setting("shiftTemplates", b.shifts);
         }
 
         /*

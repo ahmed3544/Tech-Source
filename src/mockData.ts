@@ -1,34 +1,6 @@
 import { Employee, Shift, AttendanceRecord, LeaveRequest, Department, OfficialHoliday, UrgentNotice } from "./types";
 
-export const INITIAL_SHIFTS: Shift[] = [
-  {
-    id: "shift-1",
-    nameAr: "الوردية الرسمية الموحدة (09:00 AM - 05:00 PM)",
-    nameEn: "Official Standard Shift (09:00 AM - 05:00 PM)",
-    startTime: "09:00:00",
-    endTime: "17:00:00",
-    gracePeriodMinutes: 10,
-    workDays: [0, 1, 2, 3, 4], // Sun to Thu
-  },
-  {
-    id: "shift-2",
-    nameAr: "الوردية الصباحية (08:00 AM - 04:00 PM)",
-    nameEn: "Morning Shift (08:00 AM - 04:00 PM)",
-    startTime: "08:00:00",
-    endTime: "16:00:00",
-    gracePeriodMinutes: 10,
-    workDays: [0, 1, 2, 3, 4],
-  },
-  {
-    id: "shift-3",
-    nameAr: "الوردية المسائية (04:00 PM - 12:00 AM)",
-    nameEn: "Evening Shift (04:00 PM - 12:00 AM)",
-    startTime: "16:00:00",
-    endTime: "00:00:00",
-    gracePeriodMinutes: 10,
-    workDays: [0, 1, 2, 3, 4],
-  },
-];
+export const INITIAL_SHIFTS: Shift[] = [];
 
 export const INITIAL_DEPARTMENTS: Department[] = [
   { id: "dep-2", nameAr: "CX", nameEn: "CX", managerName: "Mostafa Mohamed Kamel" },

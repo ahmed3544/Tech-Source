@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { CalendarDays, Check, ChevronLeft, ChevronRight, Clock3, Coffee, Save, Users, X } from 'lucide-react';
 import { Employee, Language, Shift, DailyShiftAssignment } from '../types';
-import { INITIAL_SHIFTS } from '../mockData';
+import { ShiftManager } from './ShiftManager';
 
 interface WeeklyShiftScheduleProps {
   employees?: Employee[];
@@ -37,7 +37,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
   onClose,
 }) => {
   const [employees, setEmployees] = useState<Employee[]>(suppliedEmployees || []);
-  const [shifts, setShifts] = useState<Shift[]>(suppliedShifts?.length ? suppliedShifts : INITIAL_SHIFTS);
+  const [shifts, setShifts] = useState<Shift[]>(suppliedShifts || []);
   const [assignments, setAssignments] = useState<DailyShiftAssignment[]>(suppliedAssignments || []);
   const [currentUser, setCurrentUser] = useState<Employee | null>(suppliedUser || null);
   const [weekStart, setWeekStart] = useState(() => startOfSundayWeek(new Date()));
@@ -46,6 +46,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showShiftManager, setShowShiftManager] = useState(false);
 
   const isLeader = currentUser?.role === 'leader' || currentUser?.role === 'admin';
 
@@ -97,7 +98,17 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
     return () => { cancelled = true; };
   }, [suppliedEmployees, suppliedShifts, suppliedAssignments, suppliedUser]);
 
-  const visibleEmployees = useMemo(() => isLeader ? employees : employees.filter(e => e.id === currentUser?.id), [employees, isLeader, currentUser]);
+  const visibleEmployees = useMemo(() => {
+    if (!isLeader) return employees.filter(e => e.id === currentUser?.id);
+    if (currentUser?.role === 'admin') return employees;
+    const explicitTeam = employees.some(e => e.teamLeaderId === currentUser?.id);
+    if (explicitTeam) return employees.filter(e => e.teamLeaderId === currentUser?.id);
+    if (currentUser?.teamId) {
+      const sameTeam = employees.filter(e => e.teamId === currentUser.teamId);
+      if (sameTeam.length) return sameTeam;
+    }
+    return employees;
+  }, [employees, isLeader, currentUser]);
   const employee = visibleEmployees.find(e => e.id === selectedEmployeeId) || visibleEmployees[0];
 
   useEffect(() => {
@@ -163,6 +174,12 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
     setSavedAt(null);
   };
 
+  const updateShiftList = (next: Shift[]) => {
+    setShifts(next);
+    try { localStorage.setItem('attendance_shifts', JSON.stringify(next)); } catch {}
+    void fetch('/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shifts: next }) });
+  };
+
   return (
     <div className="fixed inset-0 z-[100] bg-slate-950/70 backdrop-blur-sm p-4 sm:p-6 flex items-start justify-center overflow-y-auto">
       <section className="bg-white border border-slate-200 rounded-3xl shadow-2xl overflow-hidden w-full max-w-7xl max-h-[88vh] overflow-y-auto">
@@ -170,11 +187,12 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
             <div className="flex items-center gap-3">
               <div className="w-11 h-11 rounded-2xl bg-emerald-500/15 border border-emerald-400/30 flex items-center justify-center"><CalendarDays className="w-5 h-5 text-emerald-300" /></div>
-              <div><div className="flex items-center gap-2"><h3 className="text-lg font-black">{lang === 'ar' ? 'جدول الشفت الأسبوعي' : 'Weekly Shift Schedule'}</h3><span className="text-[10px] font-black px-2 py-1 rounded-lg bg-emerald-500/15 text-emerald-300 border border-emerald-400/20">جدول</span></div><p className="text-xs text-slate-400 mt-1">{days[0].key} → {days[6].key}</p></div>
+              <div><div className="flex items-center gap-2"><h3 className="text-lg font-black">{lang === 'ar' ? 'الجدول الأسبوعي' : 'Weekly Schedule'}</h3><span className="text-[10px] font-black px-2 py-1 rounded-lg bg-emerald-500/15 text-emerald-300 border border-emerald-400/20">جدول</span></div><p className="text-xs text-slate-400 mt-1">{days[0].key} → {days[6].key}</p></div>
             </div>
             <div className="flex items-center gap-2">
+              {isLeader && <button type="button" onClick={() => setShowShiftManager(true)} className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 border border-emerald-500 text-xs font-bold">{lang === 'ar' ? 'إدارة الورديات' : 'Manage Shifts'}</button>}
               <button type="button" onClick={() => moveWeek(-1)} className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700"><ChevronRight className="w-4 h-4" /></button>
-              <button type="button" onClick={() => { setWeekStart(startOfSundayWeek(new Date())); setDraft({}); setSavedAt(null); }} className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-bold">{lang === 'ar' ? 'هذا الأسبوع' : 'This week'}</button>
+              <button type="button" onClick={() => { setWeekStart(startOfSundayWeek(new Date())); setDraft({}); setSavedAt(null); }} className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-bold">{lang === 'ar' ? 'الأسبوع الحالي' : 'Current Week'}</button>
               <button type="button" onClick={() => moveWeek(1)} className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700"><ChevronLeft className="w-4 h-4" /></button>
               {onClose && <button type="button" onClick={onClose} className="p-2 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 border border-rose-400/20"><X className="w-4 h-4" /></button>}
             </div>
@@ -193,17 +211,34 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
                 const isWeekend = day.date.getDay() === 5 || day.date.getDay() === 6;
                 return <div key={day.key} className={`rounded-2xl border p-3 ${isWeekend ? 'bg-slate-50 border-slate-200' : 'bg-white border-slate-200'}`}>
                   <div className="flex items-center justify-between gap-2 mb-2"><div><div className="text-xs font-black text-slate-900">{lang === 'ar' ? day.labelAr : day.labelEn}</div><div className="text-[10px] text-slate-400 font-mono mt-0.5">{day.key}</div></div>{isWeekend && <span className="text-[9px] font-black text-slate-500">{lang === 'ar' ? 'عطلة' : 'OFF'}</span>}</div>
-                  {isLeader ? <select value={selectedId} onChange={e => setDraft(prev => ({ ...prev, [day.key]: e.target.value }))} className="w-full rounded-xl border border-slate-200 bg-slate-50 px-2 py-2 text-xs font-bold text-slate-900"><option value="">{lang === 'ar' ? 'بدون شفت' : 'No shift'}</option>{shifts.map(shift => <option key={shift.id} value={shift.id}>{lang === 'ar' ? shift.nameAr : shift.nameEn} · {shift.startTime}-{shift.endTime}</option>)}</select> : <div className="rounded-xl bg-slate-50 border border-slate-200 px-2 py-2"><div className="text-xs font-black text-slate-800 truncate">{selectedShift ? (lang === 'ar' ? selectedShift.nameAr : selectedShift.nameEn) : (lang === 'ar' ? 'بدون شفت' : 'No shift')}</div>{selectedShift && <div className="text-[10px] text-slate-500 font-mono mt-1 flex items-center gap-1"><Clock3 className="w-3 h-3" />{selectedShift.startTime} - {selectedShift.endTime}</div>}{selectedShift?.breaks?.length ? <div className="mt-2 pt-2 border-t border-slate-200 space-y-1">{selectedShift.breaks.map(item => <div key={item.id} className="text-[9px] text-slate-500 flex items-center justify-between gap-1"><span className="flex items-center gap-1 truncate"><Coffee className="w-3 h-3 shrink-0" />{lang === 'ar' ? item.nameAr : item.nameEn}</span><span className="font-mono shrink-0">{item.startTime}-{item.endTime}</span></div>)}</div> : null}</div>}
+                  {isLeader ? <select value={selectedId} onChange={e => setDraft(prev => ({ ...prev, [day.key]: e.target.value }))} className="w-full rounded-xl border border-slate-200 bg-slate-50 px-2 py-2 text-xs font-bold text-slate-900"><option value="">{lang === 'ar' ? 'غير محدد' : 'Not assigned'}</option>{shifts.map(shift => <option key={shift.id} value={shift.id}>{lang === 'ar' ? shift.nameAr : shift.nameEn} · {shift.startTime}-{shift.endTime}</option>)}</select> : <div className="rounded-xl bg-slate-50 border border-slate-200 px-2 py-2"><div className="text-xs font-black text-slate-800 truncate">{selectedShift ? (lang === 'ar' ? selectedShift.nameAr : selectedShift.nameEn) : (lang === 'ar' ? 'بدون شفت' : 'No shift')}</div>{selectedShift && <div className="text-[10px] text-slate-500 font-mono mt-1 flex items-center gap-1"><Clock3 className="w-3 h-3" />{selectedShift.startTime} - {selectedShift.endTime}</div>}{selectedShift?.breaks?.length ? <div className="mt-2 pt-2 border-t border-slate-200 space-y-1">{selectedShift.breaks.map(item => <div key={item.id} className="text-[9px] text-slate-500 flex items-center justify-between gap-1"><span className="flex items-center gap-1 truncate"><Coffee className="w-3 h-3 shrink-0" />{lang === 'ar' ? item.nameAr : item.nameEn}</span><span className="font-mono shrink-0">{item.startTime}-{item.endTime}</span></div>)}</div> : null}</div>}
                   {isLeader && selectedShift?.breaks?.length ? <div className="mt-2 rounded-lg bg-amber-50 border border-amber-100 p-2 space-y-1">{selectedShift.breaks.map(item => <div key={item.id} className="text-[9px] text-amber-800 flex justify-between gap-1"><span className="truncate">{lang === 'ar' ? item.nameAr : item.nameEn}</span><span className="font-mono shrink-0">{item.startTime}-{item.endTime}</span></div>)}</div> : null}
                 </div>;
               })}
             </div>
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-2"><div className="text-xs text-slate-500">{isLeader ? (lang === 'ar' ? 'اختار الشفت لكل يوم، ثم احفظ الأسبوع بالكامل. وقت الشفت والبريكات المحددة داخل الشفت تظهر للموظف.' : 'Choose each daily shift and save the week. Shift time and configured breaks are shown to the employee.') : (lang === 'ar' ? 'هذا جدولك الأسبوعي، ويظهر لك وقت كل شفت والبريكات المحددة له.' : 'This is your weekly schedule, including shift times and configured breaks.')}</div>{isLeader && <button type="button" onClick={saveWeek} className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 text-xs font-black shadow-sm"><Save className="w-4 h-4" />{lang === 'ar' ? 'حفظ جدول الأسبوع' : 'Save Week'}</button>}</div>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-2"><div className="text-xs text-slate-500">{isLeader ? (lang === 'ar' ? 'حدد الوردية لكل يوم ثم احفظ الجدول.' : 'Assign a shift for each day and save.') : (lang === 'ar' ? 'الجدول الأسبوعي ومواعيد الورديات والاستراحات.' : 'Weekly schedule, shift times, and breaks.')}</div>{isLeader && <button type="button" onClick={saveWeek} className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 text-xs font-black shadow-sm"><Save className="w-4 h-4" />{lang === 'ar' ? 'حفظ الجدول' : 'Save Schedule'}</button>}</div>
             {savedAt && <div className="flex items-center gap-2 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2"><Check className="w-4 h-4" />{lang === 'ar' ? `تم حفظ جدول الأسبوع الساعة ${savedAt}` : `Week saved at ${savedAt}`}</div>}
             {error && <div className="text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">{error}</div>}
           </> : <div className="text-center py-10 text-sm text-slate-500">{lang === 'ar' ? 'لا يوجد موظف لعرض الجدول.' : 'No employee is available for this schedule.'}</div>}
         </div>
       </section>
+      {showShiftManager && isLeader && (
+        <div className="fixed inset-0 z-[120] bg-slate-950/60 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="max-w-4xl mx-auto mt-8 bg-white rounded-3xl shadow-2xl p-5">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-black text-slate-900">{lang === 'ar' ? 'إدارة الورديات' : 'Shift Management'}</h3>
+              <button type="button" onClick={() => setShowShiftManager(false)} className="px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold">{lang === 'ar' ? 'إغلاق' : 'Close'}</button>
+            </div>
+            <ShiftManager
+              shifts={shifts}
+              lang={lang}
+              onAddShift={shift => updateShiftList([...shifts, shift])}
+              onUpdateShift={shift => updateShiftList(shifts.map(item => item.id === shift.id ? shift : item))}
+              onDeleteShift={shiftId => updateShiftList(shifts.filter(item => item.id !== shiftId))}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 };
