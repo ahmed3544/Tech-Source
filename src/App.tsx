@@ -25,7 +25,8 @@ import {
   UrgentNotice,
   OfficialHoliday,
   Notification,
-  NotificationType
+  NotificationType,
+  DailyShiftAssignment
 } from './types';
 
 import {
@@ -246,6 +247,16 @@ export default function App() {
     useState<Shift[]>(
       INITIAL_SHIFTS
     );
+
+  const [dailyShiftAssignments, setDailyShiftAssignments] =
+    useState<DailyShiftAssignment[]>(() => {
+      try {
+        const saved = localStorage.getItem('daily_shift_assignments');
+        return saved ? JSON.parse(saved) : [];
+      } catch {
+        return [];
+      }
+    });
 
 
   /* =========================================================
@@ -471,6 +482,7 @@ const pushSync = async (
     companyNameAr?: string;
     companyNameEn?: string;
     urgentNotice?: UrgentNotice | null;
+    dailyShiftAssignments?: DailyShiftAssignment[];
     deletedAttendanceIds?: string[];
     deletedEmployeeIds?: string[];
     deletedLeaveIds?: string[];
@@ -518,6 +530,10 @@ const pushSync = async (
   if (overrides?.urgentNotice !== undefined) {
     payload.urgentNotice =
       overrides.urgentNotice;
+  }
+
+  if (overrides?.dailyShiftAssignments !== undefined) {
+    payload.dailyShiftAssignments = overrides.dailyShiftAssignments;
   }
 
   if (overrides?.deletedAttendanceIds) {
@@ -844,6 +860,11 @@ const pushSync = async (
               );
 
             } catch {}
+          }
+
+          if (Array.isArray(data.dailyShiftAssignments)) {
+            setDailyShiftAssignments(data.dailyShiftAssignments);
+            localStorage.setItem('daily_shift_assignments', JSON.stringify(data.dailyShiftAssignments));
           }
 
 
@@ -1692,11 +1713,15 @@ const pushSync = async (
       }
 
 
+      const dailyAssignment = dailyShiftAssignments.find(
+        item => item.employeeId === emp.id && item.date === todayStr
+      );
+
       const shift =
         shifts.find(
           s =>
             s.id ===
-            emp.shiftId
+            (dailyAssignment?.shiftId || emp.shiftId)
         ) ||
         shifts[0];
 
@@ -2990,6 +3015,18 @@ const pushSync = async (
         );
       }
     };
+
+  const handleSaveDailyShift = (assignment: DailyShiftAssignment) => {
+    const next = [
+      ...dailyShiftAssignments.filter(
+        item => item.employeeId !== assignment.employeeId || item.date !== assignment.date
+      ),
+      assignment,
+    ];
+    setDailyShiftAssignments(next);
+    localStorage.setItem('daily_shift_assignments', JSON.stringify(next));
+    void pushSync({ dailyShiftAssignments: next });
+  };
 
 
   /* =========================================================
@@ -5876,6 +5913,10 @@ try {
               shifts
             }
 
+            dailyShiftAssignments={dailyShiftAssignments}
+
+            onSaveDailyShift={handleSaveDailyShift}
+
             lang={
               lang
             }
@@ -6208,3 +6249,4 @@ function handleExportCSV() {
   // only as a placeholder-safe fallback.
   // The actual export handler is attached inside App below.
 }
+

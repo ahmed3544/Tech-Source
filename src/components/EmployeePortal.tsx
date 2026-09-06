@@ -32,7 +32,7 @@ import {
   Moon,
   XCircle
 } from 'lucide-react';
-import { Employee, AttendanceRecord, LeaveRequest, Language, Shift, LeaveType, PermissionSlot } from '../types';
+import { Employee, AttendanceRecord, LeaveRequest, Language, Shift, LeaveType, PermissionSlot, DailyShiftAssignment } from '../types';
 import { UserAvatar } from './UserAvatar';
 import { WorkTimer } from './WorkTimer';
 import { getStatusBadgeStyle, getStatusText, getFirstTwoNames, formatTime, formatDate, calculateRecordWorkHours, calculateLateDetails, formatSecondsToHMS, getLeaveTypeLabel, getTodayString, isWeekend, ensureSanitizedRecord, calculateWorkDaysInPeriod } from '../utils/helpers';
@@ -45,6 +45,8 @@ interface EmployeePortalProps {
   attendanceRecords: AttendanceRecord[];
   leaveRequests: LeaveRequest[];
   shifts: Shift[];
+  dailyShiftAssignments: DailyShiftAssignment[];
+  onSaveDailyShift: (assignment: DailyShiftAssignment) => void;
   onPunch: (
     employeeId: string, 
     action: 'check_in' | 'check_out' | 'break_start' | 'break_end',
@@ -75,6 +77,8 @@ export const EmployeePortal: React.FC<EmployeePortalProps> = ({
   attendanceRecords,
   leaveRequests,
   shifts,
+  dailyShiftAssignments,
+  onSaveDailyShift,
   onPunch,
   onAddLeave,
   onUpdateEmployee,
@@ -103,6 +107,8 @@ export const EmployeePortal: React.FC<EmployeePortalProps> = ({
   const [pastCheckIn, setPastCheckIn] = useState('09:00');
   const [pastCheckOut, setPastCheckOut] = useState('17:00');
   const [pastNote, setPastNote] = useState('');
+  const [shiftDate, setShiftDate] = useState(getTodayString());
+  const [selectedShiftId, setSelectedShiftId] = useState('');
 
   // Current active month (YYYY-MM)
   const [selectedMonth, setSelectedMonth] = useState<string>(() => {
@@ -176,6 +182,12 @@ export const EmployeePortal: React.FC<EmployeePortalProps> = ({
     Boolean(r.employeeId && emp?.id) &&
     r.employeeId.trim().toLowerCase() === emp!.id.trim().toLowerCase()
   );
+
+  const getShiftForDate = (employeeId: string, date: string) => {
+    const assignment = dailyShiftAssignments.find(item => item.employeeId === employeeId && item.date === date);
+    return shifts.find(shift => shift.id === (assignment?.shiftId || emp?.shiftId)) || shifts[0];
+  };
+  const todayShift = emp ? getShiftForDate(emp.id, todayStr) : undefined;
 
   const isBreakActive = Boolean(todayRecord?.breakStart && !todayRecord?.breakEnd);
 
@@ -612,7 +624,8 @@ export const EmployeePortal: React.FC<EmployeePortalProps> = ({
     if (!targetEmpId) return;
 
     const targetEmp = employees.find(e => e.id === targetEmpId) || emp;
-    const shift = (shifts && shifts.find(s => s.id === targetEmp?.shiftId)) || {
+    const assignment = dailyShiftAssignments.find(item => item.employeeId === targetEmpId && item.date === pastDate);
+    const shift = (shifts && shifts.find(s => s.id === (assignment?.shiftId || targetEmp?.shiftId))) || {
       id: 'shift-1',
       nameAr: 'الوردية الرسمية',
       nameEn: 'Standard Shift',
@@ -873,6 +886,50 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
         )}
       </div>
 
+      {/* Daily shift: employees see only their own assignment; leaders can assign it day by day. */}
+      <section className="bg-sky-50 border border-sky-200 rounded-3xl p-5 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <h3 className="font-black text-slate-900 flex items-center gap-2">
+              <Calendar className="w-5 h-5 text-sky-700" />
+              {lang === 'ar' ? 'شفت اليوم' : 'Today’s shift'}
+            </h3>
+            <p className="text-xs text-slate-600 mt-1">
+              {todayShift
+                ? `${lang === 'ar' ? todayShift.nameAr : todayShift.nameEn} — ${todayShift.startTime} إلى ${todayShift.endTime}`
+                : (lang === 'ar' ? 'لا يوجد شفت محدد اليوم' : 'No shift assigned today')}
+            </p>
+            <p className="text-[11px] text-sky-800 mt-1 font-semibold">
+              {lang === 'ar' ? 'المطلوب إكمال 8 ساعات عمل فعلية؛ لا يُحتسب تأخير حسب وقت الدخول.' : 'Complete 8 actual work hours; check-in time does not create a late mark.'}
+            </p>
+          </div>
+          {todayShift && <span className="bg-white border border-sky-200 rounded-xl px-3 py-2 font-mono font-bold text-sky-900 text-sm">{todayShift.startTime} - {todayShift.endTime}</span>}
+        </div>
+
+        {(currentUser?.role === 'admin' || currentUser?.role === 'leader') && (
+          <div className="pt-4 border-t border-sky-200 grid sm:grid-cols-[1fr_1fr_auto] gap-3 items-end">
+            <label className="text-xs font-bold text-slate-700">{lang === 'ar' ? 'تاريخ الشفت' : 'Shift date'}
+              <input type="date" value={shiftDate} onChange={e => {
+                const date = e.target.value;
+                setShiftDate(date);
+                setSelectedShiftId(dailyShiftAssignments.find(item => item.employeeId === emp.id && item.date === date)?.shiftId || emp.shiftId);
+              }} className="mt-1 w-full bg-white border border-sky-200 rounded-xl px-3 py-2 text-slate-900" />
+            </label>
+            <label className="text-xs font-bold text-slate-700">{lang === 'ar' ? 'شفت الموظف' : 'Employee shift'}
+              <select value={selectedShiftId || dailyShiftAssignments.find(item => item.employeeId === emp.id && item.date === shiftDate)?.shiftId || emp.shiftId} onChange={e => setSelectedShiftId(e.target.value)} className="mt-1 w-full bg-white border border-sky-200 rounded-xl px-3 py-2 text-slate-900">
+                {shifts.map(shift => <option key={shift.id} value={shift.id}>{lang === 'ar' ? shift.nameAr : shift.nameEn} ({shift.startTime} - {shift.endTime})</option>)}
+              </select>
+            </label>
+            <button type="button" onClick={() => {
+              const shiftId = selectedShiftId || emp.shiftId || shifts[0]?.id;
+              if (!shiftId) return;
+              onSaveDailyShift({ employeeId: emp.id, date: shiftDate, shiftId, assignedBy: currentUser?.id, updatedAt: new Date().toISOString() });
+              setSuccessToast(lang === 'ar' ? 'تم حفظ شفت الموظف لهذا اليوم' : 'Daily shift saved');
+            }} className="bg-sky-700 hover:bg-sky-800 text-white rounded-xl px-4 py-2.5 text-xs font-black">{lang === 'ar' ? 'حفظ الشفت' : 'Save shift'}</button>
+          </div>
+        )}
+      </section>
+
       {/* Main Punch Pad Card */}
       <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm space-y-6">
         <div className="flex items-center justify-between pb-4 border-b border-slate-100">
@@ -944,7 +1001,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
                 <span className="text-[10px] text-emerald-800 block font-bold">
                   {lang === 'ar' ? 'مدة التواجد بالحضور:' : 'Live Elapsed Duration:'}
                 </span>
-                <WorkTimer variant="box" shift={shifts.find(s => s.id === (emp?.shiftId || 'default'))} checkIn={todayRecord.checkIn} checkOut={todayRecord.checkOut ?? undefined} breakStart={todayRecord.breakStart} breakEnd={todayRecord.breakEnd} />
+                <WorkTimer variant="box" shift={todayShift} checkIn={todayRecord.checkIn} checkOut={todayRecord.checkOut ?? undefined} breakStart={todayRecord.breakStart} breakEnd={todayRecord.breakEnd} />
               </div>
             </div>
           </div>
@@ -2579,3 +2636,4 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
     </div>
   );
 };
+
