@@ -253,6 +253,17 @@ export function calculateLateDetails(
   lateSeconds: number;
   formattedLateDuration: string;
 } {
+  // Attendance is flexible: employees are evaluated by completing their required
+  // work duration, not by arriving at a fixed clock time.
+  return {
+    isLate: false,
+    isAbsent: false,
+    lateMinutes: 0,
+    lateSeconds: 0,
+    formattedLateDuration: '00:00:00',
+  };
+
+  /* Legacy fixed-start calculation kept below for reference. */
   const parseSeconds = (tStr: string) => {
     let str = tStr.trim();
     let isPM = false;
@@ -466,13 +477,13 @@ export function evaluatePunch(
     workHours = Math.round((durationSecs / 3600) * 10) / 10;
 
     if (checkOutTimeStr) {
-      if (outSecs < shiftEndSecs - 60) {
-        earlyLeaveMinutes = Math.floor((shiftEndSecs - outSecs) / 60);
+      const scheduledDurationSecs = currentShift.durationMinutes
+        ? currentShift.durationMinutes * 60
+        : Math.max(0, shiftEndSecs - parseSecs(currentShift.startTime || '09:00:00'));
+      if (durationSecs < scheduledDurationSecs) {
+        earlyLeaveMinutes = Math.ceil((scheduledDurationSecs - durationSecs) / 60);
         status = 'early_leave';
       } else {
-        const scheduledDurationSecs = currentShift.durationMinutes
-          ? currentShift.durationMinutes * 60
-          : Math.max(0, shiftEndSecs - parseSecs(currentShift.startTime || '09:00:00'));
         if (durationSecs > scheduledDurationSecs) {
           overtimeHours = Math.round(((durationSecs - scheduledDurationSecs) / 3600) * 10) / 10;
         }
@@ -485,10 +496,10 @@ export function evaluatePunch(
         }
       }
     } else {
-      status = lateInfo.isLate ? 'late' : 'in_progress';
+      status = 'in_progress';
     }
   } else {
-    status = lateInfo.isLate ? 'late' : 'in_progress';
+    status = 'in_progress';
   }
 
   return {
@@ -1163,3 +1174,4 @@ const columnWidths = Object.keys(rows[0]).map(key => ({
     fileName || `team_report_${teamName}_${getTodayString()}.xlsx`
   );
 }
+
