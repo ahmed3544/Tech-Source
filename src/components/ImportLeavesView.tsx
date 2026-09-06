@@ -702,7 +702,7 @@ export const ImportLeavesView: React.FC<ImportLeavesViewProps> = ({
 
             {parsedRows.length > 20 && (
               <p className="text-center text-xs text-slate-500 font-mono py-2">
-                ... وعرض {parsedRows.length - 20} صف إضافي سيتم معالجتها عند التأكيد.
+                سيتم استيراد بقية الصفوف عند التأكيد.
               </p>
             )}
           </div>
@@ -757,7 +757,7 @@ export const ImportLeavesView: React.FC<ImportLeavesViewProps> = ({
             <div>
               {failedRows.length > 0 ? (
                 <div className="text-xs text-rose-300 font-semibold">
-                  ⚠️ يوجد {failedRows.length} صف تعذر استيرادها أو تم تجاوزها. يمكنك تحميل تقرير الأخطاء الآن.
+                  تعذر استيراد {failedRows.length} صفًا.
                 </div>
               ) : (
                 <div className="text-xs text-emerald-400 font-semibold">

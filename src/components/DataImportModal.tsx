@@ -895,8 +895,8 @@ export function DataImportModal({
 
                 <p className="text-xs text-slate-500 mt-1">
                   {lang === 'ar'
-                    ? 'يمكنك لصق CSV أو TSV أو JSON.'
-                    : 'You can paste CSV, TSV or JSON.'}
+                    ? 'الصيغ المدعومة: CSV، TSV، JSON'
+                    : 'Supported formats: CSV, TSV, JSON'}
                 </p>
               </div>
 

@@ -623,7 +623,7 @@ export const LeaveManager: React.FC<LeaveManagerProps> = ({
                         <button
                           onClick={() => {
                             if (window.confirm(lang === 'ar' ? 'هل أنت متأكد من إلغاء هذه الإجازة المعتمدة؟ (سيتم استرجاع رصيد الموظف وإلغاء السجلات تلقائياً)' : 'Revoke approved leave and restore balance?')) {
-                              onUpdateLeaveStatus(req.id, 'rejected', 'تم إلغاء الإجازة وتحديث الرصيد');
+                              onUpdateLeaveStatus(req.id, 'rejected', 'تم إلغاء الإجازة وتحديث الرصيد.');
                             }
                           }}
                           className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold text-[11px] shadow-sm transition flex items-center gap-1.5"
@@ -757,7 +757,7 @@ export const LeaveManager: React.FC<LeaveManagerProps> = ({
                   <div className="flex items-center gap-3">
                     <label className="flex-1 flex items-center justify-center gap-2 bg-white border border-rose-300 border-dashed hover:bg-rose-100/50 p-2.5 rounded-xl cursor-pointer text-rose-900 font-bold transition">
                       <Upload className="w-4 h-4 text-rose-600" />
-                      <span>{attachmentName ? attachmentName : 'اختر صورة التقرير الطبي من جهازك'}</span>
+                      <span>{attachmentName ? attachmentName : 'إرفاق التقرير الطبي'}</span>
                       <input type="file" accept="image/*,.pdf" onChange={handleFileUpload} className="hidden" />
                     </label>
                   </div>

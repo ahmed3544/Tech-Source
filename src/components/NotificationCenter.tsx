@@ -19,7 +19,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ notifica
     if (lang === 'ar') {
       const titles: Record<string, string> = {
         leave_requested: 'طلب إجازة جديد', leave_approved: 'تم قبول الإجازة', leave_rejected: 'تم رفض الإجازة',
-        overtime_requested: 'طلب overtime جديد', overtime_approved: 'تم قبول Overtime', overtime_rejected: 'تم رفض Overtime',
+        overtime_requested: 'طلب عمل إضافي جديد', overtime_approved: 'تم اعتماد العمل الإضافي', overtime_rejected: 'تم رفض Overtime',
         shift_changed: 'تم تغيير الشفت', admin_notice: 'إشعار إداري',
       };
       return titles[notification.type] || notification.title;

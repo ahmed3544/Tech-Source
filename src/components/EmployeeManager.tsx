@@ -899,7 +899,7 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
             </h3>
             <p className="text-sm text-slate-600 mb-6">
               {lang === 'ar'
-                ? 'هل أنت تأكد من رغبتك في حذف هذا الموظف؟ سيتم حذف جميع بياناته وسجلاته نهائياً ولن يظهر مرة أخرى.'
+                ? 'هل تريد حذف الموظف؟ سيتم حذف بياناته وسجلاته نهائيًا.'
                 : 'Are you sure you want to delete this employee? Their data and logs will be permanently removed.'}
             </p>
             <div className="flex items-center justify-center gap-3">

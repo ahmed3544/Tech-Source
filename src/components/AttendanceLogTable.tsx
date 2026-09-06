@@ -687,7 +687,7 @@ export const AttendanceLogTable: React.FC<AttendanceLogTableProps> = ({
                             {onDeleteRecord && (
                               <button
                                 onClick={() => {
-                                  if (window.confirm(lang === 'ar' ? 'هل أنت تأكد من حذف هذا السجل؟ (سيتم إلغاء الإجازة واسترجاع رصيد الموظف تلقائياً)' : 'Delete record?')) {
+                                  if (window.confirm(lang === 'ar' ? 'هل تريد حذف هذا السجل؟' : 'Delete record?')) {
                                     onDeleteRecord(rec.id);
                                   }
                                 }}
@@ -817,8 +817,8 @@ export const AttendanceLogTable: React.FC<AttendanceLogTableProps> = ({
                     <span className="font-extrabold block text-amber-900">{lang === 'ar' ? 'إضافة عطلة أسبوعية يدوية (Weekend)' : 'Manual Weekend Holiday'}</span>
                     <span className="text-amber-800 leading-relaxed block mt-0.5">
                       {lang === 'ar' 
-                        ? 'سيتم تسجيل هذا اليوم كعطلة أسبوعية معتمدة للموظف، ولن يتم احتساب أي غياب أو تأخير أو خصومات مالية عنه في التقرير.' 
-                        : 'This date will be marked as an approved weekly weekend off-day without any late deductions or absence.'}
+                        ? 'سيتم تسجيل اليوم كعطلة أسبوعية معتمدة.' 
+                        : 'The date will be recorded as an approved weekly day off.'}
                     </span>
                   </div>
                 </div>

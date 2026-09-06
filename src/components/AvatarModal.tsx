@@ -150,7 +150,7 @@ export const AvatarModal: React.FC<AvatarModalProps> = ({
         {/* Option 2: Presets */}
         <div className="space-y-2 pt-2 border-t border-slate-100">
           <label className="block text-xs font-bold text-slate-800">
-            {lang === 'ar' ? '2. أو اختر من الصور الجاهزة:' : '2. Or select a preset avatar:'}
+            {lang === 'ar' ? 'اختر صورة جاهزة' : 'Select a preset avatar'}
           </label>
           <div className="grid grid-cols-4 sm:grid-cols-8 gap-2">
             {PRESET_AVATARS.map((url, idx) => (

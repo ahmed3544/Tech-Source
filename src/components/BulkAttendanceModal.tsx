@@ -381,8 +381,8 @@ export const BulkAttendanceModal: React.FC<BulkAttendanceModalProps> = ({
                     />
                     <span className="text-xs text-slate-500">
                       {lang === 'ar'
-                        ? `(سيتم اختيار ${numberOfDays} أيام عمل بدءاً من ${startDate})`
-                        : `(${numberOfDays} workdays starting from ${startDate})`}
+                        ? `(${numberOfDays} يوم عمل بدءًا من ${startDate})`
+                        : `(${numberOfDays} workdays from ${startDate})`}
                     </span>
                   </div>
                 </div>
@@ -488,7 +488,7 @@ export const BulkAttendanceModal: React.FC<BulkAttendanceModalProps> = ({
                   <p className="text-xl font-black text-emerald-900">{stats.createCount}</p>
                 </div>
                 <div className="p-3 bg-amber-50 rounded-2xl border border-amber-200 text-center">
-                  <p className="text-[11px] text-amber-700 font-bold">{lang === 'ar' ? 'سيتم تحديثها' : 'To Update'}</p>
+                  <p className="text-[11px] text-amber-700 font-bold">{lang === 'ar' ? 'سجلات للتحديث' : 'Records to update'}</p>
                   <p className="text-xl font-black text-amber-900">{stats.updateCount}</p>
                 </div>
                 <div className="p-3 bg-slate-100 rounded-2xl border border-slate-200 text-center">

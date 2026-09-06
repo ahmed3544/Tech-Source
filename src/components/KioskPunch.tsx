@@ -320,7 +320,7 @@ export const KioskPunch: React.FC<KioskPunchProps> = ({
         <div className="bg-slate-800/90 border border-slate-700/80 px-6 py-4 rounded-2xl text-center z-10 shadow-inner">
           <div className="text-[11px] uppercase tracking-widest text-emerald-400 font-bold mb-1 flex items-center justify-center gap-1.5">
             <Clock className="w-4 h-4 animate-pulse" />
-            <span>{lang === 'ar' ? 'ساعة النظام الحية (12H)' : 'Live System Clock'}</span>
+            <span>{lang === 'ar' ? 'وقت النظام' : 'System Time'}</span>
           </div>
           <div className="text-3xl sm:text-4xl font-black font-mono tracking-wider text-white">
             {formatTime(currentTime, lang)}
@@ -341,8 +341,8 @@ export const KioskPunch: React.FC<KioskPunchProps> = ({
                 <ShieldAlert className="w-5 h-5 shrink-0 text-white animate-bounce" />
                 <span className="leading-relaxed">
                   {lang === 'ar' 
-                    ? 'تنويه هام: الوقت الحالي تجاوز الساعة 10:00:00 AM (أكثر من ساعة تأخير عن الوردية). تسجيل الحضور الآن يُسجّل كـ "غائب".' 
-                    : 'Notice: Time is past 10:00:00 AM (>1 hour late). Clocking in now will record status as "Absent".'}
+                    ? 'تجاوز وقت التسجيل الساعة 10:00 صباحًا. سيتم تسجيل الحضور كـ "غائب".' 
+                    : 'Check-in after 10:00 AM will be recorded as "Absent".'}
                 </span>
               </div>
               <span className="font-mono font-black bg-white text-red-700 px-3 py-1.5 rounded-xl shadow-md text-xs shrink-0">
@@ -357,8 +357,8 @@ export const KioskPunch: React.FC<KioskPunchProps> = ({
                 <AlertTriangle className="w-5 h-5 shrink-0 text-slate-950 animate-bounce" />
                 <span className="leading-relaxed">
                   {lang === 'ar' 
-                    ? `تنويه: التسجيل بعد الساعة 09:10:00 AM يُحسب "متأخر" (التأخير: ${lateCheck.lateMinutes} دقيقة و ${lateCheck.lateSeconds} ثانية)`
-                    : `Notice: Clocking in after 09:00:00 AM marks as Late (${lateCheck.formattedLateDuration})`}
+                    ? `التسجيل بعد الساعة 09:10 صباحًا يُسجل كـ "متأخر" (${lateCheck.lateMinutes} دقيقة و${lateCheck.lateSeconds} ثانية).`
+                    : `Check-in after 09:00 AM is recorded as "Late" (${lateCheck.formattedLateDuration}).`}
                 </span>
               </div>
               <span className="font-mono font-black bg-slate-950 text-amber-300 px-3 py-1.5 rounded-xl shadow-md text-xs shrink-0">
@@ -712,8 +712,8 @@ export const KioskPunch: React.FC<KioskPunchProps> = ({
                       </span>
                       <span className="text-slate-600">
                         {lang === 'ar' 
-                          ? 'يمكنك تسجيل الحضور في أي وقت خلال أو بعد ساعات الإذن دون انتطار.'
-                          : 'Check-in is allowed at any time during or after permission hours.'}
+                          ? 'يمكن تسجيل الحضور خلال فترة الإذن أو بعدها.'
+                          : 'Check-in is permitted during or after the approved permission period.'}
                       </span>
                     </div>
                   </div>
@@ -755,7 +755,7 @@ export const KioskPunch: React.FC<KioskPunchProps> = ({
                       type="text"
                       value={noteInput}
                       onChange={(e) => setNoteInput(e.target.value)}
-                      placeholder={lang === 'ar' ? 'ملاحظة إضافية (مثل سبب التأخير أو مهمة خارجية)...' : 'Optional note...'}
+                      placeholder={lang === 'ar' ? 'ملاحظات إضافية...' : 'Optional note...'}
                       className="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-sans"
                     />
                   </div>
@@ -902,8 +902,8 @@ export const KioskPunch: React.FC<KioskPunchProps> = ({
             </h3>
             <p className="text-sm text-slate-300 leading-relaxed">
               {lang === 'ar'
-                ? 'لا يمكنك تسجيل الانصراف أثناء التواجد في استراحة نشطة. يرجى تسجيل العودة من الاستراحة أولاً ثم المحاولة مرة أخرى.'
-                : 'You are currently on an active break. Please end your break before checking out.'}
+                ? 'يرجى إنهاء الاستراحة قبل تسجيل الانصراف.'
+                : 'Please end the active break before checking out.'}
             </p>
             <div className="pt-2">
               <button

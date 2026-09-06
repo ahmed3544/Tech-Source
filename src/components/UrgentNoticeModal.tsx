@@ -85,8 +85,8 @@ export const UrgentNoticeModal: React.FC<UrgentNoticeModalProps> = ({
               </h3>
               <p className="text-xs text-rose-300/80 mt-0.5">
                 {lang === 'ar' 
-                  ? 'سيظهر هذا التنبيه بصورة فورية وبارزة لجميع الموظفين على الصفحة الرئيسية' 
-                  : 'This notice will immediately appear to all employees on their portals.'}
+                  ? 'يظهر التنبيه لجميع الموظفين في الصفحة الرئيسية.' 
+                  : 'The notice will appear on all employees’ home pages.'}
               </p>
             </div>
           </div>
