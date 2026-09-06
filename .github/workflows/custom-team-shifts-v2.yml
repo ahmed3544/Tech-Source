@@ -1,0 +1,70 @@
+name: Apply leader-managed shift scheduling v2
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: "!contains(github.event.head_commit.message, 'Replace fixed shifts with leader-managed schedules')"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply changes
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          def edit(path, fn):
+              p=Path(path); s=p.read_text(encoding='utf-8'); ns=fn(s)
+              if ns == s: raise SystemExit(f'No change made to {path}')
+              p.write_text(ns, encoding='utf-8')
+
+          # Remove the fixed three-shift catalog.
+          edit('src/mockData.ts', lambda s: re.sub(r'export const INITIAL_SHIFTS: Shift\[\] = \[[\s\S]*?\n\];\n\nexport const INITIAL_DEPARTMENTS', 'export const INITIAL_SHIFTS: Shift[] = [];\n\nexport const INITIAL_DEPARTMENTS', s, count=1))
+
+          # Make shifts a real application state, loaded from the server.
+          edit('src/App.tsx', lambda s: s.replace("import { WeeklyShiftSchedule } from './components/WeeklyShiftSchedule';", "import { WeeklyShiftSchedule } from './components/WeeklyShiftSchedule';"))
+          edit('src/App.tsx', lambda s: re.sub(r'  const \[shifts\][\s\S]*?\n\n  const \[dailyShiftAssignments', "  const [shifts, setShifts] = useState<Shift[]>(() => {\n    try {\n      const saved = localStorage.getItem('attendance_shifts');\n      return saved ? JSON.parse(saved) : [];\n    } catch { return []; }\n  });\n\n  const [dailyShiftAssignments", s, count=1))
+          edit('src/App.tsx', lambda s: s.replace("    dailyShiftAssignments?: DailyShiftAssignment[];\n    deletedAttendanceIds?: string[];", "    dailyShiftAssignments?: DailyShiftAssignment[];\n    shifts?: Shift[];\n    deletedAttendanceIds?: string[];"))
+          edit('src/App.tsx', lambda s: s.replace("  if (overrides?.dailyShiftAssignments !== undefined) {\n    payload.dailyShiftAssignments = overrides.dailyShiftAssignments;\n  }", "  if (overrides?.dailyShiftAssignments !== undefined) {\n    payload.dailyShiftAssignments = overrides.dailyShiftAssignments;\n  }\n  if (overrides?.shifts !== undefined) {\n    payload.shifts = overrides.shifts;\n  }"))
+          edit('src/App.tsx', lambda s: s.replace("          if (Array.isArray(data.dailyShiftAssignments)) {\n            setDailyShiftAssignments(data.dailyShiftAssignments);\n            localStorage.setItem('daily_shift_assignments', JSON.stringify(data.dailyShiftAssignments));\n          }", "          if (Array.isArray(data.dailyShiftAssignments)) {\n            setDailyShiftAssignments(data.dailyShiftAssignments);\n            localStorage.setItem('daily_shift_assignments', JSON.stringify(data.dailyShiftAssignments));\n          }\n          if (Array.isArray(data.shifts)) {\n            setShifts(data.shifts);\n            localStorage.setItem('attendance_shifts', JSON.stringify(data.shifts));\n          }"))
+
+          # Weekly schedule uses only leader-created shifts and filters leader access to their team.
+          edit('src/components/WeeklyShiftSchedule.tsx', lambda s: s.replace("import { INITIAL_SHIFTS } from '../mockData';\n", ''))
+          edit('src/components/WeeklyShiftSchedule.tsx', lambda s: s.replace("  const [shifts, setShifts] = useState<Shift[]>(suppliedShifts?.length ? suppliedShifts : INITIAL_SHIFTS);", "  const [shifts, setShifts] = useState<Shift[]>(suppliedShifts || []);"))
+          edit('src/components/WeeklyShiftSchedule.tsx', lambda s: s.replace("  const visibleEmployees = useMemo(() => isLeader ? employees : employees.filter(e => e.id === currentUser?.id), [employees, isLeader, currentUser]);", "  const visibleEmployees = useMemo(() => {\n    if (!isLeader) return employees.filter(e => e.id === currentUser?.id);\n    if (currentUser?.role === 'admin') return employees;\n    const explicitTeam = employees.some(e => e.teamLeaderId === currentUser?.id);\n    if (explicitTeam) return employees.filter(e => e.teamLeaderId === currentUser?.id);\n    if (currentUser?.teamId) {\n      const sameTeam = employees.filter(e => e.teamId === currentUser.teamId);\n      if (sameTeam.length) return sameTeam;\n    }\n    return employees;\n  }, [employees, isLeader, currentUser]);"))
+          edit('src/components/WeeklyShiftSchedule.tsx', lambda s: s.replace("{lang === 'ar' ? 'جدول الشفت الأسبوعي' : 'Weekly Shift Schedule'}", "{lang === 'ar' ? 'الجدول الأسبوعي' : 'Weekly Schedule'}").replace("{lang === 'ar' ? 'هذا الأسبوع' : 'This week'}", "{lang === 'ar' ? 'الأسبوع الحالي' : 'Current Week'}").replace("{lang === 'ar' ? 'بدون شفت' : 'No shift'}", "{lang === 'ar' ? 'غير محدد' : 'Not assigned'}").replace("{lang === 'ar' ? 'حفظ جدول الأسبوع' : 'Save Week'}", "{lang === 'ar' ? 'حفظ الجدول' : 'Save Schedule'}"))
+          edit('src/components/WeeklyShiftSchedule.tsx', lambda s: s.replace("{isLeader ? (lang === 'ar' ? 'اختار الشفت لكل يوم، ثم احفظ الأسبوع بالكامل. وقت الشفت والبريكات المحددة داخل الشفت تظهر للموظف.' : 'Choose each daily shift and save the week. Shift time and configured breaks are shown to the employee.') : (lang === 'ar' ? 'هذا جدولك الأسبوعي، ويظهر لك وقت كل شفت والبريكات المحددة له.' : 'This is your weekly schedule, including shift times and configured breaks.')}", "{isLeader ? (lang === 'ar' ? 'حدد الوردية لكل يوم ثم احفظ الجدول.' : 'Assign a shift for each day and save.') : (lang === 'ar' ? 'الجدول الأسبوعي ومواعيد الورديات والاستراحات.' : 'Weekly schedule, shift times, and breaks.') }"))
+
+          # Leader-only shift template management inside the schedule screen.
+          edit('src/components/WeeklyShiftSchedule.tsx', lambda s: s.replace("  const [error, setError] = useState<string | null>(null);", "  const [error, setError] = useState<string | null>(null);\n  const [showShiftManager, setShowShiftManager] = useState(false);"))
+          edit('src/components/WeeklyShiftSchedule.tsx', lambda s: s.replace("  return (\n    <div className=\"fixed inset-0", "  const updateShiftList = (next: Shift[]) => {\n    setShifts(next);\n    try { localStorage.setItem('attendance_shifts', JSON.stringify(next)); } catch {}\n    void fetch('/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shifts: next }) });\n  };\n\n  return (\n    <div className=\"fixed inset-0"))
+          edit('src/components/WeeklyShiftSchedule.tsx', lambda s: s.replace("            <div className=\"flex items-center gap-2\">", "            <div className=\"flex items-center gap-2\">\n              {isLeader && <button type=\"button\" onClick={() => setShowShiftManager(true)} className=\"px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 border border-emerald-500 text-xs font-bold\">{lang === 'ar' ? 'إدارة الورديات' : 'Manage Shifts'}</button>}" , 1))
+          edit('src/components/WeeklyShiftSchedule.tsx', lambda s: s.replace("        </div>\n      </section>\n    </div>\n  );\n};", "        </div>\n      </section>\n      {showShiftManager && isLeader && (\n        <div className=\"fixed inset-0 z-[120] bg-slate-950/60 backdrop-blur-sm p-4 overflow-y-auto\">\n          <div className=\"max-w-4xl mx-auto mt-8 bg-white rounded-3xl shadow-2xl p-5\">\n            <div className=\"flex justify-between items-center mb-4\">\n              <h3 className=\"text-lg font-black text-slate-900\">{lang === 'ar' ? 'إدارة الورديات' : 'Shift Management'}</h3>\n              <button type=\"button\" onClick={() => setShowShiftManager(false)} className=\"px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold\">{lang === 'ar' ? 'إغلاق' : 'Close'}</button>\n            </div>\n            <ShiftManager\n              shifts={shifts}\n              lang={lang}\n              onAddShift={shift => updateShiftList([...shifts, shift])}\n              onUpdateShift={shift => updateShiftList(shifts.map(item => item.id === shift.id ? shift : item))}\n              onDeleteShift={shiftId => updateShiftList(shifts.filter(item => item.id !== shiftId))}\n            />\n          </div>\n        </div>\n      )}\n    </div>\n  );\n};"))
+          # Add the ShiftManager import only when the component is actually used.
+          edit('src/components/WeeklyShiftSchedule.tsx', lambda s: s.replace("import { Employee, Language, Shift, DailyShiftAssignment } from '../types';", "import { Employee, Language, Shift, DailyShiftAssignment } from '../types';\nimport { ShiftManager } from './ShiftManager';"))
+
+          # Persist custom Shift objects (including breaks) in settings, avoiding a DB migration.
+          edit('server.ts', lambda s: s.replace("    if (s.key === \"dailyShiftAssignments\") {\n      localState.dailyShiftAssignments = Array.isArray(s.value) ? s.value : [];\n    }", "    if (s.key === \"dailyShiftAssignments\") {\n      localState.dailyShiftAssignments = Array.isArray(s.value) ? s.value : [];\n    }\n    if (s.key === \"shiftTemplates\" && Array.isArray(s.value)) {\n      localState.shifts = s.value;\n    }"))
+          edit('server.ts', lambda s: s.replace("        if (Array.isArray(b.dailyShiftAssignments)) {\n          await setting(\"dailyShiftAssignments\", b.dailyShiftAssignments);\n        }", "        if (Array.isArray(b.dailyShiftAssignments)) {\n          await setting(\"dailyShiftAssignments\", b.dailyShiftAssignments);\n        }\n        if (Array.isArray(b.shifts)) {\n          await setting(\"shiftTemplates\", b.shifts);\n        }"))
+
+          print('done')
+          PY
+      - name: TypeScript check
+        run: |
+          npm ci
+          npm run lint
+      - name: Commit and clean up
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm -f .github/workflows/custom-team-shifts.yml .github/workflows/custom-team-shifts-v2.yml
+          git add src/App.tsx src/components/WeeklyShiftSchedule.tsx src/mockData.ts server.ts
+          git diff --cached --quiet || git commit -m "Replace fixed shifts with leader-managed schedules"
+          git push
