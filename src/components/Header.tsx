@@ -40,6 +40,7 @@ interface HeaderProps {
     | 'leaves'
     | 'import_leaves'
     | 'analytics'
+    | 'schedule'
     | 'portal';
 
   setActiveTab: (
@@ -51,6 +52,7 @@ interface HeaderProps {
       | 'leaves'
       | 'import_leaves'
       | 'analytics'
+      | 'schedule'
       | 'portal'
   ) => void;
 
@@ -729,6 +731,17 @@ export const Header: React.FC<HeaderProps> = ({
                     ? 'التقارير'
                     : 'Reports'}
                 </span>
+              </button>
+              <button
+                onClick={() => setActiveTab('schedule')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+                  activeTab === 'schedule'
+                    ? 'bg-[#0d2240] text-white font-bold border border-blue-900 shadow-md'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                }`}
+              >
+                <CalendarCheck className="w-4 h-4 text-emerald-400" />
+                <span>{lang === 'ar' ? 'الجدول' : 'Schedule'}</span>
               </button>
 
             </>

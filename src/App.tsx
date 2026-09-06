@@ -14,6 +14,7 @@ import { CompanySocialBar } from './components/CompanySocialBar';
 import { UrgentNoticeBanner } from './components/UrgentNoticeBanner';
 import { UrgentNoticeModal } from './components/UrgentNoticeModal';
 import { ImportLeavesView } from './components/ImportLeavesView';
+import { WeeklyShiftSchedule } from './components/WeeklyShiftSchedule';
 
 import {
   Employee,
@@ -103,6 +104,7 @@ export default function App() {
       | 'leaves'
       | 'import_leaves'
       | 'analytics'
+      | 'schedule'
       | 'portal'
     >('dashboard');
 
@@ -5994,6 +5996,13 @@ try {
         )}
 
 
+        {activeTab === 'schedule' && (
+          <WeeklyShiftSchedule
+            lang={lang}
+            onClose={() => setActiveTab(currentUser?.role === 'leader' || !currentUser ? 'dashboard' : 'portal')}
+          />
+        )}
+
         {activeTab ===
           'portal' && (
 
@@ -6040,8 +6049,6 @@ try {
             }
 
             dailyShiftAssignments={dailyShiftAssignments}
-
-            onSaveDailyShift={handleSaveDailyShift}
 
             lang={
               lang
