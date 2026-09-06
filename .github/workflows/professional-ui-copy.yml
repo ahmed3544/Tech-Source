@@ -9,7 +9,6 @@ permissions:
 
 jobs:
   copy-pass:
-    if: "!contains(github.event.head_commit.message, 'Refine professional UI copy')"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -69,8 +68,8 @@ jobs:
               '2. Or select a preset avatar:': 'Select a preset avatar',
             },
             'src/components/NotificationCenter.tsx': {
-              "طلب overtime جديد": 'طلب عمل إضافي جديد',
-              "تم قبول Overtime": 'تم اعتماد العمل الإضافي',
+              'طلب overtime جديد': 'طلب عمل إضافي جديد',
+              'تم قبول Overtime': 'تم اعتماد العمل الإضافي',
             },
           }
           changed = []
@@ -97,5 +96,5 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git rm -f .github/workflows/professional-ui-copy.yml
           git add src/components
-          git diff --cached --quiet || git commit -m "Refine professional UI copy"
+          if ! git diff --cached --quiet; then git commit -m "Refine professional UI copy"; fi
           git push
