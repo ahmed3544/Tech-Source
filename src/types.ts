@@ -54,6 +54,8 @@ export interface Shift {
   nameEn: string;
   startTime: string; // e.g. "09:00"
   endTime: string;   // e.g. "17:00"
+  startDate?: string; // YYYY-MM-DD
+  endDate?: string; // YYYY-MM-DD
   durationMinutes?: number;
   gracePeriodMinutes: number; // e.g. 0 mins
   workDays: number[]; // 0 = Sun, 1 = Mon, ...
@@ -170,8 +172,8 @@ export interface OfficialHoliday {
   id: string;
   nameAr: string;
   nameEn?: string;
-  startDate: string; // YYYY-MM-DD
-  endDate: string; // YYYY-MM-DD
+  startDate: string;
+  endDate: string;
   daysCount: number;
   type: 'national' | 'religious' | 'official';
 }
