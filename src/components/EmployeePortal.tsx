@@ -46,7 +46,7 @@ interface EmployeePortalProps {
   leaveRequests: LeaveRequest[];
   shifts: Shift[];
   dailyShiftAssignments: DailyShiftAssignment[];
-  onSaveDailyShift: (assignment: DailyShiftAssignment) => void;
+  onSaveWeeklySchedule: (assignments: DailyShiftAssignment[]) => void;
   onPunch: (
     employeeId: string, 
     action: 'check_in' | 'check_out' | 'break_start' | 'break_end',
@@ -78,7 +78,7 @@ export const EmployeePortal: React.FC<EmployeePortalProps> = ({
   leaveRequests,
   shifts,
   dailyShiftAssignments,
-  onSaveDailyShift,
+  onSaveWeeklySchedule,
   onPunch,
   onAddLeave,
   onUpdateEmployee,
@@ -107,8 +107,9 @@ export const EmployeePortal: React.FC<EmployeePortalProps> = ({
   const [pastCheckIn, setPastCheckIn] = useState('09:00');
   const [pastCheckOut, setPastCheckOut] = useState('17:00');
   const [pastNote, setPastNote] = useState('');
-  const [shiftDate, setShiftDate] = useState(getTodayString());
-  const [selectedShiftId, setSelectedShiftId] = useState('');
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [weekAnchor, setWeekAnchor] = useState(getTodayString());
+  const [weeklyTimes, setWeeklyTimes] = useState<Record<string, { startTime: string; endTime: string }>>({});
 
   // Current active month (YYYY-MM)
   const [selectedMonth, setSelectedMonth] = useState<string>(() => {
@@ -185,9 +186,44 @@ export const EmployeePortal: React.FC<EmployeePortalProps> = ({
 
   const getShiftForDate = (employeeId: string, date: string) => {
     const assignment = dailyShiftAssignments.find(item => item.employeeId === employeeId && item.date === date);
-    return shifts.find(shift => shift.id === (assignment?.shiftId || emp?.shiftId)) || shifts[0];
+    const template = shifts.find(shift => shift.id === (assignment?.shiftId || emp?.shiftId)) || shifts[0];
+    return assignment?.startTime && assignment?.endTime
+      ? { ...template, startTime: assignment.startTime, endTime: assignment.endTime, durationMinutes: assignment.durationMinutes || 480 }
+      : template;
   };
   const todayShift = emp ? getShiftForDate(emp.id, todayStr) : undefined;
+
+  const getWeekDates = (anchor: string) => {
+    const date = new Date(`${anchor}T12:00:00`);
+    const sunday = new Date(date);
+    sunday.setDate(date.getDate() - date.getDay());
+    return Array.from({ length: 7 }, (_, index) => {
+      const day = new Date(sunday);
+      day.setDate(sunday.getDate() + index);
+      return day.toISOString().slice(0, 10);
+    });
+  };
+
+  const openSchedule = () => {
+    if (!emp) return;
+    const values: Record<string, { startTime: string; endTime: string }> = {};
+    getWeekDates(weekAnchor).forEach(date => {
+      const shift = getShiftForDate(emp.id, date);
+      values[date] = { startTime: shift?.startTime?.slice(0, 5) || '09:00', endTime: shift?.endTime?.slice(0, 5) || '17:00' };
+    });
+    setWeeklyTimes(values);
+    setShowScheduleModal(true);
+  };
+
+  React.useEffect(() => {
+    if (!showScheduleModal || !emp) return;
+    const values: Record<string, { startTime: string; endTime: string }> = {};
+    getWeekDates(weekAnchor).forEach(date => {
+      const shift = getShiftForDate(emp.id, date);
+      values[date] = { startTime: shift?.startTime?.slice(0, 5) || '09:00', endTime: shift?.endTime?.slice(0, 5) || '17:00' };
+    });
+    setWeeklyTimes(values);
+  }, [showScheduleModal, weekAnchor, emp?.id, dailyShiftAssignments, shifts]);
 
   const isBreakActive = Boolean(todayRecord?.breakStart && !todayRecord?.breakEnd);
 
@@ -793,6 +829,14 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
               <Camera className="w-3.5 h-3.5 text-emerald-400" />
               <span>{lang === 'ar' ? 'تغيير الصورة الشخصية' : 'Change Profile Photo'}</span>
             </button>
+            <button
+              type="button"
+              onClick={openSchedule}
+              className="mt-2 text-[11px] text-sky-300 hover:text-sky-200 flex items-center gap-1 font-bold"
+            >
+              <Calendar className="w-3.5 h-3.5" />
+              <span>{lang === 'ar' ? 'جدول' : 'Schedule'}</span>
+            </button>
           </div>
         </div>
 
@@ -886,13 +930,13 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
         )}
       </div>
 
-      {/* Daily shift: employees see only their own assignment; leaders can assign it day by day. */}
+      {/* The selected employee sees their own current weekly assignment. */}
       <section className="bg-sky-50 border border-sky-200 rounded-3xl p-5 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
             <h3 className="font-black text-slate-900 flex items-center gap-2">
               <Calendar className="w-5 h-5 text-sky-700" />
-              {lang === 'ar' ? 'شفت اليوم' : 'Today’s shift'}
+              {lang === 'ar' ? 'شفت اليوم من الجدول الأسبوعي' : 'Today’s shift from weekly schedule'}
             </h3>
             <p className="text-xs text-slate-600 mt-1">
               {todayShift
@@ -906,29 +950,53 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
           {todayShift && <span className="bg-white border border-sky-200 rounded-xl px-3 py-2 font-mono font-bold text-sky-900 text-sm">{todayShift.startTime} - {todayShift.endTime}</span>}
         </div>
 
-        {(currentUser?.role === 'admin' || currentUser?.role === 'leader') && (
-          <div className="pt-4 border-t border-sky-200 grid sm:grid-cols-[1fr_1fr_auto] gap-3 items-end">
-            <label className="text-xs font-bold text-slate-700">{lang === 'ar' ? 'تاريخ الشفت' : 'Shift date'}
-              <input type="date" value={shiftDate} onChange={e => {
-                const date = e.target.value;
-                setShiftDate(date);
-                setSelectedShiftId(dailyShiftAssignments.find(item => item.employeeId === emp.id && item.date === date)?.shiftId || emp.shiftId);
-              }} className="mt-1 w-full bg-white border border-sky-200 rounded-xl px-3 py-2 text-slate-900" />
-            </label>
-            <label className="text-xs font-bold text-slate-700">{lang === 'ar' ? 'شفت الموظف' : 'Employee shift'}
-              <select value={selectedShiftId || dailyShiftAssignments.find(item => item.employeeId === emp.id && item.date === shiftDate)?.shiftId || emp.shiftId} onChange={e => setSelectedShiftId(e.target.value)} className="mt-1 w-full bg-white border border-sky-200 rounded-xl px-3 py-2 text-slate-900">
-                {shifts.map(shift => <option key={shift.id} value={shift.id}>{lang === 'ar' ? shift.nameAr : shift.nameEn} ({shift.startTime} - {shift.endTime})</option>)}
-              </select>
-            </label>
-            <button type="button" onClick={() => {
-              const shiftId = selectedShiftId || emp.shiftId || shifts[0]?.id;
-              if (!shiftId) return;
-              onSaveDailyShift({ employeeId: emp.id, date: shiftDate, shiftId, assignedBy: currentUser?.id, updatedAt: new Date().toISOString() });
-              setSuccessToast(lang === 'ar' ? 'تم حفظ شفت الموظف لهذا اليوم' : 'Daily shift saved');
-            }} className="bg-sky-700 hover:bg-sky-800 text-white rounded-xl px-4 py-2.5 text-xs font-black">{lang === 'ar' ? 'حفظ الشفت' : 'Save shift'}</button>
-          </div>
-        )}
+        <button type="button" onClick={openSchedule} className="bg-sky-700 hover:bg-sky-800 text-white rounded-xl px-4 py-2.5 text-xs font-black">
+          {lang === 'ar' ? 'فتح جدول الأسبوع' : 'Open weekly schedule'}
+        </button>
       </section>
+
+      {showScheduleModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm p-4 flex items-center justify-center">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto p-6 space-y-5">
+            <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-4">
+              <div>
+                <h3 className="font-black text-slate-900 flex items-center gap-2"><Calendar className="w-5 h-5 text-sky-700" />{lang === 'ar' ? 'الجدول الأسبوعي' : 'Weekly shift schedule'}</h3>
+                <p className="text-xs text-slate-500 mt-1">{lang === 'ar' ? `${emp.nameAr} — المدة المطلوبة 8 ساعات يوميًا` : `${emp.nameEn} — 8 hours required daily`}</p>
+              </div>
+              <button type="button" onClick={() => setShowScheduleModal(false)} className="p-2 rounded-xl hover:bg-slate-100 text-slate-500"><X className="w-5 h-5" /></button>
+            </div>
+
+            <label className="block max-w-xs text-xs font-bold text-slate-700">{lang === 'ar' ? 'أي يوم من الأسبوع' : 'Any date in the week'}
+              <input type="date" value={weekAnchor} onChange={e => setWeekAnchor(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-slate-900" />
+            </label>
+
+            <div className="space-y-2">
+              {getWeekDates(weekAnchor).map(date => {
+                const dayName = new Date(`${date}T12:00:00`).toLocaleDateString(lang === 'ar' ? 'ar-EG' : 'en-US', { weekday: 'long', day: 'numeric', month: 'short' });
+                const values = weeklyTimes[date] || { startTime: '09:00', endTime: '17:00' };
+                const canEdit = currentUser?.role === 'leader' || currentUser?.role === 'admin';
+                return <div key={date} className="grid grid-cols-[1fr_auto_auto] gap-3 items-center p-3 rounded-2xl bg-slate-50 border border-slate-200">
+                  <div className="font-bold text-xs text-slate-800">{dayName}</div>
+                  <input aria-label={`Start ${date}`} type="time" disabled={!canEdit} value={values.startTime} onChange={e => setWeeklyTimes(prev => ({ ...prev, [date]: { ...values, startTime: e.target.value } }))} className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs font-mono disabled:text-slate-600" />
+                  <input aria-label={`End ${date}`} type="time" disabled={!canEdit} value={values.endTime} onChange={e => setWeeklyTimes(prev => ({ ...prev, [date]: { ...values, endTime: e.target.value } }))} className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs font-mono disabled:text-slate-600" />
+                </div>;
+              })}
+            </div>
+
+            <p className="text-[11px] text-sky-800 bg-sky-50 border border-sky-100 rounded-xl p-3">{lang === 'ar' ? 'وقت الدخول مرن؛ لا يتم احتساب Late. يتم قياس الالتزام بإكمال 8 ساعات عمل فعلية بعد خصم الاستراحات.' : 'Check-in is flexible; no late mark is calculated. Completion is measured by 8 actual work hours after breaks.'}</p>
+
+            <div className="flex justify-end gap-3 pt-2">
+              <button type="button" onClick={() => setShowScheduleModal(false)} className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 font-bold text-xs">{lang === 'ar' ? 'إغلاق' : 'Close'}</button>
+              {(currentUser?.role === 'leader' || currentUser?.role === 'admin') && <button type="button" onClick={() => {
+                const assignments = getWeekDates(weekAnchor).map(date => ({ employeeId: emp.id, date, startTime: weeklyTimes[date]?.startTime || '09:00', endTime: weeklyTimes[date]?.endTime || '17:00', durationMinutes: 480, assignedBy: currentUser.id, updatedAt: new Date().toISOString() }));
+                onSaveWeeklySchedule(assignments);
+                setSuccessToast(lang === 'ar' ? 'تم حفظ جدول الأسبوع ومزامنته' : 'Weekly schedule saved and synced');
+                setShowScheduleModal(false);
+              }} className="px-5 py-2 rounded-xl bg-sky-700 hover:bg-sky-800 text-white font-black text-xs">{lang === 'ar' ? 'حفظ جدول الأسبوع' : 'Save weekly schedule'}</button>}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Main Punch Pad Card */}
       <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm space-y-6">
