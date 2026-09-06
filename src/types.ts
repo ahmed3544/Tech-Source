@@ -38,6 +38,16 @@ export type NotificationType =
   | 'shift_changed' 
   | 'admin_notice';
 
+/** A planned break configured as part of a shift template. */
+export interface ShiftBreak {
+  id: string;
+  nameAr: string;
+  nameEn: string;
+  startTime: string; // HH:mm
+  endTime: string; // HH:mm
+  durationMinutes?: number;
+}
+
 export interface Shift {
   id: string;
   nameAr: string;
@@ -47,6 +57,7 @@ export interface Shift {
   durationMinutes?: number;
   gracePeriodMinutes: number; // e.g. 0 mins
   workDays: number[]; // 0 = Sun, 1 = Mon, ...
+  breaks?: ShiftBreak[];
 }
 
 /** A shift chosen for one employee on one calendar day. */
@@ -179,5 +190,3 @@ export interface Notification {
   createdAt: string;
   updatedAt: string;
 }
-
-
