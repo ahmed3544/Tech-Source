@@ -1,11 +1,163 @@
+@import "tailwindcss";
+
 :root {
   --tech-source-navy: #0d2240;
   --tech-source-blue: #1769aa;
   --tech-source-teal: #0f766e;
   --tech-source-surface: #f5f8fc;
+  --ui-radius-card: 16px;
+  --ui-radius-control: 10px;
+  --ui-page-gutter: clamp(12px, 2.5vw, 32px);
+  --ui-content-max: 1440px;
 }
-html, body, #root { min-height: 100%; }
-body { background: var(--tech-source-surface); }
-::selection { background: rgba(23, 105, 170, 0.18); }
 
-@import "tailwindcss";
+html,
+body,
+#root {
+  min-height: 100%;
+  width: 100%;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: var(--tech-source-surface);
+  color: #0f172a;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button,
+[role="button"] {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid rgba(16, 185, 129, 0.65);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: rgba(23, 105, 170, 0.18);
+}
+
+/* Consistent content rhythm without touching application logic. */
+#root > * {
+  min-width: 0;
+}
+
+/* Prevent long employee names/codes from forcing horizontal overflow. */
+#root table {
+  max-width: 100%;
+}
+
+#root td,
+#root th {
+  vertical-align: middle;
+}
+
+/* Better touch targets for compact icon buttons. */
+@media (pointer: coarse) {
+  #root button {
+    min-height: 38px;
+  }
+
+  #root button:has(svg:only-child) {
+    min-width: 38px;
+  }
+}
+
+/* Mobile: keep the app comfortably inside Android safe areas. */
+@media (max-width: 767px) {
+  body {
+    min-width: 0;
+  }
+
+  #root {
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  /* Avoid desktop-sized modal gutters on phones. */
+  #root .fixed.inset-0 {
+    padding-top: max(10px, env(safe-area-inset-top));
+    padding-right: max(10px, env(safe-area-inset-right));
+    padding-bottom: max(10px, env(safe-area-inset-bottom));
+    padding-left: max(10px, env(safe-area-inset-left));
+  }
+
+  /* Tables remain usable by horizontal scrolling instead of squeezing text. */
+  #root .overflow-x-auto {
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+
+  #root table {
+    min-width: 640px;
+  }
+
+  /* Weekly schedule gets a phone-friendly minimum width inside its scroller. */
+  #root .weekly-schedule-table,
+  #root [data-weekly-schedule-table] {
+    min-width: 760px;
+  }
+
+  /* Reduce oversized headings/panels on narrow screens. */
+  #root h1 {
+    line-height: 1.2;
+  }
+
+  #root h2,
+  #root h3 {
+    line-height: 1.25;
+  }
+
+  /* Cards should not touch the viewport edges. */
+  #root .rounded-3xl {
+    max-width: calc(100vw - 20px);
+  }
+}
+
+/* Very small Android devices. */
+@media (max-width: 390px) {
+  #root .rounded-3xl {
+    max-width: calc(100vw - 16px);
+  }
+
+  #root .px-6 {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
+  #root .px-5 {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+}
+
+/* Landscape phones: keep fixed dialogs usable. */
+@media (max-height: 520px) and (orientation: landscape) {
+  #root .fixed.inset-0 {
+    align-items: flex-start;
+    padding-top: max(8px, env(safe-area-inset-top));
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+  }
+}

@@ -67,3 +67,5 @@ jobs:
           name: tech-source-attendance-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+
+      # Rebuild after UI-only changes so the test APK always matches the branch head.

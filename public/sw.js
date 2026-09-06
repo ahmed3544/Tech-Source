@@ -1,4 +1,4 @@
-const CACHE_NAME = 'tech-source-attendance-v1';
+const CACHE_NAME = 'tech-source-attendance-v2';
 const APP_SHELL = ['/', '/index.html', '/manifest.webmanifest'];
 
 self.addEventListener('install', (event) => {
