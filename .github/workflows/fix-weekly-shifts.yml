@@ -1,0 +1,37 @@
+name: Fix weekly shift options
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fix weekly shift fallback
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('src/components/WeeklyShiftSchedule.tsx')
+          s = p.read_text(encoding='utf-8')
+          s = s.replace("import { Employee, Language, Shift, DailyShiftAssignment } from '../types';", "import { Employee, Language, Shift, DailyShiftAssignment } from '../types';\nimport { INITIAL_SHIFTS } from '../mockData';")
+          s = s.replace("const [shifts, setShifts] = useState<Shift[]>(suppliedShifts || []);", "const [shifts, setShifts] = useState<Shift[]>(suppliedShifts?.length ? suppliedShifts : INITIAL_SHIFTS);")
+          s = s.replace("if (suppliedShifts) setShifts(suppliedShifts);", "if (suppliedShifts?.length) setShifts(suppliedShifts);")
+          s = s.replace("if (Array.isArray(data.shifts)) setShifts(data.shifts);", "if (Array.isArray(data.shifts) && data.shifts.length > 0) setShifts(data.shifts);")
+          p.write_text(s, encoding='utf-8')
+          PY
+          git diff --check
+          git diff -- src/components/WeeklyShiftSchedule.tsx
+      - name: Commit fix
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/components/WeeklyShiftSchedule.tsx
+          git diff --cached --quiet && exit 0
+          git commit -m "Fix weekly shift selection fallback"
+          git push
