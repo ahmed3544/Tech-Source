@@ -28,6 +28,7 @@ type State = {
   overtimeRequests: any[];
   shifts: any[];
   notifications: any[];
+  dailyShiftAssignments: any[];
   companyNameAr?: any;
   companyNameEn?: any;
   urgentNotice?: any;
@@ -41,6 +42,7 @@ const emptyState = (): State => ({
   overtimeRequests: [],
   shifts: [],
   notifications: [],
+  dailyShiftAssignments: [],
   companyNameAr: null,
   companyNameEn: null,
   urgentNotice: null,
@@ -71,6 +73,9 @@ function loadState(): State {
       shifts: Array.isArray(d.shifts) ? d.shifts : [],
       notifications: Array.isArray(d.notifications)
         ? d.notifications
+        : [],
+      dailyShiftAssignments: Array.isArray(d.dailyShiftAssignments)
+        ? d.dailyShiftAssignments
         : [],
     };
   } catch {
@@ -153,11 +158,17 @@ function mins(x: any) {
   return h * 60 + m;
 }
 
-function shiftFor(e: any) {
+function shiftFor(e: any, date?: string) {
+  const daily = localState.dailyShiftAssignments.find(
+    (assignment: any) =>
+      norm(assignment.employeeId) === norm(e?.id) &&
+      String(assignment.date) === String(date || "")
+  );
+
   return (
     localState.shifts.find(
       (s: any) =>
-        String(s.id) === String(e?.shiftId)
+        String(s.id) === String(daily?.shiftId || e?.shiftId)
     ) || {
       startTime: "09:00",
       endTime: "17:00",
@@ -179,7 +190,7 @@ function sanitize(r: any) {
       norm(x.id) === norm(r.employeeId)
   );
 
-  const sh = shiftFor(e);
+  const sh = shiftFor(e, r.date);
 
   let work = 0;
 
@@ -215,36 +226,12 @@ function sanitize(r: any) {
     sh.durationMinutes || 480
   );
 
-  const start = mins(
-    sh.startTime || "09:00"
-  );
-
-  const end = mins(
-    sh.endTime || "17:00"
-  );
-
-  const grace = Number(
-    sh.gracePeriodMinutes ?? 10
-  );
-
   let late = 0;
   let early = 0;
 
-  if (r.checkIn) {
-    late = Math.max(
-      0,
-      mins(r.checkIn) - start - grace
-    );
-  }
-
-  if (
-    r.checkOut &&
-    !r.isExplicitCancelCheckOut
-  ) {
-    early = Math.max(
-      0,
-      end - mins(r.checkOut)
-    );
+  // No fixed arrival time: only an incomplete required duration is short.
+  if (r.checkOut && !r.isExplicitCancelCheckOut) {
+    early = Math.max(0, duration - work);
   }
 
   let status =
@@ -252,16 +239,9 @@ function sanitize(r: any) {
 
   if (r.checkIn && r.checkOut) {
     status =
-      late > 0
-        ? "late"
-        : early > 0
-          ? "early_leave"
-          : "on_time";
+      early > 0 ? "early_leave" : "on_time";
   } else if (r.checkIn) {
-    status =
-      late > 0
-        ? "late"
-        : "in_progress";
+    status = "in_progress";
   }
 
   return {
@@ -1383,6 +1363,10 @@ async function data() {
       localState.urgentNotice =
         s.value;
     }
+
+    if (s.key === "dailyShiftAssignments") {
+      localState.dailyShiftAssignments = Array.isArray(s.value) ? s.value : [];
+    }
   }
 
   localState.lastUpdated =
@@ -2295,6 +2279,10 @@ app.post(
           );
         }
 
+        if (Array.isArray(b.dailyShiftAssignments)) {
+          await setting("dailyShiftAssignments", b.dailyShiftAssignments);
+        }
+
         /*
         =====================================================
         RETURN FRESH SUPABASE DATA
@@ -2418,6 +2406,10 @@ app.post(
       ) {
         localState.urgentNotice =
           b.urgentNotice;
+      }
+
+      if (Array.isArray(b.dailyShiftAssignments)) {
+        localState.dailyShiftAssignments = b.dailyShiftAssignments;
       }
 
       if (
@@ -4078,6 +4070,10 @@ app.post(
           );
         }
 
+        if (Array.isArray(b.dailyShiftAssignments)) {
+          await setting("dailyShiftAssignments", b.dailyShiftAssignments);
+        }
+
         /*
         =========================
         ATTENDANCE RECORDS
@@ -4188,6 +4184,11 @@ app.post(
         urgentNotice:
           b.urgentNotice ??
           null,
+
+        dailyShiftAssignments:
+          Array.isArray(b.dailyShiftAssignments)
+            ? b.dailyShiftAssignments
+            : [],
 
         lastUpdated:
           Date.now(),
@@ -4635,3 +4636,4 @@ if (!process.env.VERCEL) {
 }
 
 export default app;
+
