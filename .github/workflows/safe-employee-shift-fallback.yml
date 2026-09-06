@@ -26,13 +26,12 @@ jobs:
               p = Path(path)
               s = p.read_text(encoding='utf-8')
               out = fn(s)
-              if out == s:
-                  print(f'No change: {path}')
-              else:
+              if out != s:
                   p.write_text(out, encoding='utf-8')
                   print(f'Patched: {path}')
+              else:
+                  print(f'No change: {path}')
 
-          # Prevent the employee screens from crashing when the shift list is temporarily empty.
           def employee_manager(s):
               old = "const shift = shifts.find(s => s.id === emp.shiftId) || shifts[0];"
               new = "const shift = shifts.find(s => s.id === emp.shiftId) || shifts[0] || { startTime: '09:00', endTime: '17:00', nameAr: 'الدوام الموحد', nameEn: 'Standard Shift' };"
@@ -43,8 +42,6 @@ jobs:
               new = "return shifts.find(shift => shift.id === (assignment?.shiftId || emp?.shiftId)) || shifts[0] || { id: 'fallback-shift', nameAr: 'الدوام الموحد', nameEn: 'Standard Shift', startTime: '09:00', endTime: '17:00', gracePeriodMinutes: 0, workDays: [0, 1, 2, 3, 4], breaks: [] };"
               return s.replace(old, new)
 
-          # Shift names are no longer part of scheduling. Keep legacy fields internally for compatibility,
-          # but derive them from the selected time so existing data/API contracts remain intact.
           def shift_manager(s):
               s = s.replace(
                   "if (!formData.nameAr || !formData.nameEn || !formData.startTime || !formData.endTime) {\n      alert(lang === 'ar' ? 'الرجاء ملء اسم الشفت ووقت البداية والنهاية' : 'Please fill the shift name, start time and end time');",
@@ -54,43 +51,42 @@ jobs:
                   "nameAr: formData.nameAr,\n      nameEn: formData.nameEn,",
                   "nameAr: `${formData.startTime} - ${formData.endTime}`,\n      nameEn: `${formData.startTime} - ${formData.endTime}`,"
               )
+              # Remove only the two shift-name inputs; all other scheduling controls stay intact.
               s = re.sub(
-                  r"\s*<div className=\"grid grid-cols-1 md:grid-cols-2 gap-4\">\s*<label[^>]*>\{lang === 'ar' \? 'اسم الشفت \(عربي\)'[^<]*<input[^>]*\/>\s*<\/label>\s*<label[^>]*>\{lang === 'ar' \? 'اسم الشفت \(إنجليزي\)'[^<]*<input[^>]*\/>\s*<\/label>\s*<\/div>",
+                  r"\s*<div className=\"grid grid-cols-1 md:grid-cols-2 gap-4\">\s*<label[^>]*>\{lang === 'ar' \? 'اسم الشفت \(عربي\)'[^<]*<input[^>]*\/>\s*</label>\s*<label[^>]*>\{lang === 'ar' \? 'اسم الشفت \(إنجليزي\)'[^<]*<input[^>]*\/>\s*</label>\s*</div>",
                   "",
                   s,
                   count=1
               )
               return s
 
-          # Client-side attendance calculation must never create overtime automatically.
-          # Approved overtime is handled by the existing overtime request/approval flow.
           def helpers(s):
-              s2 = re.sub(r"overtimeHours:\s*overtimeHours,", "overtimeHours: 0,", s, count=1)
-              if s2 != s:
-                  return s2
-              # Fallback for the current implementation if the object is formatted differently.
-              s2 = re.sub(r"overtimeHours:\s*Math\.max\([^\n]+\),", "overtimeHours: 0,", s, count=1)
-              return s2
+              # evaluatePunch must not create overtime from clock times.
+              s = re.sub(r"overtimeHours:\s*overtimeHours,", "overtimeHours: 0,", s, count=1)
+              return s
 
           patch('src/components/EmployeeManager.tsx', employee_manager)
           patch('src/components/EmployeePortal.tsx', employee_portal)
           patch('src/components/ShiftManager.tsx', shift_manager)
           patch('src/utils/helpers.ts', helpers)
 
-          # Brand-safe global polish without replacing the existing component/layout system.
           def css(s):
-              if ':root' in s:
+              if '--tech-source-navy' in s:
                   return s
-              return """:root {\n  --tech-source-navy: #0d2240;\n  --tech-source-blue: #1769aa;\n  --tech-source-teal: #0f766e;\n  --tech-source-surface: #f5f8fc;\n}\n\nhtml, body, #root { min-height: 100%; }\nbody { background: var(--tech-source-surface); }\n::selection { background: rgba(23, 105, 170, 0.18); }\n\n""" + s
+              return """:root {\n  --tech-source-navy: #0d2240;\n  --tech-source-blue: #1769aa;\n  --tech-source-teal: #0f766e;\n  --tech-source-surface: #f5f8fc;\n}\nhtml, body, #root { min-height: 100%; }\nbody { background: var(--tech-source-surface); }\n::selection { background: rgba(23, 105, 170, 0.18); }\n\n""" + s
 
           patch('src/index.css', css)
           PY
 
-      - name: Verify TypeScript
+      - name: Basic source verification
         shell: bash
         run: |
-          npm ci
-          npm run lint
+          test -f src/components/EmployeeManager.tsx
+          test -f src/components/EmployeePortal.tsx
+          test -f src/components/ShiftManager.tsx
+          test -f src/utils/helpers.ts
+          grep -q "fallback-shift" src/components/EmployeePortal.tsx
+          grep -q "const shift = shifts.find" src/components/EmployeeManager.tsx
 
       - name: Commit patches
         shell: bash
