@@ -1717,13 +1717,22 @@ const pushSync = async (
         item => item.employeeId === emp.id && item.date === todayStr
       );
 
-      const shift =
+      const baseShift =
         shifts.find(
           s =>
             s.id ===
             (dailyAssignment?.shiftId || emp.shiftId)
         ) ||
         shifts[0];
+
+      const shift = dailyAssignment?.startTime && dailyAssignment?.endTime
+        ? {
+            ...baseShift,
+            startTime: dailyAssignment.startTime,
+            endTime: dailyAssignment.endTime,
+            durationMinutes: dailyAssignment.durationMinutes || 480,
+          }
+        : baseShift;
 
 
       const currentRecs =
@@ -3016,12 +3025,11 @@ const pushSync = async (
       }
     };
 
-  const handleSaveDailyShift = (assignment: DailyShiftAssignment) => {
+  const handleSaveWeeklySchedule = (assignments: DailyShiftAssignment[]) => {
+    const assignmentKeys = new Set(assignments.map(item => `${item.employeeId}|${item.date}`));
     const next = [
-      ...dailyShiftAssignments.filter(
-        item => item.employeeId !== assignment.employeeId || item.date !== assignment.date
-      ),
-      assignment,
+      ...dailyShiftAssignments.filter(item => !assignmentKeys.has(`${item.employeeId}|${item.date}`)),
+      ...assignments,
     ];
     setDailyShiftAssignments(next);
     localStorage.setItem('daily_shift_assignments', JSON.stringify(next));
@@ -5915,7 +5923,7 @@ try {
 
             dailyShiftAssignments={dailyShiftAssignments}
 
-            onSaveDailyShift={handleSaveDailyShift}
+            onSaveWeeklySchedule={handleSaveWeeklySchedule}
 
             lang={
               lang
