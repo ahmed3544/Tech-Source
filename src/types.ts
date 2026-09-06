@@ -49,6 +49,15 @@ export interface Shift {
   workDays: number[]; // 0 = Sun, 1 = Mon, ...
 }
 
+/** A shift chosen for one employee on one calendar day. */
+export interface DailyShiftAssignment {
+  employeeId: string;
+  date: string; // YYYY-MM-DD
+  shiftId: string;
+  assignedBy?: string;
+  updatedAt: string;
+}
+
 export interface Employee {
   id: string;
   code: string; // e.g. "EMP001"
@@ -170,4 +179,5 @@ export interface Notification {
   createdAt: string;
   updatedAt: string;
 }
+
 
