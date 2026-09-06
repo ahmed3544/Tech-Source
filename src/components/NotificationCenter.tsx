@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
-import { Bell, CheckCheck, CalendarDays } from 'lucide-react';
+import { Bell, CheckCheck } from 'lucide-react';
 import { Notification, Language } from '../types';
-import { WeeklyShiftSchedule } from './WeeklyShiftSchedule';
 
 interface NotificationCenterProps {
   notifications: Notification[];
@@ -13,7 +12,6 @@ interface NotificationCenterProps {
 
 export const NotificationCenter: React.FC<NotificationCenterProps> = ({ notifications, currentUserId, lang, onMarkAsRead, onMarkAllAsRead }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const [showSchedule, setShowSchedule] = useState(false);
   const userNotifications = currentUserId ? notifications.filter(n => n.recipientId === currentUserId) : [];
   const unreadCount = userNotifications.filter(n => !n.isRead).length;
 
@@ -30,42 +28,35 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ notifica
   };
 
   return (
-    <>
-      <div className="relative flex items-center gap-1">
-        <button type="button" onClick={() => { setShowSchedule(true); setIsOpen(false); }} className="flex items-center gap-1.5 px-2.5 py-2 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 transition-colors" title={lang === 'ar' ? 'جدولي الأسبوعي' : 'My weekly schedule'}>
-          <CalendarDays size={18} />
-          <span className="hidden sm:inline text-xs font-bold">{lang === 'ar' ? 'جدول' : 'Schedule'}</span>
-        </button>
-        <button onClick={() => setIsOpen(!isOpen)} className="relative p-2 text-slate-300 hover:text-white transition-colors" aria-label={lang === 'ar' ? 'الإشعارات' : 'Notifications'}>
-          <Bell size={20} />
-          {unreadCount > 0 && <span className="absolute top-0 right-0 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-white transform translate-x-1/2 -translate-y-1/2 bg-red-500 rounded-full">{unreadCount}</span>}
-        </button>
-        {isOpen && (
-          <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-lg shadow-xl z-50 max-h-96 overflow-y-auto">
-            <div className="p-4 border-b border-gray-200 flex justify-between items-center">
-              <h3 className="font-semibold text-gray-900">{lang === 'ar' ? 'الإشعارات' : 'Notifications'}</h3>
-              {unreadCount > 0 && <button onClick={() => { onMarkAllAsRead?.(); setIsOpen(false); }} className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1"><CheckCheck size={14} />{lang === 'ar' ? 'اقرأ الكل' : 'Mark all read'}</button>}
-            </div>
-            {userNotifications.length === 0 ? <div className="p-8 text-center text-gray-500">{lang === 'ar' ? 'لا توجد إشعارات' : 'No notifications'}</div> : (
-              <div className="divide-y divide-gray-200">
-                {userNotifications.slice().sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).map(notification => (
-                  <div key={notification.id} className={`p-4 hover:bg-gray-50 transition-colors cursor-pointer ${!notification.isRead ? 'bg-blue-50' : ''}`} onClick={() => { if (!notification.isRead) onMarkAsRead?.(notification.id); }}>
-                    <div className="flex justify-between items-start gap-3">
-                      <div className="flex-1">
-                        <p className="font-medium text-gray-900">{getNotificationTitle(notification)}</p>
-                        <p className="text-sm text-gray-600 mt-1">{notification.message}</p>
-                        <p className="text-xs text-gray-400 mt-2">{new Date(notification.createdAt).toLocaleString(lang === 'ar' ? 'ar-EG' : 'en-US')}</p>
-                      </div>
-                      {!notification.isRead && <div className="w-2 h-2 bg-blue-600 rounded-full mt-1 flex-shrink-0" />}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+    <div className="relative flex items-center gap-1">
+      <button onClick={() => setIsOpen(!isOpen)} className="relative p-2 text-slate-300 hover:text-white transition-colors" aria-label={lang === 'ar' ? 'الإشعارات' : 'Notifications'}>
+        <Bell size={20} />
+        {unreadCount > 0 && <span className="absolute top-0 right-0 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-white transform translate-x-1/2 -translate-y-1/2 bg-red-500 rounded-full">{unreadCount}</span>}
+      </button>
+      {isOpen && (
+        <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-lg shadow-xl z-50 max-h-96 overflow-y-auto">
+          <div className="p-4 border-b border-gray-200 flex justify-between items-center">
+            <h3 className="font-semibold text-gray-900">{lang === 'ar' ? 'الإشعارات' : 'Notifications'}</h3>
+            {unreadCount > 0 && <button onClick={() => { onMarkAllAsRead?.(); setIsOpen(false); }} className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1"><CheckCheck size={14} />{lang === 'ar' ? 'اقرأ الكل' : 'Mark all read'}</button>}
           </div>
-        )}
-      </div>
-      {showSchedule && <WeeklyShiftSchedule lang={lang} onClose={() => setShowSchedule(false)} />}
-    </>
+          {userNotifications.length === 0 ? <div className="p-8 text-center text-gray-500">{lang === 'ar' ? 'لا توجد إشعارات' : 'No notifications'}</div> : (
+            <div className="divide-y divide-gray-200">
+              {userNotifications.slice().sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).map(notification => (
+                <div key={notification.id} className={`p-4 hover:bg-gray-50 transition-colors cursor-pointer ${!notification.isRead ? 'bg-blue-50' : ''}`} onClick={() => { if (!notification.isRead) onMarkAsRead?.(notification.id); }}>
+                  <div className="flex justify-between items-start gap-3">
+                    <div className="flex-1">
+                      <p className="font-medium text-gray-900">{getNotificationTitle(notification)}</p>
+                      <p className="text-sm text-gray-600 mt-1">{notification.message}</p>
+                      <p className="text-xs text-gray-400 mt-2">{new Date(notification.createdAt).toLocaleString(lang === 'ar' ? 'ar-EG' : 'en-US')}</p>
+                    </div>
+                    {!notification.isRead && <div className="w-2 h-2 bg-blue-600 rounded-full mt-1 flex-shrink-0" />}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 };
