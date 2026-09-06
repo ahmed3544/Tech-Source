@@ -39,7 +39,7 @@ jobs:
 
           def employee_portal(s):
               old = "return shifts.find(shift => shift.id === (assignment?.shiftId || emp?.shiftId)) || shifts[0];"
-              new = "return shifts.find(shift => shift.id === (assignment?.shiftId || emp?.shiftId)) || shifts[0] || { id: 'fallback-shift', nameAr: 'الدوام الموحد', nameEn: 'Standard Shift', startTime: '09:00', endTime: '17:00', gracePeriodMinutes: 0, workDays: [0, 1, 2, 3, 4], breaks: [] };"
+              new = "return shifts.find(shift => shift.id === assignment?.shiftId) || { id: 'fallback-shift', nameAr: 'غير محدد', nameEn: 'Unassigned', startTime: '09:00', endTime: '17:00', durationMinutes: 480, gracePeriodMinutes: 0, workDays: [0, 1, 2, 3, 4], breaks: [] };"
               return s.replace(old, new)
 
           def shift_manager(s):
@@ -54,11 +54,9 @@ jobs:
               return s
 
           def helpers(s):
-              # Never calculate overtime locally. Approval remains the source of truth.
               return re.sub(r"overtimeHours:\s*overtimeHours,", "overtimeHours: 0,", s, count=1)
 
           def server(s):
-              # Server is authoritative: punch calculations cannot turn extra minutes into overtime.
               needle = "calculated.updatedAt = new Date().toISOString();"
               if "const approvedOvertimeForPunch" in s:
                   return s
