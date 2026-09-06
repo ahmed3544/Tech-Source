@@ -136,12 +136,14 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
     return result;
   }, [rangeStart, rangeEnd]);
 
+  // A shift is assigned to an exact calendar date. The employee's legacy shiftId
+  // is intentionally NOT used here, otherwise one shift appears on every day.
   const assignmentFor = (employeeId: string, date: string) => assignments.find(a => a.employeeId === employeeId && a.date === date);
   const shiftFor = (employeeId: string, date: string) => {
     const assignment = assignmentFor(employeeId, date);
-    return shifts.find(s => s.id === (assignment?.shiftId || employees.find(e => e.id === employeeId)?.shiftId));
+    return assignment ? shifts.find(s => s.id === assignment.shiftId) : undefined;
   };
-  const getValue = (date: string) => draft[date] ?? assignmentFor(employee?.id || '', date)?.shiftId ?? employee?.shiftId ?? '';
+  const getValue = (date: string) => draft[date] ?? assignmentFor(employee?.id || '', date)?.shiftId ?? '';
 
   const saveWeek = async () => {
     if (!employee || !isLeader) return;
@@ -150,7 +152,9 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
     let next = [...assignments];
 
     for (const day of days) {
-      const shiftId = draft[day.key] ?? assignmentFor(employee.id, day.key)?.shiftId ?? employee.shiftId ?? '';
+      const draftValue = Object.prototype.hasOwnProperty.call(draft, day.key) ? draft[day.key] : undefined;
+      const existing = assignmentFor(employee.id, day.key);
+      const shiftId = draftValue !== undefined ? draftValue : existing?.shiftId || '';
       const existingIndex = next.findIndex(a => a.employeeId === employee.id && a.date === day.key);
       if (!shiftId) {
         if (existingIndex >= 0) next.splice(existingIndex, 1);
