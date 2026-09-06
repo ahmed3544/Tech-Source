@@ -1,0 +1,124 @@
+name: Move weekly schedule to navigation tab
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  move-schedule:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Update navigation and schedule tab
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          # ---------- App.tsx ----------
+          p = Path('src/App.tsx')
+          s = p.read_text(encoding='utf-8')
+
+          if "import { WeeklyShiftSchedule } from './components/WeeklyShiftSchedule';" not in s:
+              anchor = "import { ImportLeavesView } from './components/ImportLeavesView';"
+              assert anchor in s, 'App import anchor not found'
+              s = s.replace(anchor, anchor + "\nimport { WeeklyShiftSchedule } from './components/WeeklyShiftSchedule';", 1)
+
+          old_type = "      | 'analytics'\n      | 'portal'"
+          new_type = "      | 'analytics'\n      | 'schedule'\n      | 'portal'"
+          assert old_type in s, 'App activeTab type not found'
+          s = s.replace(old_type, new_type, 1)
+          # setActiveTab has the same union immediately after the first one.
+          assert old_type in s, 'App setActiveTab type not found'
+          s = s.replace(old_type, new_type, 1)
+
+          if "activeTab === 'schedule'" not in s:
+              # Insert the schedule view immediately before the employee portal view.
+              marker = "{activeTab === 'portal' && ("
+              assert marker in s, 'App portal render marker not found'
+              block = "{activeTab === 'schedule' && (\n          <WeeklyShiftSchedule\n            lang={lang}\n            onClose={() => setActiveTab(currentUser?.role === 'leader' || !currentUser ? 'dashboard' : 'portal')}\n          />\n        )}\n\n        "
+              s = s.replace(marker, block + marker, 1)
+
+          p.write_text(s, encoding='utf-8')
+
+          # ---------- Header.tsx ----------
+          p = Path('src/components/Header.tsx')
+          s = p.read_text(encoding='utf-8')
+          # Header itself only needs to know about the new tab; the tab is rendered below it.
+          old_union = "    | 'analytics'\n    | 'portal';"
+          new_union = "    | 'analytics'\n    | 'schedule'\n    | 'portal';"
+          assert old_union in s, 'Header activeTab union not found'
+          s = s.replace(old_union, new_union, 1)
+          old_union2 = "      | 'analytics'\n      | 'portal'\n  ) => void;"
+          new_union2 = "      | 'analytics'\n      | 'schedule'\n      | 'portal'\n  ) => void;"
+          assert old_union2 in s, 'Header setActiveTab union not found'
+          s = s.replace(old_union2, new_union2, 1)
+          p.write_text(s, encoding='utf-8')
+
+          # ---------- NotificationCenter.tsx ----------
+          p = Path('src/components/NotificationCenter.tsx')
+          s = p.read_text(encoding='utf-8')
+
+          # Remove the schedule button from the notification header.
+          s = s.replace("import { Bell, CheckCheck, CalendarDays } from 'lucide-react';", "import { Bell, CheckCheck } from 'lucide-react';")
+          s = s.replace("import { WeeklyShiftSchedule } from './WeeklyShiftSchedule';\n", "")
+          s = s.replace("  const [showSchedule, setShowSchedule] = useState(false);\n", "")
+
+          button_pattern = re.compile(r"\n\s*<button\s+type=\"button\"\s+onClick=\{\(\) => \{ showSchedule\(true\); setIsOpen\(false\); \}\}.*?</button>", re.S)
+          # Current code uses setShowSchedule; tolerate formatting differences.
+          button_pattern = re.compile(r"\n\s*<button\s+type=\"button\"\s+onClick=\{\(\) => \{\s*setShowSchedule\(true\);\s*setIsOpen\(false\);\s*\}\}.*?</button>", re.S)
+          s, n = button_pattern.subn('', s, count=1)
+          if n == 0:
+              # Fallback: remove the block containing the schedule title and CalendarDays icon.
+              fallback = re.compile(r"\n\s*<button\b[^>]*>.*?CalendarDays.*?</button>", re.S)
+              s, n = fallback.subn('', s, count=1)
+
+          # Remove the modal render that was attached to the old header button.
+          modal_pattern = re.compile(r"\n\s*\{showSchedule\s*&&\s*\(\s*<WeeklyShiftSchedule.*?/\>\s*\)\}", re.S)
+          s = modal_pattern.sub('', s, count=1)
+
+          # Remove stale state if a formatting variant survived.
+          s = s.replace("  const [showSchedule, setShowSchedule] = useState(false);\n", "")
+          p.write_text(s, encoding='utf-8')
+
+          # ---------- Add a navigation bar to App.tsx ----------
+          p = Path('src/App.tsx')
+          s = p.read_text(encoding='utf-8')
+          if 'data-schedule-navigation' not in s:
+              # Insert just after Header closes. We locate the first Header component closing tag in the main return.
+              marker = "      />\n\n      <main"
+              assert marker in s, 'App Header/main boundary not found'
+              nav = '''      />\n\n      <nav data-schedule-navigation className="border-b border-slate-800 bg-slate-950/95 sticky top-[72px] z-20">\n        <div className="max-w-7xl mx-auto px-4 sm:px-6 overflow-x-auto">\n          <div className="flex items-center gap-1 min-w-max py-1.5">\n            {([\n              ['dashboard', lang === 'ar' ? 'لوحة التحكم' : 'Dashboard'],\n              ['kiosk', lang === 'ar' ? 'تسجيل الحضور' : 'Check In'],\n              ['attendance', lang === 'ar' ? 'سجل اليوم' : 'Today'],\n              ['employees', lang === 'ar' ? 'الموظفين' : 'Employees'],\n              ['leaves', lang === 'ar' ? 'الطلبات' : 'Requests'],\n              ['portal', lang === 'ar' ? 'حساب الموظف' : 'Employee Account'],\n              ['analytics', lang === 'ar' ? 'التقارير' : 'Reports'],\n              ['schedule', lang === 'ar' ? 'الجدول' : 'Schedule'],\n            ] as const).map(([tab, label]) => (\n              <button\n                key={tab}\n                type="button"\n                onClick={() => setActiveTab(tab)}\n                className={`px-3 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition ${activeTab === tab ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30' : 'text-slate-400 hover:text-white hover:bg-slate-800 border border-transparent'}`}\n              >\n                {label}\n              </button>\n            ))}\n          </div>\n        </div>\n      </nav>\n\n      <main'''
+              s = s.replace(marker, nav, 1)
+          p.write_text(s, encoding='utf-8')
+          PY
+
+      - name: TypeScript check
+        run: |
+          npm ci
+          npx tsc --noEmit
+
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/App.tsx src/components/Header.tsx src/components/NotificationCenter.tsx
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "Move weekly schedule into navigation tab"
+          git push
+
+      - name: Remove temporary workflow
+        if: always()
+        run: |
+          git rm -f .github/workflows/move-schedule-to-tab.yml || true
+          git commit -m "Remove temporary schedule migration workflow" || true
+          git push || true
