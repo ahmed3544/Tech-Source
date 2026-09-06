@@ -2291,7 +2291,28 @@ app.post(
         }
 
         if (Array.isArray(b.dailyShiftAssignments)) {
-          await setting("dailyShiftAssignments", b.dailyShiftAssignments);
+          const incoming = b.dailyShiftAssignments;
+          await db.transaction(async (tx) => {
+            const rows = await tx.execute(sql`SELECT value FROM settings WHERE key = 'dailyShiftAssignments' FOR UPDATE`);
+            const current = Array.isArray(rows?.[0]?.value) ? rows[0].value : [];
+            const map = new Map();
+            for (const item of current) {
+              if (item?.employeeId && item?.date) map.set(`${item.employeeId}|${item.date}`, item);
+            }
+            for (const item of incoming) {
+              if (!item?.employeeId || !item?.date) continue;
+              const key = `${item.employeeId}|${item.date}`;
+              const existing = map.get(key);
+              const incomingTime = Date.parse(String(item.updatedAt || 0));
+              const existingTime = Date.parse(String(existing?.updatedAt || 0));
+              if (!existing || !Number.isFinite(existingTime) || (Number.isFinite(incomingTime) && incomingTime >= existingTime)) {
+                map.set(key, item);
+              }
+            }
+            await tx.update(schema.settings)
+              .set({ value: Array.from(map.values()) })
+              .where(sql`${schema.settings.key} = 'dailyShiftAssignments'`);
+          });
         }
         if (Array.isArray(b.shiftSwapRequests)) {
           await setting("shiftSwapRequests", b.shiftSwapRequests);
