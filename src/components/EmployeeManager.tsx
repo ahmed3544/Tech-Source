@@ -295,7 +295,7 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {filtered.map((emp) => {
-                  const shift = shifts.find(s => s.id === emp.shiftId) || shifts[0];
+                  const shift = shifts.find(s => s.id === emp.shiftId) || shifts[0] || { startTime: '09:00', endTime: '17:00', nameAr: 'الوردية الصباحية', nameEn: 'Morning Shift' };
                   const isLeaderRole = emp.role === 'leader';
                   const leaveDays = emp.annualLeaveBalance ?? ((emp.casualLeaveBalance ?? 7) + (emp.regularLeaveBalance ?? 8));
 
@@ -396,7 +396,7 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
         /* VIEW MODE 2: GRID VIEW */
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {filtered.map((emp) => {
-            const shift = shifts.find(s => s.id === emp.shiftId) || shifts[0];
+            const shift = shifts.find(s => s.id === emp.shiftId) || shifts[0] || { startTime: '09:00', endTime: '17:00', nameAr: 'الوردية الصباحية', nameEn: 'Morning Shift' };
             const isLeaderRole = emp.role === 'leader';
 
             return (
