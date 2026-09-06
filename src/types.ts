@@ -49,11 +49,14 @@ export interface Shift {
   workDays: number[]; // 0 = Sun, 1 = Mon, ...
 }
 
-/** A shift chosen for one employee on one calendar day. */
+/** A manually scheduled shift for one employee on one calendar day. */
 export interface DailyShiftAssignment {
   employeeId: string;
   date: string; // YYYY-MM-DD
-  shiftId: string;
+  startTime: string; // HH:mm
+  endTime: string; // HH:mm
+  durationMinutes?: number; // Defaults to 8 hours when omitted
+  shiftId?: string; // Legacy/default template for old assignments
   assignedBy?: string;
   updatedAt: string;
 }
