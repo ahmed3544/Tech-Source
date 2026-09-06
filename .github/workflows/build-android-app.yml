@@ -9,6 +9,7 @@ on:
       - 'src/**'
       - 'index.html'
       - 'public/**'
+      - 'scripts/**'
       - '.github/workflows/build-android-app.yml'
 
 jobs:
@@ -33,11 +34,14 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Build web app
+      - name: Build web app and generate company app icons
         run: npm run build
 
       - name: Create Android project
         run: npx cap add android
+
+      - name: Generate Android app icon from company logo
+        run: npx -y @capacitor/assets generate --android
 
       - name: Sync Capacitor
         run: npx cap sync android
