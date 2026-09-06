@@ -165,7 +165,7 @@ function shiftFor(e: any, date?: string) {
       String(assignment.date) === String(date || "")
   );
 
-  return (
+  const template = (
     localState.shifts.find(
       (s: any) =>
         String(s.id) === String(daily?.shiftId || e?.shiftId)
@@ -176,6 +176,19 @@ function shiftFor(e: any, date?: string) {
       gracePeriodMinutes: 10,
     }
   );
+
+  // A leader may set the start/end time for this date independently of the
+  // employee's old default shift. Eight hours remains the required duration.
+  if (daily?.startTime && daily?.endTime) {
+    return {
+      ...template,
+      startTime: daily.startTime,
+      endTime: daily.endTime,
+      durationMinutes: Number(daily.durationMinutes || 480),
+    };
+  }
+
+  return template;
 }
 
 /*
