@@ -34,23 +34,19 @@ jobs:
           new_type = "      | 'analytics'\n      | 'schedule'\n      | 'portal'"
           assert old_type in s, 'App activeTab type not found'
           s = s.replace(old_type, new_type, 1)
-          # setActiveTab has the same union immediately after the first one.
           assert old_type in s, 'App setActiveTab type not found'
           s = s.replace(old_type, new_type, 1)
 
           if "activeTab === 'schedule'" not in s:
-              # Insert the schedule view immediately before the employee portal view.
-              marker = "{activeTab === 'portal' && ("
-              assert marker in s, 'App portal render marker not found'
+              portal_marker = re.compile(r"\{activeTab\s*===\s*['\"]portal['\"]\s*&&\s*\(", re.S)
+              match = portal_marker.search(s)
+              assert match, 'App portal render marker not found'
               block = "{activeTab === 'schedule' && (\n          <WeeklyShiftSchedule\n            lang={lang}\n            onClose={() => setActiveTab(currentUser?.role === 'leader' || !currentUser ? 'dashboard' : 'portal')}\n          />\n        )}\n\n        "
-              s = s.replace(marker, block + marker, 1)
-
-          p.write_text(s, encoding='utf-8')
+              s = s[:match.start()] + block + s[match.start():]
 
           # ---------- Header.tsx ----------
           p = Path('src/components/Header.tsx')
           s = p.read_text(encoding='utf-8')
-          # Header itself only needs to know about the new tab; the tab is rendered below it.
           old_union = "    | 'analytics'\n    | 'portal';"
           new_union = "    | 'analytics'\n    | 'schedule'\n    | 'portal';"
           assert old_union in s, 'Header activeTab union not found'
@@ -64,38 +60,23 @@ jobs:
           # ---------- NotificationCenter.tsx ----------
           p = Path('src/components/NotificationCenter.tsx')
           s = p.read_text(encoding='utf-8')
-
-          # Remove the schedule button from the notification header.
           s = s.replace("import { Bell, CheckCheck, CalendarDays } from 'lucide-react';", "import { Bell, CheckCheck } from 'lucide-react';")
           s = s.replace("import { WeeklyShiftSchedule } from './WeeklyShiftSchedule';\n", "")
           s = s.replace("  const [showSchedule, setShowSchedule] = useState(false);\n", "")
-
-          button_pattern = re.compile(r"\n\s*<button\s+type=\"button\"\s+onClick=\{\(\) => \{ showSchedule\(true\); setIsOpen\(false\); \}\}.*?</button>", re.S)
-          # Current code uses setShowSchedule; tolerate formatting differences.
-          button_pattern = re.compile(r"\n\s*<button\s+type=\"button\"\s+onClick=\{\(\) => \{\s*setShowSchedule\(true\);\s*setIsOpen\(false\);\s*\}\}.*?</button>", re.S)
-          s, n = button_pattern.subn('', s, count=1)
-          if n == 0:
-              # Fallback: remove the block containing the schedule title and CalendarDays icon.
-              fallback = re.compile(r"\n\s*<button\b[^>]*>.*?CalendarDays.*?</button>", re.S)
-              s, n = fallback.subn('', s, count=1)
-
-          # Remove the modal render that was attached to the old header button.
-          modal_pattern = re.compile(r"\n\s*\{showSchedule\s*&&\s*\(\s*<WeeklyShiftSchedule.*?/\>\s*\)\}", re.S)
-          s = modal_pattern.sub('', s, count=1)
-
-          # Remove stale state if a formatting variant survived.
+          s = re.sub(r"\n\s*<button\s+type=\"button\"\s+onClick=\{\(\) => \{\s*setShowSchedule\(true\);\s*setIsOpen\(false\);\s*\}\}.*?</button>", "", s, count=1, flags=re.S)
+          s = re.sub(r"\n\s*\{showSchedule\s*&&\s*\(\s*<WeeklyShiftSchedule.*?/\>\s*\)\}", "", s, count=1, flags=re.S)
           s = s.replace("  const [showSchedule, setShowSchedule] = useState(false);\n", "")
           p.write_text(s, encoding='utf-8')
 
-          # ---------- Add a navigation bar to App.tsx ----------
-          p = Path('src/App.tsx')
+          # ---------- Add the schedule tab to the existing Header navigation ----------
+          p = Path('src/components/Header.tsx')
           s = p.read_text(encoding='utf-8')
-          if 'data-schedule-navigation' not in s:
-              # Insert just after Header closes. We locate the first Header component closing tag in the main return.
-              marker = "      />\n\n      <main"
-              assert marker in s, 'App Header/main boundary not found'
-              nav = '''      />\n\n      <nav data-schedule-navigation className="border-b border-slate-800 bg-slate-950/95 sticky top-[72px] z-20">\n        <div className="max-w-7xl mx-auto px-4 sm:px-6 overflow-x-auto">\n          <div className="flex items-center gap-1 min-w-max py-1.5">\n            {([\n              ['dashboard', lang === 'ar' ? 'لوحة التحكم' : 'Dashboard'],\n              ['kiosk', lang === 'ar' ? 'تسجيل الحضور' : 'Check In'],\n              ['attendance', lang === 'ar' ? 'سجل اليوم' : 'Today'],\n              ['employees', lang === 'ar' ? 'الموظفين' : 'Employees'],\n              ['leaves', lang === 'ar' ? 'الطلبات' : 'Requests'],\n              ['portal', lang === 'ar' ? 'حساب الموظف' : 'Employee Account'],\n              ['analytics', lang === 'ar' ? 'التقارير' : 'Reports'],\n              ['schedule', lang === 'ar' ? 'الجدول' : 'Schedule'],\n            ] as const).map(([tab, label]) => (\n              <button\n                key={tab}\n                type="button"\n                onClick={() => setActiveTab(tab)}\n                className={`px-3 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition ${activeTab === tab ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30' : 'text-slate-400 hover:text-white hover:bg-slate-800 border border-transparent'}`}\n              >\n                {label}\n              </button>\n            ))}\n          </div>\n        </div>\n      </nav>\n\n      <main'''
-              s = s.replace(marker, nav, 1)
+          if "setActiveTab('schedule')" not in s:
+              analytics_pattern = re.compile(r"(<button\s+onClick=\{\(\) => setActiveTab\('analytics'\)\}.*?</button>)", re.S)
+              match = analytics_pattern.search(s)
+              assert match, 'Header analytics navigation button not found'
+              schedule_button = '''\n              <button\n                onClick={() => setActiveTab('schedule')}\n                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${\n                  activeTab === 'schedule'\n                    ? 'bg-[#0d2240] text-white font-bold border border-blue-900 shadow-md'\n                    : 'text-slate-400 hover:text-white hover:bg-slate-800'\n                }`}\n              >\n                <CalendarCheck className="w-4 h-4 text-emerald-400" />\n                <span>\n                  {lang === 'ar' ? 'الجدول' : 'Schedule'}\n                </span>\n              </button>'''
+              s = s[:match.end()] + schedule_button + s[match.end():]
           p.write_text(s, encoding='utf-8')
           PY
 
