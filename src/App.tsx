@@ -32,7 +32,6 @@ import {
 
 import {
   INITIAL_EMPLOYEES,
-  INITIAL_SHIFTS,
   INITIAL_ATTENDANCE,
   INITIAL_LEAVES,
   INITIAL_OFFICIAL_HOLIDAYS
@@ -1850,6 +1849,15 @@ const pushSync = async (
             (dailyAssignment?.shiftId || emp.shiftId)
         ) ||
         shifts[0];
+
+      if (!shift) {
+        alert(
+          lang === 'ar'
+            ? 'لا توجد وردية محددة لهذا الموظف اليوم. يرجى الرجوع إلى التيم ليدر لتحديد الجدول.'
+            : 'No shift is assigned for this employee today. Please contact the team leader.'
+        );
+        return;
+      }
 
 
       const currentRecs =

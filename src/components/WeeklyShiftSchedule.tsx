@@ -52,7 +52,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
 
   useEffect(() => {
     if (suppliedEmployees) setEmployees(suppliedEmployees);
-    if (suppliedShifts?.length) setShifts(suppliedShifts);
+    if (suppliedShifts) setShifts(suppliedShifts);
     if (suppliedAssignments) setAssignments(suppliedAssignments);
     if (suppliedUser) {
       setCurrentUser(suppliedUser);
