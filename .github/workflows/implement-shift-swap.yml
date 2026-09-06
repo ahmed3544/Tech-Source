@@ -1,0 +1,78 @@
+name: Implement Shift Swap
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/implement-shift-swap.yml'
+permissions:
+  contents: write
+jobs:
+  implement:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Implement shift swap
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          root = Path('.')
+
+          # types.ts
+          p = root/'src/types.ts'
+          s = p.read_text(encoding='utf-8')
+          marker = "export interface Employee {"
+          if 'export interface ShiftSwapRequest {' not in s:
+              block = '''export type ShiftSwapStatus = 'pending' | 'approved' | 'rejected';\n\nexport interface ShiftSwapRequest {\n  id: string;\n  requesterId: string;\n  targetEmployeeId: string;\n  date: string;\n  requesterShiftId: string;\n  targetShiftId: string;\n  status: ShiftSwapStatus;\n  createdAt: string;\n  reviewedBy?: string;\n  reviewedAt?: string;\n}\n\n'''
+              s = s.replace(marker, block + marker, 1)
+              p.write_text(s, encoding='utf-8')
+
+          # server state + settings persistence
+          p = root/'server.ts'
+          s = p.read_text(encoding='utf-8')
+          s = s.replace('  dailyShiftAssignments: any[];\n', '  dailyShiftAssignments: any[];\n  shiftSwapRequests: any[];\n', 1)
+          s = s.replace('  dailyShiftAssignments: [],\n  companyNameAr:', '  dailyShiftAssignments: [],\n  shiftSwapRequests: [],\n  companyNameAr:', 1)
+          s = s.replace('      dailyShiftAssignments: Array.isArray(d.dailyShiftAssignments)\n        ? d.dailyShiftAssignments\n        : [],\n', '      dailyShiftAssignments: Array.isArray(d.dailyShiftAssignments)\n        ? d.dailyShiftAssignments\n        : [],\n      shiftSwapRequests: Array.isArray(d.shiftSwapRequests)\n        ? d.shiftSwapRequests\n        : [],\n', 1)
+          s = s.replace('    if (s.key === "dailyShiftAssignments") {\n      localState.dailyShiftAssignments = Array.isArray(s.value) ? s.value : [];\n    }\n', '    if (s.key === "dailyShiftAssignments") {\n      localState.dailyShiftAssignments = Array.isArray(s.value) ? s.value : [];\n    }\n    if (s.key === "shiftSwapRequests") {\n      localState.shiftSwapRequests = Array.isArray(s.value) ? s.value : [];\n    }\n', 1)
+          s = s.replace('        if (Array.isArray(b.dailyShiftAssignments)) {\n          await setting("dailyShiftAssignments", b.dailyShiftAssignments);\n        }\n', '        if (Array.isArray(b.dailyShiftAssignments)) {\n          await setting("dailyShiftAssignments", b.dailyShiftAssignments);\n        }\n        if (Array.isArray(b.shiftSwapRequests)) {\n          await setting("shiftSwapRequests", b.shiftSwapRequests);\n        }\n', 1)
+          s = s.replace('      if (Array.isArray(b.dailyShiftAssignments)) {\n        localState.dailyShiftAssignments = b.dailyShiftAssignments;\n      }\n', '      if (Array.isArray(b.dailyShiftAssignments)) {\n        localState.dailyShiftAssignments = b.dailyShiftAssignments;\n      }\n      if (Array.isArray(b.shiftSwapRequests)) {\n        localState.shiftSwapRequests = b.shiftSwapRequests;\n      }\n', 1)
+          p.write_text(s, encoding='utf-8')
+
+          # New UI panel
+          p = root/'src/components/ShiftSwapPanel.tsx'
+          p.write_text('''import React, { useEffect, useMemo, useState } from 'react';\nimport { ArrowLeftRight, Check, Clock3, X } from 'lucide-react';\nimport { DailyShiftAssignment, Employee, Language, Shift, ShiftSwapRequest } from '../types';\n\ninterface Props {\n  employees: Employee[];\n  shifts: Shift[];\n  assignments: DailyShiftAssignment[];\n  currentUser: Employee | null;\n  lang: Language;\n}\n\nconst key = (e: string, d: string) => `${e}|${d}`;\n\nexport const ShiftSwapPanel: React.FC<Props> = ({ employees, shifts, assignments, currentUser, lang }) => {\n  const [requests, setRequests] = useState<ShiftSwapRequest[]>([]);\n  const [date, setDate] = useState('');\n  const [targetId, setTargetId] = useState('');\n  const [loading, setLoading] = useState(false);\n  const isLeader = currentUser?.role === 'leader' || currentUser?.role === 'admin';\n  const team = useMemo(() => {\n    if (!currentUser) return [];\n    if (currentUser.role === 'admin') return employees.filter(e => e.id !== currentUser.id && e.status === 'active');\n    const explicit = employees.some(e => e.teamLeaderId === currentUser.id);\n    return employees.filter(e => e.status === 'active' && e.id !== currentUser.id && (explicit ? e.teamLeaderId === currentUser.id : (!currentUser.teamId || e.teamId === currentUser.teamId)));\n  }, [employees, currentUser]);\n\n  const shiftAt = (employeeId: string, day: string) => {\n    const a = assignments.find(x => x.employeeId === employeeId && x.date === day);\n    return shifts.find(s => s.id === (a?.shiftId || employees.find(e => e.id === employeeId)?.shiftId));\n  };\n\n  const save = async (next: ShiftSwapRequest[]) => {\n    setRequests(next);\n    localStorage.setItem('shift_swap_requests', JSON.stringify(next));\n    try { await fetch('/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shiftSwapRequests: next }) }); } catch {}\n  };\n\n  useEffect(() => {\n    let cancelled = false;\n    (async () => {\n      try {\n        const local = localStorage.getItem('shift_swap_requests');\n        if (local) setRequests(JSON.parse(local));\n        const r = await fetch('/api/data');\n        if (r.ok) { const d = await r.json(); if (!cancelled && Array.isArray(d.shiftSwapRequests)) { setRequests(d.shiftSwapRequests); localStorage.setItem('shift_swap_requests', JSON.stringify(d.shiftSwapRequests)); } }\n      } catch {}\n    })();\n    return () => { cancelled = true; };\n  }, []);\n\n  const submit = async () => {\n    if (!currentUser || !date || !targetId || targetId === currentUser.id) return;\n    const mine = shiftAt(currentUser.id, date);\n    const theirs = shiftAt(targetId, date);\n    if (!mine || !theirs) return;\n    const exists = requests.some(r => r.status === 'pending' && r.date === date && ((r.requesterId === currentUser.id && r.targetEmployeeId === targetId) || (r.requesterId === targetId && r.targetEmployeeId === currentUser.id)));\n    if (exists) return;\n    const req: ShiftSwapRequest = { id: `swap-${Date.now()}-${Math.random().toString(36).slice(2,8)}`, requesterId: currentUser.id, targetEmployeeId: targetId, date, requesterShiftId: mine.id, targetShiftId: theirs.id, status: 'pending', createdAt: new Date().toISOString() };\n    await save([...requests, req]);\n    setTargetId('');\n  };\n\n  const review = async (request: ShiftSwapRequest, status: 'approved' | 'rejected') => {\n    if (!isLeader) return;\n    setLoading(true);\n    const nextRequests = requests.map(r => r.id === request.id ? { ...r, status, reviewedBy: currentUser?.id, reviewedAt: new Date().toISOString() } : r);\n    if (status === 'approved') {\n      const nextAssignments = [...assignments];\n      const a = nextAssignments.findIndex(x => key(x.employeeId, x.date) === key(request.requesterId, request.date));\n      const b = nextAssignments.findIndex(x => key(x.employeeId, x.date) === key(request.targetEmployeeId, request.date));\n      const now = new Date().toISOString();\n      const requesterAssignment = { employeeId: request.requesterId, date: request.date, shiftId: request.targetShiftId, assignedBy: currentUser?.id, updatedAt: now };\n      const targetAssignment = { employeeId: request.targetEmployeeId, date: request.date, shiftId: request.requesterShiftId, assignedBy: currentUser?.id, updatedAt: now };\n      if (a >= 0) nextAssignments[a] = requesterAssignment; else nextAssignments.push(requesterAssignment);\n      if (b >= 0) nextAssignments[b] = targetAssignment; else nextAssignments.push(targetAssignment);\n      localStorage.setItem('daily_shift_assignments', JSON.stringify(nextAssignments));\n      try { await fetch('/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dailyShiftAssignments: nextAssignments, shiftSwapRequests: nextRequests }) }); } catch {}\n    } else {\n      try { await fetch('/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shiftSwapRequests: nextRequests }) }); } catch {}\n    }\n    setRequests(nextRequests);\n    setLoading(false);\n  };\n\n  const visibleRequests = isLeader ? requests.filter(r => team.some(e => e.id === r.requesterId || e.id === r.targetEmployeeId)) : requests.filter(r => r.requesterId === currentUser?.id || r.targetEmployeeId === currentUser?.id);\n  const name = (id: string) => { const e = employees.find(x => x.id === id); return e ? (lang === 'ar' ? e.nameAr : e.nameEn) : id; };\n  const shiftName = (id: string) => { const s = shifts.find(x => x.id === id); return s ? `${lang === 'ar' ? s.nameAr : s.nameEn} · ${s.startTime}-${s.endTime}` : '—'; };\n\n  return <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4 space-y-4">\n    <div className="flex items-center gap-2"><ArrowLeftRight className="w-4 h-4 text-emerald-600" /><h4 className="text-sm font-black text-slate-900">{lang === 'ar' ? 'تبديل الشفت' : 'Shift Swap'}</h4></div>\n    {!isLeader && currentUser && <div className="grid grid-cols-1 md:grid-cols-3 gap-3">\n      <label className="text-xs font-bold text-slate-700">{lang === 'ar' ? 'التاريخ' : 'Date'}<input type="date" value={date} onChange={e => setDate(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2" /></label>\n      <label className="text-xs font-bold text-slate-700">{lang === 'ar' ? 'التبديل مع' : 'Swap With'}<select value={targetId} onChange={e => setTargetId(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2"><option value="">{lang === 'ar' ? 'اختيار الموظف' : 'Select employee'}</option>{team.map(e => <option key={e.id} value={e.id}>{e.code} - {lang === 'ar' ? e.nameAr : e.nameEn}</option>)}</select></label>\n      <div className="flex items-end"><button type="button" onClick={submit} className="w-full rounded-xl bg-emerald-600 text-white px-4 py-2.5 text-xs font-black">{lang === 'ar' ? 'إرسال الطلب' : 'Submit Request'}</button></div>\n    </div>}\n    <div className="space-y-2">\n      {visibleRequests.length === 0 ? <div className="text-xs text-slate-500">{lang === 'ar' ? 'لا توجد طلبات تبديل.' : 'No shift swap requests.'}</div> : visibleRequests.map(r => <div key={r.id} className="rounded-xl border border-slate-200 bg-white p-3">\n        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">\n          <div className="min-w-0"><div className="text-xs font-black text-slate-900">{name(r.requesterId)} ↔ {name(r.targetEmployeeId)}</div><div className="text-[11px] text-slate-500 mt-1">{r.date} · {shiftName(r.requesterShiftId)} ↔ {shiftName(r.targetShiftId)}</div></div>\n          <div className="flex items-center gap-2">\n            <span className={`text-[10px] font-black px-2 py-1 rounded-lg ${r.status === 'approved' ? 'bg-emerald-50 text-emerald-700' : r.status === 'rejected' ? 'bg-rose-50 text-rose-700' : 'bg-amber-50 text-amber-700'}`}>{r.status === 'approved' ? (lang === 'ar' ? 'معتمد' : 'Approved') : r.status === 'rejected' ? (lang === 'ar' ? 'مرفوض' : 'Rejected') : (lang === 'ar' ? 'قيد المراجعة' : 'Pending')}</span>\n            {isLeader && r.status === 'pending' && <><button disabled={loading} type="button" onClick={() => review(r, 'approved')} className="p-2 rounded-lg bg-emerald-50 text-emerald-700"><Check className="w-4 h-4" /></button><button disabled={loading} type="button" onClick={() => review(r, 'rejected')} className="p-2 rounded-lg bg-rose-50 text-rose-700"><X className="w-4 h-4" /></button></>}\n          </div>\n        </div>\n      </div>)}\n    </div>\n  </section>;\n};\n''', encoding='utf-8')
+
+          # Weekly schedule integration
+          p = root/'src/components/WeeklyShiftSchedule.tsx'
+          s = p.read_text(encoding='utf-8')
+          if "import { ShiftSwapPanel }" not in s:
+              s = s.replace("import { ShiftManager } from './ShiftManager';\n", "import { ShiftManager } from './ShiftManager';\nimport { ShiftSwapPanel } from './ShiftSwapPanel';\n", 1)
+          needle = '        </div>\n      </section>\n      {showShiftManager'
+          if 'ShiftSwapPanel' not in s[s.find('return ('):]:
+              s = s.replace(needle, '          <ShiftSwapPanel employees={employees} shifts={shifts} assignments={assignments} currentUser={currentUser} lang={lang} />\n        </div>\n      </section>\n      {showShiftManager', 1)
+          s = s.replace("{lang === 'ar' ? 'إدارة الورديات' : 'Manage Shifts'}", "{lang === 'ar' ? 'إدارة الشفتات' : 'Manage Shifts'}")
+          s = s.replace("{lang === 'ar' ? 'إدارة الورديات' : 'Shift Management'}", "{lang === 'ar' ? 'إدارة الشفتات' : 'Shift Management'}")
+          s = s.replace("{lang === 'ar' ? 'حدد الوردية لكل يوم ثم احفظ الجدول.' : 'Assign a shift for each day and save.'}", "{lang === 'ar' ? 'حدد الشفت لكل يوم ثم احفظ الجدول.' : 'Assign a shift for each day and save.'}")
+          s = s.replace("{lang === 'ar' ? 'الجدول الأسبوعي ومواعيد الورديات والاستراحات.' : 'Weekly schedule, shift times, and breaks.'}", "{lang === 'ar' ? 'الجدول الأسبوعي ومواعيد الشفتات والبريك.' : 'Weekly schedule, shift times, and breaks.'}")
+          s = s.replace("(lang === 'ar' ? 'بدون شفت' : 'No shift')", "(lang === 'ar' ? 'غير محدد' : 'Not assigned')")
+          p.write_text(s, encoding='utf-8')
+
+      - name: TypeScript check
+        run: |
+          npm ci
+          npx tsc --noEmit
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/types.ts src/components/ShiftSwapPanel.tsx src/components/WeeklyShiftSchedule.tsx server.ts
+          git diff --cached --quiet || git commit -m "Add team leader shift swap approval"
+          git push
+      - name: Remove temporary workflow
+        if: success()
+        run: |
+          rm -f .github/workflows/implement-shift-swap.yml
+          git add .github/workflows/implement-shift-swap.yml
+          git commit -m "Remove temporary shift swap workflow" || true
+          git push || true
