@@ -1,4 +1,4 @@
-name: Safe employee shift fallback
+name: Safe attendance and shift rules
 
 on:
   push:
@@ -15,26 +15,89 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Patch unsafe shift rendering
+      - name: Apply guarded patches
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
-          p = Path('src/components/EmployeeManager.tsx')
-          s = p.read_text(encoding='utf-8')
-          old = "const shift = shifts.find(s => s.id === emp.shiftId) || shifts[0];"
-          new = "const shift = shifts.find(s => s.id === emp.shiftId) || shifts[0] || { startTime: '09:00', endTime: '17:00', nameAr: 'الوردية الصباحية', nameEn: 'Morning Shift' };"
-          if old not in s:
-              raise SystemExit('Expected EmployeeManager shift expression was not found')
-          p.write_text(s.replace(old, new), encoding='utf-8')
+          import re
+
+          def patch(path, fn):
+              p = Path(path)
+              s = p.read_text(encoding='utf-8')
+              out = fn(s)
+              if out == s:
+                  print(f'No change: {path}')
+              else:
+                  p.write_text(out, encoding='utf-8')
+                  print(f'Patched: {path}')
+
+          # Prevent the employee screens from crashing when the shift list is temporarily empty.
+          def employee_manager(s):
+              old = "const shift = shifts.find(s => s.id === emp.shiftId) || shifts[0];"
+              new = "const shift = shifts.find(s => s.id === emp.shiftId) || shifts[0] || { startTime: '09:00', endTime: '17:00', nameAr: 'الدوام الموحد', nameEn: 'Standard Shift' };"
+              return s.replace(old, new)
+
+          def employee_portal(s):
+              old = "return shifts.find(shift => shift.id === (assignment?.shiftId || emp?.shiftId)) || shifts[0];"
+              new = "return shifts.find(shift => shift.id === (assignment?.shiftId || emp?.shiftId)) || shifts[0] || { id: 'fallback-shift', nameAr: 'الدوام الموحد', nameEn: 'Standard Shift', startTime: '09:00', endTime: '17:00', gracePeriodMinutes: 0, workDays: [0, 1, 2, 3, 4], breaks: [] };"
+              return s.replace(old, new)
+
+          # Shift names are no longer part of scheduling. Keep legacy fields internally for compatibility,
+          # but derive them from the selected time so existing data/API contracts remain intact.
+          def shift_manager(s):
+              s = s.replace(
+                  "if (!formData.nameAr || !formData.nameEn || !formData.startTime || !formData.endTime) {\n      alert(lang === 'ar' ? 'الرجاء ملء اسم الشفت ووقت البداية والنهاية' : 'Please fill the shift name, start time and end time');",
+                  "if (!formData.startTime || !formData.endTime) {\n      alert(lang === 'ar' ? 'الرجاء تحديد وقت بداية ونهاية الشفت' : 'Please select the shift start and end time');"
+              )
+              s = s.replace(
+                  "nameAr: formData.nameAr,\n      nameEn: formData.nameEn,",
+                  "nameAr: `${formData.startTime} - ${formData.endTime}`,\n      nameEn: `${formData.startTime} - ${formData.endTime}`,"
+              )
+              s = re.sub(
+                  r"\s*<div className=\"grid grid-cols-1 md:grid-cols-2 gap-4\">\s*<label[^>]*>\{lang === 'ar' \? 'اسم الشفت \(عربي\)'[^<]*<input[^>]*\/>\s*<\/label>\s*<label[^>]*>\{lang === 'ar' \? 'اسم الشفت \(إنجليزي\)'[^<]*<input[^>]*\/>\s*<\/label>\s*<\/div>",
+                  "",
+                  s,
+                  count=1
+              )
+              return s
+
+          # Client-side attendance calculation must never create overtime automatically.
+          # Approved overtime is handled by the existing overtime request/approval flow.
+          def helpers(s):
+              s2 = re.sub(r"overtimeHours:\s*overtimeHours,", "overtimeHours: 0,", s, count=1)
+              if s2 != s:
+                  return s2
+              # Fallback for the current implementation if the object is formatted differently.
+              s2 = re.sub(r"overtimeHours:\s*Math\.max\([^\n]+\),", "overtimeHours: 0,", s, count=1)
+              return s2
+
+          patch('src/components/EmployeeManager.tsx', employee_manager)
+          patch('src/components/EmployeePortal.tsx', employee_portal)
+          patch('src/components/ShiftManager.tsx', shift_manager)
+          patch('src/utils/helpers.ts', helpers)
+
+          # Brand-safe global polish without replacing the existing component/layout system.
+          def css(s):
+              if ':root' in s:
+                  return s
+              return """:root {\n  --tech-source-navy: #0d2240;\n  --tech-source-blue: #1769aa;\n  --tech-source-teal: #0f766e;\n  --tech-source-surface: #f5f8fc;\n}\n\nhtml, body, #root { min-height: 100%; }\nbody { background: var(--tech-source-surface); }\n::selection { background: rgba(23, 105, 170, 0.18); }\n\n""" + s
+
+          patch('src/index.css', css)
           PY
 
-      - name: Commit fix
+      - name: Verify TypeScript
+        shell: bash
+        run: |
+          npm ci
+          npm run lint
+
+      - name: Commit patches
         shell: bash
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src/components/EmployeeManager.tsx
+          git add src/components/EmployeeManager.tsx src/components/EmployeePortal.tsx src/components/ShiftManager.tsx src/utils/helpers.ts src/index.css
           git diff --cached --quiet && exit 0
-          git commit -m 'Fix employee screen crash when shifts are unavailable'
+          git commit -m 'Apply safe shift scheduling and overtime approval rules'
           git push
