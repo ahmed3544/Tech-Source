@@ -84,10 +84,10 @@ export const overtimeRequests = pgTable('overtime_requests', {
   id: text('id').primaryKey(),
   employeeId: text('employee_id').notNull(),
   date: text('date').notNull(),
-  type: text('type').notNull(), // overtime or short_time
-  durationSeconds: integer('duration_seconds').notNull(), 
+  type: text('type').notNull(),
+  durationSeconds: integer('duration_seconds').notNull(),
   reason: text('reason'),
-  status: text('status').default('pending'), // pending, approved, rejected
+  status: text('status').default('pending'),
   reviewedBy: text('reviewed_by'),
   reviewNotes: text('review_notes'),
   createdAt: text('created_at'),
@@ -113,10 +113,44 @@ export const shifts = pgTable('shifts', {
   updatedAt: text('updated_at'),
 });
 
+export const employeeShiftAssignments = pgTable('employee_shift_assignments', {
+  id: text('id').primaryKey(),
+  employeeId: text('employee_id').notNull(),
+  scheduleDate: text('schedule_date').notNull(),
+  shiftTemplateId: text('shift_template_id'),
+  customStartTime: text('custom_start_time'),
+  customEndTime: text('custom_end_time'),
+  durationMinutes: integer('duration_minutes').default(480),
+  status: text('status').default('draft'),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+  version: integer('version').default(1),
+}, (table) => [
+  uniqueIndex('employee_shift_assignment_date_idx').on(table.employeeId, table.scheduleDate)
+]);
+
+export const rotationPatterns = pgTable('rotation_patterns', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  shiftIds: jsonb('shift_ids').notNull(),
+  createdBy: text('created_by'),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+});
+
+export const rotationPatternItems = pgTable('rotation_pattern_items', {
+  id: text('id').primaryKey(),
+  patternId: text('pattern_id').notNull(),
+  shiftId: text('shift_id').notNull(),
+  sequence: integer('sequence').notNull(),
+}, (table) => [
+  uniqueIndex('rotation_pattern_sequence_idx').on(table.patternId, table.sequence)
+]);
+
 export const notifications = pgTable('notifications', {
   id: text('id').primaryKey(),
   recipientId: text('recipient_id').notNull(),
-  type: text('type').notNull(), // 'leave_requested', 'leave_approved', 'leave_rejected', 'overtime_requested', 'overtime_approved', 'overtime_rejected', 'shift_changed', 'admin_notice'
+  type: text('type').notNull(),
   title: text('title').notNull(),
   message: text('message').notNull(),
   relatedEmployeeId: text('related_employee_id'),
