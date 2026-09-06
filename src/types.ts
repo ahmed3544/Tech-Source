@@ -69,6 +69,21 @@ export interface DailyShiftAssignment {
   updatedAt: string;
 }
 
+export type ShiftSwapStatus = 'pending' | 'approved' | 'rejected';
+
+export interface ShiftSwapRequest {
+  id: string;
+  requesterId: string;
+  targetEmployeeId: string;
+  date: string;
+  requesterShiftId: string;
+  targetShiftId: string;
+  status: ShiftSwapStatus;
+  createdAt: string;
+  reviewedBy?: string;
+  reviewedAt?: string;
+}
+
 export interface Employee {
   id: string;
   code: string; // e.g. "EMP001"

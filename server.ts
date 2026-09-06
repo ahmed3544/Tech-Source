@@ -29,6 +29,7 @@ type State = {
   shifts: any[];
   notifications: any[];
   dailyShiftAssignments: any[];
+  shiftSwapRequests: any[];
   companyNameAr?: any;
   companyNameEn?: any;
   urgentNotice?: any;
@@ -43,6 +44,7 @@ const emptyState = (): State => ({
   shifts: [],
   notifications: [],
   dailyShiftAssignments: [],
+  shiftSwapRequests: [],
   companyNameAr: null,
   companyNameEn: null,
   urgentNotice: null,
@@ -76,6 +78,9 @@ function loadState(): State {
         : [],
       dailyShiftAssignments: Array.isArray(d.dailyShiftAssignments)
         ? d.dailyShiftAssignments
+        : [],
+      shiftSwapRequests: Array.isArray(d.shiftSwapRequests)
+        ? d.shiftSwapRequests
         : [],
     };
   } catch {
@@ -1367,6 +1372,9 @@ async function data() {
     if (s.key === "dailyShiftAssignments") {
       localState.dailyShiftAssignments = Array.isArray(s.value) ? s.value : [];
     }
+    if (s.key === "shiftSwapRequests") {
+      localState.shiftSwapRequests = Array.isArray(s.value) ? s.value : [];
+    }
     if (s.key === "shiftTemplates" && Array.isArray(s.value)) {
       localState.shifts = s.value;
     }
@@ -2285,6 +2293,9 @@ app.post(
         if (Array.isArray(b.dailyShiftAssignments)) {
           await setting("dailyShiftAssignments", b.dailyShiftAssignments);
         }
+        if (Array.isArray(b.shiftSwapRequests)) {
+          await setting("shiftSwapRequests", b.shiftSwapRequests);
+        }
         if (Array.isArray(b.shifts)) {
           await setting("shiftTemplates", b.shifts);
         }
@@ -2416,6 +2427,9 @@ app.post(
 
       if (Array.isArray(b.dailyShiftAssignments)) {
         localState.dailyShiftAssignments = b.dailyShiftAssignments;
+      }
+      if (Array.isArray(b.shiftSwapRequests)) {
+        localState.shiftSwapRequests = b.shiftSwapRequests;
       }
 
       if (
