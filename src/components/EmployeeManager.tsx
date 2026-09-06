@@ -101,7 +101,7 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
     setEditJobTitleEn(emp.jobTitleEn);
     setEditPin(emp.pin);
     setEditShiftId(emp.shiftId || shifts[0]?.id || 'shift-1');
-   const [editRole, setEditRole] = useState<'employee' | 'leader' | 'admin'>('employee');
+    setEditRole(emp.role || 'employee');
     setEditEmail(emp.email);
     setEditPhone(emp.phone);
     setEditAnnualLeaveBalance(emp.annualLeaveBalance ?? (emp.casualLeaveBalance ?? 7) + (emp.regularLeaveBalance ?? 8));
@@ -899,7 +899,7 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
             </h3>
             <p className="text-sm text-slate-600 mb-6">
               {lang === 'ar'
-                ? 'هل تريد حذف الموظف؟ سيتم حذف بياناته وسجلاته نهائيًا.'
+                ? 'هل أنت تأكد من رغبتك في حذف هذا الموظف؟ سيتم حذف جميع بياناته وسجلاته نهائياً ولن يظهر مرة أخرى.'
                 : 'Are you sure you want to delete this employee? Their data and logs will be permanently removed.'}
             </p>
             <div className="flex items-center justify-center gap-3">
