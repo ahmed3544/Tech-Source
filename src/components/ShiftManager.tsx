@@ -83,6 +83,16 @@ export const ShiftManager: React.FC<ShiftManagerProps> = ({
   };
 
   const handleSaveShift = () => {
+    if (!formData.startDate || !formData.endDate) {
+      alert(lang === 'ar' ? 'الرجاء تحديد تاريخ بداية ونهاية الشفت' : 'Please select the shift start and end dates');
+      return;
+    }
+
+    if (formData.endDate < formData.startDate) {
+      alert(lang === 'ar' ? 'تاريخ النهاية يجب أن يكون بعد أو مساويًا لتاريخ البداية' : 'End date must be on or after the start date');
+      return;
+    }
+
     if (!formData.startTime || !formData.endTime) {
       alert(lang === 'ar' ? 'الرجاء تحديد وقت بداية ونهاية الشفت' : 'Please select the shift start and end time');
       return;
@@ -123,6 +133,8 @@ export const ShiftManager: React.FC<ShiftManagerProps> = ({
       nameEn: `${formData.startTime} - ${formData.endTime}`,
       startTime: formData.startTime,
       endTime: formData.endTime,
+      startDate: formData.startDate,
+      endDate: formData.endDate,
       durationMinutes: Number(formData.durationMinutes) || 480,
       gracePeriodMinutes: Number(formData.gracePeriodMinutes) || 0,
       workDays: formData.workDays || [0, 1, 2, 3, 4],
@@ -158,6 +170,11 @@ export const ShiftManager: React.FC<ShiftManagerProps> = ({
               <div>
                 <h4 className="font-bold text-gray-900">{lang === 'ar' ? shift.nameAr : shift.nameEn}</h4>
                 <p className="text-sm text-gray-600">{shift.startTime} - {shift.endTime}</p>
+                {(shift.startDate || shift.endDate) && (
+                  <p className="text-xs text-emerald-700 mt-1 font-semibold">
+                    {lang === 'ar' ? 'الفترة: ' : 'Period: '}{shift.startDate || '—'} {lang === 'ar' ? 'إلى' : 'to'} {shift.endDate || '—'}
+                  </p>
+                )}
               </div>
               <div className="flex gap-2">
                 <button onClick={() => handleOpenForm(shift)} className="p-1 text-blue-600 hover:bg-blue-50 rounded transition" title={lang === 'ar' ? 'تعديل' : 'Edit'}><Edit2 size={16} /></button>
@@ -187,6 +204,14 @@ export const ShiftManager: React.FC<ShiftManagerProps> = ({
             </div>
 
             <div className="space-y-4">
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                <h5 className="font-black text-slate-900 mb-3">{lang === 'ar' ? 'تاريخ الشفت' : 'Shift Date Range'}</h5>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <label className="block text-sm font-medium text-gray-700">{lang === 'ar' ? 'من تاريخ' : 'From Date'}<input type="date" value={formData.startDate || ''} onChange={e => setFormData({ ...formData, startDate: e.target.value })} className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg" /></label>
+                  <label className="block text-sm font-medium text-gray-700">{lang === 'ar' ? 'إلى تاريخ' : 'To Date'}<input type="date" value={formData.endDate || ''} onChange={e => setFormData({ ...formData, endDate: e.target.value })} className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg" /></label>
+                </div>
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <label className="block text-sm font-medium text-gray-700">{lang === 'ar' ? 'وقت بداية الشفت' : 'Shift Start'}<input type="time" value={formData.startTime || '09:00'} onChange={e => setFormData({ ...formData, startTime: e.target.value })} className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg" /></label>
                 <label className="block text-sm font-medium text-gray-700">{lang === 'ar' ? 'وقت نهاية الشفت' : 'Shift End'}<input type="time" value={formData.endTime || '17:00'} onChange={e => setFormData({ ...formData, endTime: e.target.value })} className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg" /></label>
