@@ -1,1 +1,11 @@
+:root {
+  --tech-source-navy: #0d2240;
+  --tech-source-blue: #1769aa;
+  --tech-source-teal: #0f766e;
+  --tech-source-surface: #f5f8fc;
+}
+html, body, #root { min-height: 100%; }
+body { background: var(--tech-source-surface); }
+::selection { background: rgba(23, 105, 170, 0.18); }
+
 @import "tailwindcss";

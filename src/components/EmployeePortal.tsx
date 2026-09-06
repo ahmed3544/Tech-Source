@@ -181,7 +181,7 @@ export const EmployeePortal: React.FC<EmployeePortalProps> = ({
 
   const getShiftForDate = (employeeId: string, date: string) => {
     const assignment = dailyShiftAssignments.find(item => item.employeeId === employeeId && item.date === date);
-    return shifts.find(shift => shift.id === (assignment?.shiftId || emp?.shiftId)) || shifts[0];
+    return shifts.find(shift => shift.id === (assignment?.shiftId || emp?.shiftId)) || shifts[0] || { id: 'fallback-shift', nameAr: 'الدوام الموحد', nameEn: 'Standard Shift', startTime: '09:00', endTime: '17:00', gracePeriodMinutes: 0, workDays: [0, 1, 2, 3, 4], breaks: [] };
   };
   const todayShift = emp ? getShiftForDate(emp.id, todayStr) : undefined;
 

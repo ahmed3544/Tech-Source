@@ -85,8 +85,8 @@ export const ShiftManager: React.FC<ShiftManagerProps> = ({
   };
 
   const handleSaveShift = () => {
-    if (!formData.nameAr || !formData.nameEn || !formData.startTime || !formData.endTime) {
-      alert(lang === 'ar' ? 'الرجاء ملء اسم الشفت ووقت البداية والنهاية' : 'Please fill the shift name, start time and end time');
+    if (!formData.startTime || !formData.endTime) {
+      alert(lang === 'ar' ? 'الرجاء تحديد وقت بداية ونهاية الشفت' : 'Please select the shift start and end time');
       return;
     }
 
@@ -121,8 +121,8 @@ export const ShiftManager: React.FC<ShiftManagerProps> = ({
 
     const shift: Shift = {
       id: editingShift?.id || `shift_${Date.now()}`,
-      nameAr: formData.nameAr,
-      nameEn: formData.nameEn,
+      nameAr: `${formData.startTime} - ${formData.endTime}`,
+      nameEn: `${formData.startTime} - ${formData.endTime}`,
       startTime: formData.startTime,
       endTime: formData.endTime,
       durationMinutes: Number(formData.durationMinutes) || 480,
