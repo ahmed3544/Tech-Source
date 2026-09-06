@@ -1,6 +1,8 @@
 name: Safe employee shift fallback
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
