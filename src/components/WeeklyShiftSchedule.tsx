@@ -42,6 +42,8 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
   const [assignments, setAssignments] = useState<DailyShiftAssignment[]>(suppliedAssignments || []);
   const [currentUser, setCurrentUser] = useState<Employee | null>(suppliedUser || null);
   const [weekStart, setWeekStart] = useState(() => startOfSundayWeek(new Date()));
+  const [rangeStart, setRangeStart] = useState(() => toDateKey(startOfSundayWeek(new Date())));
+  const [rangeEnd, setRangeEnd] = useState(() => toDateKey(addDays(startOfSundayWeek(new Date()), 6)));
   const [selectedEmployeeId, setSelectedEmployeeId] = useState(suppliedUser?.id || suppliedEmployees?.[0]?.id || '');
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [savedAt, setSavedAt] = useState<string | null>(null);
@@ -116,15 +118,23 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
     if (employee && !selectedEmployeeId) setSelectedEmployeeId(employee.id);
   }, [employee, selectedEmployeeId]);
 
-  const days = useMemo(() => Array.from({ length: 7 }, (_, index) => {
-    const date = addDays(weekStart, index);
-    return {
-      date,
-      key: toDateKey(date),
-      labelAr: ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'][index],
-      labelEn: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][index],
-    };
-  }), [weekStart]);
+  const days = useMemo(() => {
+    const start = new Date(`${rangeStart}T00:00:00`);
+    const end = new Date(`${rangeEnd}T00:00:00`);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start > end) return [];
+    const result: Array<{ date: Date; key: string; labelAr: string; labelEn: string }> = [];
+    for (let cursor = new Date(start); cursor <= end; cursor = addDays(cursor, 1)) {
+      const dayIndex = cursor.getDay();
+      result.push({
+        date: new Date(cursor),
+        key: toDateKey(cursor),
+        labelAr: ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'][dayIndex],
+        labelEn: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][dayIndex],
+      });
+      if (result.length >= 31) break;
+    }
+    return result;
+  }, [rangeStart, rangeEnd]);
 
   const assignmentFor = (employeeId: string, date: string) => assignments.find(a => a.employeeId === employeeId && a.date === date);
   const shiftFor = (employeeId: string, date: string) => {
@@ -170,7 +180,19 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
   };
 
   const moveWeek = (amount: number) => {
-    setWeekStart(prev => addDays(prev, amount * 7));
+    const nextStart = addDays(new Date(`${rangeStart}T00:00:00`), amount * 7);
+    const nextEnd = addDays(new Date(`${rangeEnd}T00:00:00`), amount * 7);
+    setWeekStart(nextStart);
+    setRangeStart(toDateKey(nextStart));
+    setRangeEnd(toDateKey(nextEnd));
+    setDraft({});
+    setSavedAt(null);
+  };
+
+  const updateDateRange = (start: string, end: string) => {
+    setRangeStart(start);
+    setRangeEnd(end);
+    setWeekStart(new Date(`${start}T00:00:00`));
     setDraft({});
     setSavedAt(null);
   };
@@ -188,12 +210,12 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
             <div className="flex items-center gap-3">
               <div className="w-11 h-11 rounded-2xl bg-emerald-500/15 border border-emerald-400/30 flex items-center justify-center"><CalendarDays className="w-5 h-5 text-emerald-300" /></div>
-              <div><div className="flex items-center gap-2"><h3 className="text-lg font-black">{lang === 'ar' ? 'الجدول الأسبوعي' : 'Weekly Schedule'}</h3><span className="text-[10px] font-black px-2 py-1 rounded-lg bg-emerald-500/15 text-emerald-300 border border-emerald-400/20">جدول</span></div><p className="text-xs text-slate-400 mt-1">{days[0].key} → {days[6].key}</p></div>
+              <div><div className="flex items-center gap-2"><h3 className="text-lg font-black">{lang === 'ar' ? 'الجدول الأسبوعي' : 'Weekly Schedule'}</h3><span className="text-[10px] font-black px-2 py-1 rounded-lg bg-emerald-500/15 text-emerald-300 border border-emerald-400/20">جدول</span></div><p className="text-xs text-slate-400 mt-1">{rangeStart} → {rangeEnd}</p></div>
             </div>
             <div className="flex items-center gap-2">
               {isLeader && <button type="button" onClick={() => setShowShiftManager(true)} className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 border border-emerald-500 text-xs font-bold">{lang === 'ar' ? 'إدارة الشفتات' : 'Manage Shifts'}</button>}
               <button type="button" onClick={() => moveWeek(-1)} className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700"><ChevronRight className="w-4 h-4" /></button>
-              <button type="button" onClick={() => { setWeekStart(startOfSundayWeek(new Date())); setDraft({}); setSavedAt(null); }} className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-bold">{lang === 'ar' ? 'الأسبوع الحالي' : 'Current Week'}</button>
+              <button type="button" onClick={() => { setWeekStart(startOfSundayWeek(new Date())); setRangeStart(toDateKey(startOfSundayWeek(new Date()))); setRangeEnd(toDateKey(addDays(startOfSundayWeek(new Date()), 6))); setDraft({}); setSavedAt(null); }} className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-bold">{lang === 'ar' ? 'الأسبوع الحالي' : 'Current Week'}</button>
               <button type="button" onClick={() => moveWeek(1)} className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700"><ChevronLeft className="w-4 h-4" /></button>
               {onClose && <button type="button" onClick={onClose} className="p-2 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 border border-rose-400/20"><X className="w-4 h-4" /></button>}
             </div>
@@ -202,6 +224,16 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
 
         <div className="p-5 space-y-5">
           {loading && <div className="text-xs text-slate-500">{lang === 'ar' ? 'جاري تحميل الجدول...' : 'Loading schedule...'}</div>}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <label className="text-xs font-black text-slate-700 block">
+              <span className="block mb-1.5">{lang === 'ar' ? 'من تاريخ' : 'From Date'}</span>
+              <input type="date" value={rangeStart} max={rangeEnd} onChange={e => updateDateRange(e.target.value, rangeEnd)} className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-bold text-slate-900" />
+            </label>
+            <label className="text-xs font-black text-slate-700 block">
+              <span className="block mb-1.5">{lang === 'ar' ? 'إلى تاريخ' : 'To Date'}</span>
+              <input type="date" value={rangeEnd} min={rangeStart} onChange={e => updateDateRange(rangeStart, e.target.value)} className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-bold text-slate-900" />
+            </label>
+          </div>
           {isLeader && <label className="text-xs font-black text-slate-700 block max-w-xl"><span className="flex items-center gap-1.5 mb-1.5"><Users className="w-3.5 h-3.5" />{lang === 'ar' ? 'الموظف' : 'Employee'}</span><select value={employee?.id || ''} onChange={e => { setSelectedEmployeeId(e.target.value); setDraft({}); setSavedAt(null); }} className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-bold text-slate-900">{visibleEmployees.map(e => <option key={e.id} value={e.id}>{e.code} - {lang === 'ar' ? e.nameAr : e.nameEn}</option>)}</select></label>}
 
           {employee ? <>
@@ -212,7 +244,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
                 const isWeekend = day.date.getDay() === 5 || day.date.getDay() === 6;
                 return <div key={day.key} className={`rounded-2xl border p-3 ${isWeekend ? 'bg-slate-50 border-slate-200' : 'bg-white border-slate-200'}`}>
                   <div className="flex items-center justify-between gap-2 mb-2"><div><div className="text-xs font-black text-slate-900">{lang === 'ar' ? day.labelAr : day.labelEn}</div><div className="text-[10px] text-slate-400 font-mono mt-0.5">{day.key}</div></div>{isWeekend && <span className="text-[9px] font-black text-slate-500">{lang === 'ar' ? 'عطلة' : 'OFF'}</span>}</div>
-                  {isLeader ? <select value={selectedId} onChange={e => setDraft(prev => ({ ...prev, [day.key]: e.target.value }))} className="w-full rounded-xl border border-slate-200 bg-slate-50 px-2 py-2 text-xs font-bold text-slate-900"><option value="">{lang === 'ar' ? 'غير محدد' : 'Not assigned'}</option>{shifts.map(shift => <option key={shift.id} value={shift.id}>{lang === 'ar' ? shift.nameAr : shift.nameEn} · {shift.startTime}-{shift.endTime}</option>)}</select> : <div className="rounded-xl bg-slate-50 border border-slate-200 px-2 py-2"><div className="text-xs font-black text-slate-800 truncate">{selectedShift ? (lang === 'ar' ? selectedShift.nameAr : selectedShift.nameEn) : (lang === 'ar' ? 'غير محدد' : 'Not assigned')}</div>{selectedShift && <div className="text-[10px] text-slate-500 font-mono mt-1 flex items-center gap-1"><Clock3 className="w-3 h-3" />{selectedShift.startTime} - {selectedShift.endTime}</div>}{selectedShift?.breaks?.length ? <div className="mt-2 pt-2 border-t border-slate-200 space-y-1">{selectedShift.breaks.map(item => <div key={item.id} className="text-[9px] text-slate-500 flex items-center justify-between gap-1"><span className="flex items-center gap-1 truncate"><Coffee className="w-3 h-3 shrink-0" />{lang === 'ar' ? item.nameAr : item.nameEn}</span><span className="font-mono shrink-0">{item.startTime}-{item.endTime}</span></div>)}</div> : null}</div>}
+                  {isLeader ? <select value={selectedId} onChange={e => setDraft(prev => ({ ...prev, [day.key]: e.target.value }))} className="w-full rounded-xl border border-slate-200 bg-slate-50 px-2 py-2 text-xs font-bold text-slate-900"><option value="">{lang === 'ar' ? 'غير محدد' : 'Not assigned'}</option>{shifts.map(shift => <option key={shift.id} value={shift.id}>{lang === 'ar' ? shift.nameAr : shift.nameEn} · {shift.startTime}-{shift.endTime}</option>)}</select> : <div className="rounded-xl bg-slate-50 border border-slate-200 px-2 py-2"><div className="text-xs font-black text-slate-800 truncate">{selectedShift ? `${selectedShift.startTime} - ${selectedShift.endTime}` : (lang === 'ar' ? 'غير محدد' : 'Not assigned')}</div>{selectedShift && <div className="text-[10px] text-slate-500 font-mono mt-1 flex items-center gap-1"><Clock3 className="w-3 h-3" />{selectedShift.startTime} - {selectedShift.endTime}</div>}{selectedShift?.breaks?.length ? <div className="mt-2 pt-2 border-t border-slate-200 space-y-1">{selectedShift.breaks.map(item => <div key={item.id} className="text-[9px] text-slate-500 flex items-center justify-between gap-1"><span className="flex items-center gap-1 truncate"><Coffee className="w-3 h-3 shrink-0" />{lang === 'ar' ? item.nameAr : item.nameEn}</span><span className="font-mono shrink-0">{item.startTime}-{item.endTime}</span></div>)}</div> : null}</div>}
                   {isLeader && selectedShift?.breaks?.length ? <div className="mt-2 rounded-lg bg-amber-50 border border-amber-100 p-2 space-y-1">{selectedShift.breaks.map(item => <div key={item.id} className="text-[9px] text-amber-800 flex justify-between gap-1"><span className="truncate">{lang === 'ar' ? item.nameAr : item.nameEn}</span><span className="font-mono shrink-0">{item.startTime}-{item.endTime}</span></div>)}</div> : null}
                 </div>;
               })}
