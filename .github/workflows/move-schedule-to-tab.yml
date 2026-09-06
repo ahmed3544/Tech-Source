@@ -30,12 +30,9 @@ jobs:
               assert anchor in s, 'App import anchor not found'
               s = s.replace(anchor, anchor + "\nimport { WeeklyShiftSchedule } from './components/WeeklyShiftSchedule';", 1)
 
-          old_type = "      | 'analytics'\n      | 'portal'"
-          new_type = "      | 'analytics'\n      | 'schedule'\n      | 'portal'"
-          assert old_type in s, 'App activeTab type not found'
-          s = s.replace(old_type, new_type, 1)
-          assert old_type in s, 'App setActiveTab type not found'
-          s = s.replace(old_type, new_type, 1)
+          union_pattern = re.compile(r"(?m)^(\s*\| 'analytics')\s*\n(\s*\| 'portal')")
+          s, n = union_pattern.subn(lambda m: m.group(1) + "\n" + m.group(2).replace("| 'portal'", "| 'schedule'\n" + m.group(2).split('|')[0] + "| 'portal'"), s, count=2)
+          assert n >= 1, 'App activeTab unions not found'
 
           if "activeTab === 'schedule'" not in s:
               portal_marker = re.compile(r"\{activeTab\s*===\s*['\"]portal['\"]\s*&&\s*\(", re.S)
@@ -44,17 +41,22 @@ jobs:
               block = "{activeTab === 'schedule' && (\n          <WeeklyShiftSchedule\n            lang={lang}\n            onClose={() => setActiveTab(currentUser?.role === 'leader' || !currentUser ? 'dashboard' : 'portal')}\n          />\n        )}\n\n        "
               s = s[:match.start()] + block + s[match.start():]
 
+          p.write_text(s, encoding='utf-8')
+
           # ---------- Header.tsx ----------
           p = Path('src/components/Header.tsx')
           s = p.read_text(encoding='utf-8')
-          old_union = "    | 'analytics'\n    | 'portal';"
-          new_union = "    | 'analytics'\n    | 'schedule'\n    | 'portal';"
-          assert old_union in s, 'Header activeTab union not found'
-          s = s.replace(old_union, new_union, 1)
-          old_union2 = "      | 'analytics'\n      | 'portal'\n  ) => void;"
-          new_union2 = "      | 'analytics'\n      | 'schedule'\n      | 'portal'\n  ) => void;"
-          assert old_union2 in s, 'Header setActiveTab union not found'
-          s = s.replace(old_union2, new_union2, 1)
+
+          union_pattern = re.compile(r"(?m)^(\s*\| 'analytics')\s*\n(\s*\| 'portal')")
+          s, n = union_pattern.subn(lambda m: m.group(1) + "\n" + m.group(2).replace("| 'portal'", "| 'schedule'\n" + m.group(2).split('|')[0] + "| 'portal'"), s, count=2)
+          assert n >= 1, 'Header activeTab unions not found'
+
+          if "setActiveTab('schedule')" not in s:
+              analytics_pattern = re.compile(r"(<button\s+onClick=\{\(\) => setActiveTab\('analytics'\)\}.*?</button>)", re.S)
+              match = analytics_pattern.search(s)
+              assert match, 'Header analytics navigation button not found'
+              schedule_button = '''\n              <button\n                onClick={() => setActiveTab('schedule')}\n                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${\n                  activeTab === 'schedule'\n                    ? 'bg-[#0d2240] text-white font-bold border border-blue-900 shadow-md'\n                    : 'text-slate-400 hover:text-white hover:bg-slate-800'\n                }`}\n              >\n                <CalendarCheck className="w-4 h-4 text-emerald-400" />\n                <span>\n                  {lang === 'ar' ? 'الجدول' : 'Schedule'}\n                </span>\n              </button>'''
+              s = s[:match.end()] + schedule_button + s[match.end():]
           p.write_text(s, encoding='utf-8')
 
           # ---------- NotificationCenter.tsx ----------
@@ -62,21 +64,9 @@ jobs:
           s = p.read_text(encoding='utf-8')
           s = s.replace("import { Bell, CheckCheck, CalendarDays } from 'lucide-react';", "import { Bell, CheckCheck } from 'lucide-react';")
           s = s.replace("import { WeeklyShiftSchedule } from './WeeklyShiftSchedule';\n", "")
-          s = s.replace("  const [showSchedule, setShowSchedule] = useState(false);\n", "")
+          s = re.sub(r"\n\s*const \[showSchedule, setShowSchedule\] = useState\(false\);", "", s, count=1)
           s = re.sub(r"\n\s*<button\s+type=\"button\"\s+onClick=\{\(\) => \{\s*setShowSchedule\(true\);\s*setIsOpen\(false\);\s*\}\}.*?</button>", "", s, count=1, flags=re.S)
           s = re.sub(r"\n\s*\{showSchedule\s*&&\s*\(\s*<WeeklyShiftSchedule.*?/\>\s*\)\}", "", s, count=1, flags=re.S)
-          s = s.replace("  const [showSchedule, setShowSchedule] = useState(false);\n", "")
-          p.write_text(s, encoding='utf-8')
-
-          # ---------- Add the schedule tab to the existing Header navigation ----------
-          p = Path('src/components/Header.tsx')
-          s = p.read_text(encoding='utf-8')
-          if "setActiveTab('schedule')" not in s:
-              analytics_pattern = re.compile(r"(<button\s+onClick=\{\(\) => setActiveTab\('analytics'\)\}.*?</button>)", re.S)
-              match = analytics_pattern.search(s)
-              assert match, 'Header analytics navigation button not found'
-              schedule_button = '''\n              <button\n                onClick={() => setActiveTab('schedule')}\n                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${\n                  activeTab === 'schedule'\n                    ? 'bg-[#0d2240] text-white font-bold border border-blue-900 shadow-md'\n                    : 'text-slate-400 hover:text-white hover:bg-slate-800'\n                }`}\n              >\n                <CalendarCheck className="w-4 h-4 text-emerald-400" />\n                <span>\n                  {lang === 'ar' ? 'الجدول' : 'Schedule'}\n                </span>\n              </button>'''
-              s = s[:match.end()] + schedule_button + s[match.end():]
           p.write_text(s, encoding='utf-8')
           PY
 
@@ -100,6 +90,8 @@ jobs:
       - name: Remove temporary workflow
         if: always()
         run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git rm -f .github/workflows/move-schedule-to-tab.yml || true
           git commit -m "Remove temporary schedule migration workflow" || true
           git push || true
