@@ -27,6 +27,41 @@ if (fs.existsSync(headerPath)) {
   fs.writeFileSync(headerPath, code);
 }
 
+// Fix notification action payload mismatch: UI events use accept/reject,
+// while the handler expects the domain status accepted/rejected.
+const swapPath = 'src/components/ShiftSwapPanel.tsx';
+if (fs.existsSync(swapPath)) {
+  let code = fs.readFileSync(swapPath, 'utf8');
+  code = code.replace(
+    "if (detail?.swapId && detail.action) void respondAsTarget(detail.swapId, detail.action);",
+    "if (detail?.swapId && detail.action) void respondAsTarget(detail.swapId, detail.action === 'accept' ? 'accepted' : 'rejected');"
+  );
+  fs.writeFileSync(swapPath, code);
+}
+
+// Include the permissions tab in the active dashboard tab union.
+const portalPath = 'src/components/EmployeePortal.tsx';
+if (fs.existsSync(portalPath)) {
+  let code = fs.readFileSync(portalPath, 'utf8');
+  code = code.replace(
+    "const [activeDashboardTab, setActiveDashboardTab] = useState<'attendance' | 'penalties'>('attendance');",
+    "const [activeDashboardTab, setActiveDashboardTab] = useState<'attendance' | 'penalties' | 'permissions'>('attendance');"
+  );
+  fs.writeFileSync(portalPath, code);
+}
+
+// Employee role editor intentionally supports employee/leader only;
+// normalize admin to leader/employee for the editor state without changing the Employee model.
+const managerPath = 'src/components/EmployeeManager.tsx';
+if (fs.existsSync(managerPath)) {
+  let code = fs.readFileSync(managerPath, 'utf8');
+  code = code.replace(
+    "setEditRole(emp.role || 'employee');",
+    "setEditRole(emp.role === 'leader' ? 'leader' : 'employee');"
+  );
+  fs.writeFileSync(managerPath, code);
+}
+
 const serverPath = 'server.ts';
 if (fs.existsSync(serverPath)) {
   let code = fs.readFileSync(serverPath, 'utf8');
