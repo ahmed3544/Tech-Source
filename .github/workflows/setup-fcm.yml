@@ -6,7 +6,6 @@ permissions:
   contents: write
 jobs:
   setup:
-    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,12 +20,58 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           import re
-          Path('src/firebase-messaging.ts').write_text('''import { initializeApp, getApps } from 'firebase/app';\nimport { getMessaging, getToken, onMessage, isSupported, type Messaging } from 'firebase/messaging';\nimport { PushNotifications } from '@capacitor/push-notifications';\n\nconst firebaseConfig = { apiKey: 'AIzaSyCULaavzAbW3_ZgvJP7W4nxD3sX-P9WsPg', authDomain: 'hidden-tesla-xt8c4.firebaseapp.com', projectId: 'hidden-tesla-xt8c4', storageBucket: 'hidden-tesla-xt8c4.firebasestorage.app', messagingSenderId: '501556944186', appId: '1:501556944186:web:6ca49a703d63de2561c403' };\nconst app = getApps()[0] ?? initializeApp(firebaseConfig);\nlet webMessaging: Messaging | null = null;\n\nexport async function registerPushNotifications(employeeId?: string) {\n  if (!employeeId) return;\n  const isNative = typeof window !== 'undefined' && (window as any).Capacitor?.isNativePlatform?.();\n  if (isNative) {\n    const permission = await PushNotifications.requestPermissions();\n    if (permission.receive !== 'granted') return;\n    const listener = await PushNotifications.addListener('registration', async ({ value }) => {\n      await fetch('/api/push/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ employeeId, token: value, platform: 'android' }) }).catch(() => {});\n      listener.remove();\n    });\n    await PushNotifications.register();\n    return;\n  }\n  if (!(await isSupported().catch(() => false))) return;\n  const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY as string | undefined;\n  if (!vapidKey || !('Notification' in window)) return;\n  const permission = await Notification.requestPermission();\n  if (permission !== 'granted') return;\n  const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');\n  webMessaging = getMessaging(app);\n  const token = await getToken(webMessaging, { vapidKey, serviceWorkerRegistration: registration });\n  if (token) await fetch('/api/push/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ employeeId, token, platform: 'web' }) }).catch(() => {});\n  onMessage(webMessaging, (payload) => { if (Notification.permission === 'granted') new Notification(payload.notification?.title || 'TECH SOURCE', { body: payload.notification?.body || '' }); });\n}\n''', encoding='utf-8')
-          Path('public/firebase-messaging-sw.js').write_text('''importScripts('https://www.gstatic.com/firebasejs/12.3.0/firebase-app-compat.js');\nimportScripts('https://www.gstatic.com/firebasejs/12.3.0/firebase-messaging-compat.js');\nfirebase.initializeApp({apiKey:'AIzaSyCULaavzAbW3_ZgvJP7W4nxD3sX-P9WsPg',authDomain:'hidden-tesla-xt8c4.firebaseapp.com',projectId:'hidden-tesla-xt8c4',storageBucket:'hidden-tesla-xt8c4.firebasestorage.app',messagingSenderId:'501556944186',appId:'1:501556944186:web:6ca49a703d63de2561c403'});\nconst messaging=firebase.messaging();\nmessaging.onBackgroundMessage((payload)=>self.registration.showNotification(payload.notification?.title||'TECH SOURCE',{body:payload.notification?.body||'',data:payload.data||{}}));\n''', encoding='utf-8')
-          Path('server/fcm.ts').parent.mkdir(parents=True, exist_ok=True)
-          Path('server/fcm.ts').write_text('''import type { Express } from 'express';\nimport { sql } from 'drizzle-orm';\nimport { db } from '../src/db/index.js';\nimport * as schema from '../src/db/schema.js';\nimport { getApps, cert, initializeApp } from 'firebase-admin/app';\nimport { getMessaging } from 'firebase-admin/messaging';\n\nfunction adminMessaging() {\n  if (!process.env.FIREBASE_SERVICE_ACCOUNT_JSON) return null;\n  try { if (!getApps().length) initializeApp({ credential: cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON)) }); return getMessaging(); } catch (e) { console.error('[FCM] init failed', e); return null; }\n}\nasync function tokensFor(employeeId:string){\n  if(!process.env.SUPABASE_DB_URL) return [];\n  try { const rows=await db.select().from(schema.settings).where(sql`key = 'fcm_tokens'`).limit(1); const v:any=rows[0]?.value; return (Array.isArray(v)?v:[]).filter((x:any)=>x?.employeeId===employeeId).map((x:any)=>x.token).filter(Boolean); } catch { return []; }\n}\nasync function saveToken(employeeId:string, token:string, platform:string){\n  if(!process.env.SUPABASE_DB_URL) return;\n  const rows=await db.select().from(schema.settings).where(sql`key = 'fcm_tokens'`).limit(1);\n  const current:any[]=Array.isArray(rows[0]?.value)?rows[0].value as any[]:[];\n  const next=current.filter((x:any)=>x?.token!==token); next.push({employeeId,token,platform,updatedAt:new Date().toISOString()});\n  await db.insert(schema.settings).values({key:'fcm_tokens',value:next}).onConflictDoUpdate({target:schema.settings.key,set:{value:next}});\n}\nexport async function sendPushToEmployee(employeeId:string,title:string,body:string,data:Record<string,string>={}){\n  const m=adminMessaging(); if(!m) return {sent:0,configured:false}; const tokens=await tokensFor(employeeId); if(!tokens.length) return {sent:0,configured:true}; const r=await m.sendEachForMulticast({tokens,notification:{title,body},data}); return {sent:r.successCount,configured:true};\n}\nexport function registerFcmRoutes(app:Express){\n  app.post('/api/push/register',async(req,res)=>{try{const {employeeId,token,platform='unknown'}=req.body||{};if(!employeeId||!token)return res.status(400).json({success:false});await saveToken(String(employeeId),String(token),String(platform));res.json({success:true});}catch(e){console.error('[FCM] register',e);res.status(500).json({success:false});}});\n  app.post('/api/push/send',async(req,res)=>{try{const {employeeId,title,body,data={}}=req.body||{};if(!employeeId||!title||!body)return res.status(400).json({success:false});res.json({success:true,...await sendPushToEmployee(String(employeeId),String(title),String(body),data)});}catch(e){console.error('[FCM] send',e);res.status(500).json({success:false});}});\n}\n''', encoding='utf-8')
+          Path('src/firebase-messaging.ts').write_text('''import { initializeApp, getApps } from 'firebase/app';
+import { getMessaging, getToken, onMessage, isSupported, type Messaging } from 'firebase/messaging';
+import { PushNotifications } from '@capacitor/push-notifications';
+const firebaseConfig = { apiKey: 'AIzaSyCULaavzAbW3_ZgvJP7W4nxD3s-X9WsPg', authDomain: 'hidden-tesla-xt8c4.firebaseapp.com', projectId: 'hidden-tesla-xt8c4', storageBucket: 'hidden-tesla-xt8c4.firebasestorage.app', messagingSenderId: '501556944186', appId: '1:501556944186:web:6ca49a703d63de2561c403' };
+const app = getApps()[0] ?? initializeApp(firebaseConfig);
+let webMessaging: Messaging | null = null;
+export async function registerPushNotifications(employeeId?: string) {
+  if (!employeeId) return;
+  const isNative = typeof window !== 'undefined' && (window as any).Capacitor?.isNativePlatform?.();
+  if (isNative) {
+    const permission = await PushNotifications.requestPermissions();
+    if (permission.receive !== 'granted') return;
+    const listener = await PushNotifications.addListener('registration', async ({ value }) => {
+      await fetch('/api/push/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ employeeId, token: value, platform: 'android' }) }).catch(() => {});
+      listener.remove();
+    });
+    await PushNotifications.register();
+    return;
+  }
+  if (!(await isSupported().catch(() => false))) return;
+  const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY as string | undefined;
+  if (!vapidKey || !('Notification' in window)) return;
+  const permission = await Notification.requestPermission();
+  if (permission !== 'granted') return;
+  const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+  webMessaging = getMessaging(app);
+  const token = await getToken(webMessaging, { vapidKey, serviceWorkerRegistration: registration });
+  if (token) await fetch('/api/push/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ employeeId, token, platform: 'web' }) }).catch(() => {});
+  onMessage(webMessaging, (payload) => { if (Notification.permission === 'granted') new Notification(payload.notification?.title || 'TECH SOURCE', { body: payload.notification?.body || '' }); });
+}
+''', encoding='utf-8')
+          Path('public/firebase-messaging-sw.js').write_text('''importScripts('https://www.gstatic.com/firebasejs/12.3.0/firebase-app-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/12.3.0/firebase-messaging-compat.js');
+firebase.initializeApp({apiKey:'AIzaSyCULaavzAbW3_ZgvJP7W4nxD3s-X9WsPg',authDomain:'hidden-tesla-xt8c4.firebaseapp.com',projectId:'hidden-tesla-xt8c4',storageBucket:'hidden-tesla-xt8c4.firebasestorage.app',messagingSenderId:'501556944186',appId:'1:501556944186:web:6ca49a703d63de2561c403'});
+const messaging=firebase.messaging();
+messaging.onBackgroundMessage((payload)=>self.registration.showNotification(payload.notification?.title||'TECH SOURCE',{body:payload.notification?.body||'',data:payload.data||{}}));
+''', encoding='utf-8')
+          Path('server').mkdir(exist_ok=True)
+          Path('server/fcm.ts').write_text('''import type { Express } from 'express';
+import { sql } from 'drizzle-orm';
+import { db } from '../src/db/index.js';
+import * as schema from '../src/db/schema.js';
+import { getApps, cert, initializeApp } from 'firebase-admin/app';
+import { getMessaging } from 'firebase-admin/messaging';
+function adminMessaging(){if(!process.env.FIREBASE_SERVICE_ACCOUNT_JSON)return null;try{if(!getApps().length)initializeApp({credential:cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON))});return getMessaging();}catch(e){console.error('[FCM] init failed',e);return null;}}
+async function tokensFor(employeeId:string){if(!process.env.SUPABASE_DB_URL)return [];try{const rows=await db.select().from(schema.settings).where(sql`key = 'fcm_tokens'`).limit(1);const v:any=rows[0]?.value;return(Array.isArray(v)?v:[]).filter((x:any)=>x?.employeeId===employeeId).map((x:any)=>x.token).filter(Boolean);}catch{return[];}}
+async function saveToken(employeeId:string,token:string,platform:string){if(!process.env.SUPABASE_DB_URL)return;const rows=await db.select().from(schema.settings).where(sql`key = 'fcm_tokens'`).limit(1);const current:any[]=Array.isArray(rows[0]?.value)?rows[0].value as any[]:[];const next=current.filter((x:any)=>x?.token!==token);next.push({employeeId,token,platform,updatedAt:new Date().toISOString()});await db.insert(schema.settings).values({key:'fcm_tokens',value:next}).onConflictDoUpdate({target:schema.settings.key,set:{value:next}});}
+export async function sendPushToEmployee(employeeId:string,title:string,body:string,data:Record<string,string>={}){const m=adminMessaging();if(!m)return{sent:0,configured:false};const tokens=await tokensFor(employeeId);if(!tokens.length)return{sent:0,configured:true};const r=await m.sendEachForMulticast({tokens,notification:{title,body},data});return{sent:r.successCount,configured:true};}
+export function registerFcmRoutes(app:Express){app.post('/api/push/register',async(req,res)=>{try{const{employeeId,token,platform='unknown'}=req.body||{};if(!employeeId||!token)return res.status(400).json({success:false});await saveToken(String(employeeId),String(token),String(platform));res.json({success:true});}catch(e){console.error('[FCM] register',e);res.status(500).json({success:false});}});app.post('/api/push/send',async(req,res)=>{try{const{employeeId,title,body,data={}}=req.body||{};if(!employeeId||!title||!body)return res.status(400).json({success:false});res.json({success:true,...await sendPushToEmployee(String(employeeId),String(title),String(body),data)});}catch(e){console.error('[FCM] send',e);res.status(500).json({success:false});}});}
+''', encoding='utf-8')
           server=Path('server.ts'); code=server.read_text(encoding='utf-8')
-          if "./server/fcm.js" not in code: code=code.replace('import * as schema from "./src/db/schema.js";','import * as schema from "./src/db/schema.js";\nimport { registerFcmRoutes } from "./server/fcm.js";')
+          if './server/fcm.js' not in code: code=code.replace('import * as schema from "./src/db/schema.js";','import * as schema from "./src/db/schema.js";\nimport { registerFcmRoutes } from "./server/fcm.js";')
           if 'registerFcmRoutes(app)' not in code: code=code.replace('const app = express();','const app = express();\nregisterFcmRoutes(app);')
           server.write_text(code,encoding='utf-8')
           app=Path('src/App.tsx'); code=app.read_text(encoding='utf-8')
