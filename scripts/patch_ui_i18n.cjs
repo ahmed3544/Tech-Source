@@ -102,3 +102,5 @@ patchFile('src/App.tsx', (code) => {
 });
 
 console.log('Kiosk status card compacted, notifications navigation wired, and app root dark mode fixed.');
+
+// Deployment trigger: keep this build patch in the Git-integrated Vercel build path.
