@@ -143,7 +143,7 @@ export const Header: React.FC<HeaderProps> = ({
   }, [searchTerm, employees]);
 
   return (
-    <header className="bg-slate-900 text-white border-b border-slate-800 sticky top-0 z-30 shadow-md">
+    <header dir={lang === 'ar' ? 'rtl' : 'ltr'} className="bg-slate-900 text-white border-b border-slate-800 sticky top-0 z-30 shadow-md">
 
       {/* =========================
           Top Main Bar
@@ -596,9 +596,9 @@ export const Header: React.FC<HeaderProps> = ({
       {/* =========================
           Navigation Sub-bar
       ========================== */}
-      <nav className="bg-slate-950/80 border-t border-slate-800/80 px-4 sm:px-6">
+      <nav dir={lang === 'ar' ? 'rtl' : 'ltr'} className="bg-slate-950/80 border-t border-slate-800/80 px-4 sm:px-6">
 
-        <div className="max-w-7xl mx-auto flex items-center gap-1.5 overflow-x-auto py-1.5 scrollbar-none">
+        <div className="max-w-7xl mx-auto flex items-center gap-3 overflow-x-auto py-1.5 scrollbar-none">
 
           {/* LEADER NAVIGATION */}
           {isLeader ? (

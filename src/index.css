@@ -519,3 +519,13 @@ html[dir="rtl"] #root .bg-white.rounded-3xl.border.border-slate-200.shadow-sm.ov
     padding: 6px 12px !important;
   }
 }
+
+
+/* Header/Navbar tabs: deterministic RTL/LTR direction, clean Arabic typography, and safe horizontal scrolling. */
+#root header nav { direction: rtl; font-family: 'Cairo', Inter, ui-sans-serif, system-ui, sans-serif; letter-spacing: 0; }
+#root header nav > div { display: flex; align-items: center; gap: 12px !important; min-width: 0; max-width: 100%; overflow-x: auto; overflow-y: hidden; flex-wrap: nowrap; scrollbar-width: none; -ms-overflow-style: none; -webkit-overflow-scrolling: touch; }
+#root header nav > div::-webkit-scrollbar { display: none; }
+#root header nav button { flex: 0 0 auto !important; white-space: nowrap !important; min-width: max-content; max-width: none; display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-family: 'Cairo', Inter, ui-sans-serif, system-ui, sans-serif; font-weight: 700 !important; letter-spacing: 0 !important; direction: inherit; }
+#root header nav button span { white-space: nowrap !important; letter-spacing: 0 !important; font-weight: 700 !important; }
+@media (max-width: 767px) { #root header nav { padding-left: 8px; padding-right: 8px; } #root header nav > div { gap: 12px !important; padding-top: 4px; padding-bottom: 4px; } #root header nav button { font-size: 0.75rem !important; line-height: 1.25 !important; padding-left: 10px; padding-right: 10px; } }
+@media (max-width: 390px) { #root header nav button { font-size: 0.71rem !important; padding-left: 9px; padding-right: 9px; } }
