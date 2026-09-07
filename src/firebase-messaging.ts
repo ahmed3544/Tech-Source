@@ -13,7 +13,7 @@ const firebaseConfig = {
 };
 
 const app = getApps()[0] ?? initializeApp(firebaseConfig);
-const PUSH_API_BASE = 'https://tech-source-git-main-ahmeds-projects-da960d51.vercel.app';
+const PUSH_API_BASE = 'https://tech-source.vercel.app';
 let webMessaging: Messaging | null = null;
 
 export async function registerPushNotifications(employeeId?: string) {
@@ -24,16 +24,34 @@ export async function registerPushNotifications(employeeId?: string) {
     await PushNotifications.removeAllListeners().catch(() => {});
     const permission = await PushNotifications.requestPermissions();
     if (permission.receive !== 'granted') return;
+
+    await PushNotifications.createChannel({
+      id: 'tech-source-notifications',
+      name: 'TECH SOURCE Notifications',
+      description: 'Attendance, leave and shift notifications',
+      importance: 5,
+      visibility: 1,
+      sound: 'default',
+      vibration: true,
+    }).catch((error) => console.warn('[FCM] channel creation failed', error));
+
     const listener = await PushNotifications.addListener('registration', async ({ value }) => {
-      await fetch(`${PUSH_API_BASE}/api/push/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ employeeId, token: value, platform: 'android' }) }).catch(() => {});
+      await fetch(`${PUSH_API_BASE}/api/push/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ employeeId, token: value, platform: 'android' })
+      }).catch((error) => console.warn('[FCM] token registration failed', error));
       listener.remove();
     });
+
     await PushNotifications.addListener('registrationError', (error) => {
       console.warn('[FCM] native registration error', error);
     });
+
     await PushNotifications.addListener('pushNotificationReceived', (notification) => {
       console.info('[FCM] notification received', notification.title);
     });
+
     await PushNotifications.register();
     return;
   }
@@ -46,9 +64,19 @@ export async function registerPushNotifications(employeeId?: string) {
   const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
   webMessaging = getMessaging(app);
   const token = await getToken(webMessaging, { vapidKey, serviceWorkerRegistration: registration });
-  if (token) await fetch(`${PUSH_API_BASE}/api/push/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ employeeId, token, platform: 'web' }) }).catch(() => {});
+  if (token) {
+    await fetch(`${PUSH_API_BASE}/api/push/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ employeeId, token, platform: 'web' })
+    }).catch((error) => console.warn('[FCM] web token registration failed', error));
+  }
   onMessage(webMessaging, (payload) => {
-    if (Notification.permission === 'granted') new Notification(payload.notification?.title || 'TECH SOURCE', { body: payload.notification?.body || '' });
+    if (Notification.permission === 'granted') {
+      new Notification(payload.notification?.title || 'TECH SOURCE', {
+        body: payload.notification?.body || ''
+      });
+    }
   });
 }
 
