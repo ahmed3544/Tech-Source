@@ -1,0 +1,39 @@
+name: Apply bulk weekly schedule assignment
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'scripts/add_bulk_weekly_schedule.cjs'
+      - '.github/workflows/apply-bulk-weekly-schedule.yml'
+      - 'src/components/WeeklyShiftSchedule.tsx'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Apply bulk schedule UI
+        run: node scripts/add_bulk_weekly_schedule.cjs
+
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/components/WeeklyShiftSchedule.tsx
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "feat: support assigning weekly schedule to multiple employees"
+            git push origin HEAD:main
+          fi
