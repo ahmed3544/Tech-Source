@@ -15,6 +15,7 @@ patchFile('src/components/EmployeePortal.tsx', (code) => {
     code = code.replace("  currentUser,\n}) => {", "  currentUser,\n}) => {\n  const ui = getUiText(lang);");
   }
   code = code.replace(/Sparkles,\n/g, '');
+  code = code.replace(/<Sparkles\s+className="w-4 h-4"\s*\/>(?:\s*\n)?/g, '');
   code = code.replace(/'إنهاء الاستراحة والعودة للعمل ✨'/g, 'ui.endBreak');
   code = code.replace(/'End Break Now ✨'/g, 'ui.endBreak');
   code = code.replace(/'العودة من الاستراحة ✨'/g, 'ui.endBreak');
@@ -31,6 +32,7 @@ patchFile('src/components/EmployeePortal.tsx', (code) => {
 
 patchFile('src/components/KioskPunch.tsx', (code) => {
   code = code.replace(/Sparkles,\n/g, '');
+  code = code.replace(/<Sparkles\s+className="w-4 h-4"\s*\/>(?:\s*\n)?/g, '');
   code = code.replace(/'العودة من الاستراحة ✨'/g, "'العودة من الاستراحة'");
   code = code.replace(/'End Break ✨'/g, "'End Break'");
   code = code.replace(/'End Break Now ✨'/g, "'End Break'");
