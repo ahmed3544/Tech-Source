@@ -58,9 +58,10 @@ jobs:
 
           python - <<'PY'
           import json
+          import os
           from pathlib import Path
 
-          raw = """${FIREBASE_ANDROID_CONFIG_JSON}""".strip()
+          raw = os.environ['FIREBASE_ANDROID_CONFIG_JSON'].strip()
           if raw.startswith('```'):
               lines = raw.splitlines()
               if lines and lines[0].strip().startswith('```'):
