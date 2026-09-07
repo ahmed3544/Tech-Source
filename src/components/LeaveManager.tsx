@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { 
-  Palmtree, 
-  Plus, 
+Plus, 
   CheckCircle2, 
   XCircle, 
   Clock, 
@@ -640,8 +639,7 @@ export const LeaveManager: React.FC<LeaveManagerProps> = ({
             })
           ) : (
             <div className="col-span-2 bg-white rounded-3xl p-12 text-center text-slate-400 border border-slate-200">
-              <Palmtree className="w-12 h-12 mx-auto mb-2 opacity-30" />
-              <p className="font-semibold">{lang === 'ar' ? 'لا توجد طلبات إجازة في هذا القسم' : 'No leave requests found'}</p>
+<p className="font-semibold">{lang === 'ar' ? 'لا توجد طلبات إجازة في هذا القسم' : 'No leave requests found'}</p>
             </div>
           )}
         </div>

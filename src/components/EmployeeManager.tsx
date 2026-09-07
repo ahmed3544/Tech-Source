@@ -19,8 +19,7 @@ import {
   LayoutList,
   LayoutGrid,
   FileSpreadsheet,
-  Palmtree,
-  Camera
+Camera
 } from 'lucide-react';
 import { Employee, Shift, AttendanceRecord, LeaveRequest, Language } from '../types';
 import { UserAvatar } from './UserAvatar';
@@ -813,8 +812,7 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
             {/* Approved Leave Days & History (Visible to Team Leader) */}
             <div className="space-y-2">
               <h4 className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
-                <Palmtree className="w-4 h-4 text-emerald-600" />
-                <span>{lang === 'ar' ? 'أيام الإجازات المعتمده والطلبات (سجل الإجازات):' : 'Leave Days & Approved Dates History:'}</span>
+<span>{lang === 'ar' ? 'أيام الإجازات المعتمده والطلبات (سجل الإجازات):' : 'Leave Days & Approved Dates History:'}</span>
               </h4>
               <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
                 {leaveRequests.filter(l => l.employeeId === viewEmpDetails.id).length > 0 ? (

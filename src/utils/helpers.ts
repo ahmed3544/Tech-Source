@@ -566,7 +566,7 @@ export function getStatusText(status?: AttendanceStatus, lang: 'ar' | 'en' = 'ar
 
   if (status === 'on_leave') {
     const leaveLabel = getLeaveTypeLabel(leaveType, lang, notes);
-    return `${leaveLabel} 🌴`;
+    return `${leaveLabel} `;
   }
 
   const mapAr: Record<AttendanceStatus, string> = {
@@ -575,7 +575,7 @@ export function getStatusText(status?: AttendanceStatus, lang: 'ar' | 'en' = 'ar
     early_leave: 'انصراف مبكر',
     overtime: 'ساعات إضافية',
     absent: 'غائب',
-    on_leave: 'إجازة اعتيادية 🌴',
+    on_leave: 'إجازة اعتيادية ',
     in_progress: 'قيد العمل الان',
     weekend: 'عطلة أسبوعية 🏖️',
   };

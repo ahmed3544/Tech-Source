@@ -473,8 +473,7 @@ export const KioskPunch: React.FC<KioskPunchProps> = ({
                     <div className="flex flex-col items-end gap-1">
                       {hasApprovedLeave ? (
                         <span className="inline-flex items-center gap-1 text-[10px] font-bold text-teal-800 bg-teal-100 px-2 py-0.5 rounded-full border border-teal-300">
-                          <Palmtree className="w-3 h-3 text-teal-600" />
-                          {getLeaveTypeLabel(activeLeaveObj?.type, lang)}
+{getLeaveTypeLabel(activeLeaveObj?.type, lang)}
                         </span>
                       ) : onBreak ? (
                         <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-300 animate-pulse">
@@ -572,8 +571,7 @@ export const KioskPunch: React.FC<KioskPunchProps> = ({
                         if (selHasLeave) {
                           return (
                             <span className="text-teal-300 font-sans font-extrabold text-xs flex items-center gap-1">
-                              <Palmtree className="w-3.5 h-3.5 text-teal-400" />
-                              <span>{getLeaveTypeLabel(selLeaveObj?.type, lang)} (معتمدة 🌴)</span>
+<span>{getLeaveTypeLabel(selLeaveObj?.type, lang)} (معتمدة )</span>
                             </span>
                           );
                         }
@@ -683,8 +681,7 @@ export const KioskPunch: React.FC<KioskPunchProps> = ({
               {activeApprovedLeaveToday && (
                 <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-950 text-xs flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2.5">
-                    <Palmtree className="w-5 h-5 text-amber-600 shrink-0" />
-                    <div>
+<div>
                       <span className="font-bold text-slate-900 block">
                         {lang === 'ar' ? 'إجازة معتمدة سارية' : 'Active Approved Leave'}
                       </span>
@@ -765,8 +762,7 @@ export const KioskPunch: React.FC<KioskPunchProps> = ({
                     onClick={() => setShowLeaveModal(true)}
                     className="w-full sm:w-auto px-4 py-2.5 bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200 rounded-xl font-bold text-xs transition flex items-center justify-center gap-2 shrink-0 shadow-xs"
                   >
-                    <Palmtree className="w-4 h-4 text-sky-600" />
-                    <span>{lang === 'ar' ? 'تقديم طلب إجازة / سنوية' : 'Submit Leave / Annual'}</span>
+<span>{lang === 'ar' ? 'تقديم طلب إجازة / سنوية' : 'Submit Leave / Annual'}</span>
                   </button>
                 </div>
               </div>
@@ -795,7 +791,7 @@ export const KioskPunch: React.FC<KioskPunchProps> = ({
                   <span className="font-extrabold text-lg tracking-wide">{lang === 'ar' ? 'تسجيل حضور' : 'CHECK IN'}</span>
                   <span className="text-[11px] opacity-90 mt-1 font-mono">
                     {isOnLeaveToday
-                      ? (lang === 'ar' ? 'إجازة معتمدة اليوم 🌴' : 'Approved Leave Today 🌴')
+                      ? (lang === 'ar' ? 'إجازة معتمدة اليوم ' : 'Approved Leave Today ')
                       : activePermissionToday && !hasCheckedIn
                       ? (lang === 'ar' ? 'إذن معتمد (تسجيل الحضور متاح) ⏱️' : 'Permission Active (Check-in allowed)')
                       : hasCheckedIn 
@@ -830,7 +826,7 @@ export const KioskPunch: React.FC<KioskPunchProps> = ({
                     <span className="font-extrabold text-lg tracking-wide">{lang === 'ar' ? 'تسجيل انصراف' : 'CHECK OUT'}</span>
                     <span className="text-[11px] opacity-90 mt-1 font-mono">
                       {isOnLeaveToday
-                        ? (lang === 'ar' ? 'غير متاح (إجازة 🌴)' : 'Disabled (Leave 🌴)')
+                        ? (lang === 'ar' ? 'غير متاح (إجازة )' : 'Disabled (Leave )')
                         : hasCheckedOut
                         ? (lang === 'ar' ? 'تم الانصراف اليوم' : 'Already Checked Out')
                         : isBreakActive 
@@ -862,7 +858,7 @@ export const KioskPunch: React.FC<KioskPunchProps> = ({
                   <Coffee className="w-4 h-4 text-amber-600" />
                   <span>
                     {isOnLeaveToday
-                      ? (lang === 'ar' ? 'الاستراحة معطلة (إجازة 🌴)' : 'Break Disabled (Leave)')
+                      ? (lang === 'ar' ? 'الاستراحة معطلة (إجازة )' : 'Break Disabled (Leave)')
                       : (lang === 'ar' ? 'بدء استراحة' : 'Start Break')}
                   </span>
                 </button>
@@ -943,7 +939,7 @@ export const KioskPunch: React.FC<KioskPunchProps> = ({
                   onChange={(e) => setLeaveType(e.target.value as any)}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-bold text-slate-800"
                 >
-                  <option value="annual">🌴 إجازة سنوية اعتيادية (Annual Leave)</option>
+                  <option value="annual"> إجازة سنوية اعتيادية (Annual Leave)</option>
                   <option value="sick">🩺 إجازة مرضية (Sick Leave)</option>
                   <option value="permission">⏱️ إذن استئذان ساعات (Short Permission)</option>
                   <option value="emergency">🚨 إجازة طارئة (Emergency Leave)</option>

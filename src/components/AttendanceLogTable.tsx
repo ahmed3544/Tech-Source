@@ -190,7 +190,7 @@ export const AttendanceLogTable: React.FC<AttendanceLogTableProps> = ({
         id: editingRecord ? editingRecord.id : `rec-${formEmpId}-${formDate}`,
         employeeId: formEmpId,
         date: formDate,
-        notes: formNotes || (lang === 'ar' ? 'تم تسجيل اليوم كإجازة اعتيادية من قِبل التيم ليدر 🌴' : 'Marked as on leave by Team Leader'),
+        notes: formNotes || (lang === 'ar' ? 'تم تسجيل اليوم كإجازة اعتيادية من قِبل التيم ليدر ' : 'Marked as on leave by Team Leader'),
         workHours: 0,
         lateMinutes: 0,
         lateSeconds: 0,
@@ -619,7 +619,7 @@ export const AttendanceLogTable: React.FC<AttendanceLogTableProps> = ({
                                   return (
                                     <span className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-bold border ${getStatusBadgeStyle(effectiveStatus)}`}>
                                       {effectiveStatus === 'on_leave'
-                                        ? `${leaveTypeLabel} 🌴`
+                                        ? `${leaveTypeLabel} `
                                         : getStatusText(effectiveStatus, lang, rec.leaveType, rec.notes)}
                                     </span>
                                   );
@@ -759,7 +759,7 @@ export const AttendanceLogTable: React.FC<AttendanceLogTableProps> = ({
                     type="button"
                     onClick={() => {
                       setFormRecordType('on_leave');
-                      if (!formNotes) setFormNotes(lang === 'ar' ? 'إجازة اعتيادية معتمدة 🌴' : 'Annual leave');
+                      if (!formNotes) setFormNotes(lang === 'ar' ? 'إجازة اعتيادية معتمدة ' : 'Annual leave');
                     }}
                     className={`px-3 py-2 rounded-xl font-bold text-xs border flex items-center justify-center gap-1.5 transition ${formRecordType === 'on_leave' ? 'bg-sky-600 text-white border-sky-700 shadow-xs' : 'bg-sky-50 text-sky-900 hover:bg-sky-100 border-sky-200'}`}
                   >
@@ -827,7 +827,7 @@ export const AttendanceLogTable: React.FC<AttendanceLogTableProps> = ({
               {/* On Leave Mode Notice */}
               {formRecordType === 'on_leave' && (
                 <div className="p-3.5 rounded-2xl bg-sky-50 border border-sky-300 text-sky-950 flex items-start gap-2.5 shadow-xs">
-                  <span className="text-xl shrink-0">🌴</span>
+                  <span className="text-xl shrink-0"></span>
                   <div className="text-xs">
                     <span className="font-extrabold block text-sky-900">{lang === 'ar' ? 'تسجيل إجازة اعتيادية للموظف' : 'Leave Day'}</span>
                     <span className="text-sky-800 leading-relaxed block mt-0.5">
@@ -975,7 +975,7 @@ export const AttendanceLogTable: React.FC<AttendanceLogTableProps> = ({
                         id: editingRecord ? editingRecord.id : `rec-${Date.now()}`,
                         employeeId: formEmpId,
                         date: formDate,
-                        notes: formNotes || `تم تسجيل اليوم كإجازة اعتيادية من قِبل التيم ليدر 🌴`,
+                        notes: formNotes || `تم تسجيل اليوم كإجازة اعتيادية من قِبل التيم ليدر `,
                         workHours: 0,
                         lateMinutes: 0,
                         earlyLeaveMinutes: 0,

@@ -22,8 +22,7 @@ import {
   UserCheck,
   UserX,
   Clock,
-  Palmtree,
-  FileSpreadsheet,
+FileSpreadsheet,
   Calendar,
   Zap,
   Activity,
@@ -1981,10 +1980,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
                   ? 'Weekly Off Days'
                   : 'العطلات الأسبوعية'}
               </span>
-
-              <Palmtree className="w-4 h-4 text-teal-600" />
-
-            </div>
+</div>
 
             <div className="text-2xl font-black font-mono text-teal-700">
               {toWesternDigits(
@@ -2071,10 +2067,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
                   ? 'Annual Leave'
                   : 'إجازة اعتيادية'}
               </span>
-
-              <Palmtree className="w-4 h-4 text-emerald-700" />
-
-            </div>
+</div>
 
             <div className="text-2xl font-black font-mono text-emerald-800">
               {toWesternDigits(

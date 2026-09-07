@@ -3,8 +3,7 @@ import {
   X, 
   ShieldAlert, 
   Clock, 
-  Palmtree, 
-  Scale, 
+Scale, 
   CheckCircle2, 
   AlertTriangle,
   Building2,
@@ -110,8 +109,7 @@ export const CompanyRulesModal: React.FC<CompanyRulesModalProps> = ({
                 : 'text-slate-600 hover:bg-slate-200'
             }`}
           >
-            <Palmtree className="w-4 h-4 text-emerald-400" />
-            <span>{lang === 'ar' ? 'الإجازات والمزايا والأجور' : 'Leaves & Benefits'}</span>
+<span>{lang === 'ar' ? 'الإجازات والمزايا والأجور' : 'Leaves & Benefits'}</span>
           </button>
 
           <button
@@ -350,8 +348,7 @@ export const CompanyRulesModal: React.FC<CompanyRulesModalProps> = ({
                 {/* Annual Leaves */}
                 <div className="bg-emerald-50/60 border border-emerald-200 rounded-2xl p-4 space-y-2">
                   <div className="flex items-center gap-2 text-emerald-900 font-extrabold text-sm">
-                    <Palmtree className="w-5 h-5 text-emerald-600" />
-                    <span>رصيد الإجازات السنوية (المادة 125)</span>
+<span>رصيد الإجازات السنوية (المادة 125)</span>
                   </div>
                   <ul className="text-xs text-slate-700 space-y-1.5 list-disc list-inside leading-relaxed">
                     <li><strong>السنة الأولى:</strong> 15 يوماً (تحتسب بعد فترة الاختبار 3 أشهر).</li>

@@ -5,8 +5,7 @@ import {
   LogIn, 
   LogOut, 
   CheckCircle2, 
-  Palmtree, 
-  Calendar, 
+Calendar, 
   FilePlus, 
   Coffee,
   Sparkles,
@@ -466,8 +465,8 @@ export const EmployeePortal: React.FC<EmployeePortalProps> = ({
     if (isOnLeaveToday) {
       alert(
         lang === 'ar'
-          ? 'إشعار النظام 🌴: الموظف في إجازة معتمدة اليوم، لا يمكن إجراء أي حركة (حضور / انصراف / استراحة) أثناء الإجازة.'
-          : 'System Notice 🌴: You are on an approved leave today. All actions are disabled.'
+          ? 'إشعار النظام : الموظف في إجازة معتمدة اليوم، لا يمكن إجراء أي حركة (حضور / انصراف / استراحة) أثناء الإجازة.'
+          : 'System Notice : You are on an approved leave today. All actions are disabled.'
       );
       return;
     }
@@ -898,8 +897,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
             <div className="text-xs font-bold mt-0.5">
               {empLeaveToday ? (
                 <span className="text-teal-800 bg-teal-100 px-3 py-1 rounded-full border border-teal-300 font-bold flex items-center gap-1.5 inline-flex">
-                  <Palmtree className="w-3.5 h-3.5 text-teal-600" />
-                  <span>{getLeaveTypeLabel(empLeaveToday.type, lang)} (معتمدة 🌴)</span>
+<span>{getLeaveTypeLabel(empLeaveToday.type, lang)} (معتمدة )</span>
                 </span>
               ) : empPermissionToday && !todayRecord?.checkIn ? (
                 <span className="text-sky-800 bg-sky-100 px-3 py-1 rounded-full border border-sky-300 font-bold flex items-center gap-1.5 inline-flex">
@@ -1006,8 +1004,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
         {empLeaveToday && (
           <div className="p-4 rounded-2xl bg-teal-500/10 border border-teal-500/30 text-teal-950 text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <Palmtree className="w-5 h-5 text-teal-600 shrink-0" />
-              <div>
+<div>
                 <span className="font-bold text-slate-900 block text-sm">
                   {lang === 'ar' ? `إجازة معتمدة سارية: ${getLeaveTypeLabel(empLeaveToday.type, 'ar')}` : `Active Approved Leave: ${getLeaveTypeLabel(empLeaveToday.type, 'en')}`}
                 </span>
@@ -1161,7 +1158,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
             <Coffee className="w-4 h-4 text-amber-600" />
             <span>
               {isOnLeaveToday
-                ? (lang === 'ar' ? 'الاستراحة معطلة (إجازة 🌴)' : 'Break Disabled (Leave)')
+                ? (lang === 'ar' ? 'الاستراحة معطلة (إجازة )' : 'Break Disabled (Leave)')
                 : (lang === 'ar' ? 'بدء استراحة ☕' : 'Start Break ☕')}
             </span>
           </button>
@@ -1349,8 +1346,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
               onClick={() => setShowLeaveModal(true)}
               className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700 font-bold text-xs flex items-center gap-1.5 transition"
             >
-              <Palmtree className="w-4 h-4" />
-              <span>{lang === 'ar' ? 'طلب إجازة رسمية' : 'Request Leave'}</span>
+<span>{lang === 'ar' ? 'طلب إجازة رسمية' : 'Request Leave'}</span>
             </button>
           </div>
         </div>
@@ -1363,8 +1359,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
               <div className="w-7 h-7 rounded-xl bg-emerald-50 border border-emerald-200/80 flex items-center justify-center shrink-0">
-                <Palmtree className="w-4 h-4 text-emerald-600" />
-              </div>
+</div>
               <span>{lang === 'ar' ? 'رصيد الإجازات السنوية' : 'Annual Leave Balance'}</span>
             </span>
             <span className="text-[10px] font-mono bg-emerald-50 text-emerald-700 font-bold px-2.5 py-0.5 rounded-full border border-emerald-200">
@@ -2393,7 +2388,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
                   <option value="absent">❌ غياب (Mark as Absent)</option>
                   <option value="on_time">🟢 حاضر بالموعد (Present / On Time)</option>
                   <option value="late">🟡 متأخر (Late Arrival)</option>
-                  <option value="on_leave">🌴 إجازة رسمية (On Leave)</option>
+                  <option value="on_leave"> إجازة رسمية (On Leave)</option>
                 </select>
               </div>
 

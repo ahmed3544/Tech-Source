@@ -4,8 +4,7 @@ import {
   UserCheck, 
   Clock, 
   UserX, 
-  Palmtree, 
-  CheckCircle2, 
+CheckCircle2, 
   Plus, 
   FileSpreadsheet, 
   ArrowUpRight,
@@ -209,8 +208,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
         <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm space-y-1">
           <div className="flex items-center justify-between text-slate-500">
             <span className="text-[11px] font-bold text-sky-700 whitespace-nowrap">{lang === 'ar' ? 'في إجازة' : 'On Leave'}</span>
-            <Palmtree className="w-3.5 h-3.5 text-sky-500 shrink-0" />
-          </div>
+</div>
           <div className="text-xl sm:text-2xl font-black text-sky-600 font-mono">{toWesternDigits(leaveCount)}</div>
           <div className="text-[9px] text-sky-700 font-semibold font-mono whitespace-nowrap">
             {toWesternDigits(leavePct)}% {lang === 'ar' ? 'من الإجمالي' : 'approved leave'}
@@ -369,7 +367,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                           )
                         ) : status === 'on_leave' || approvedLeaveToday ? (
                           <span className="inline-block px-2 py-0.5 rounded-full text-[9px] font-bold border bg-teal-100 text-teal-900 border-teal-300">
-                            🌴 {getLeaveTypeLabel(approvedLeaveToday?.type || rec?.leaveType, lang, rec?.notes)}
+                             {getLeaveTypeLabel(approvedLeaveToday?.type || rec?.leaveType, lang, rec?.notes)}
                           </span>
                         ) : isTodayWeekend && !rec?.checkIn ? (
                           <span className="inline-block px-2 py-0.5 rounded-full text-[9px] font-bold border bg-emerald-50 text-emerald-800 border-emerald-300">
@@ -414,8 +412,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
           <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm space-y-2">
             <div className="flex items-center justify-between pb-1.5 border-b border-slate-100">
               <h3 className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
-                <Palmtree className="w-3.5 h-3.5 text-sky-600" />
-                <span>{lang === 'ar' ? 'الموظفين في إجازة معتمدة اليوم' : 'Employees On Leave Today'}</span>
+<span>{lang === 'ar' ? 'الموظفين في إجازة معتمدة اليوم' : 'Employees On Leave Today'}</span>
               </h3>
               <span className="text-[10px] bg-sky-100 text-sky-900 font-bold px-1.5 py-0.5 rounded-full font-mono">
                 {toWesternDigits(todayApprovedLeaves.length)}
@@ -438,7 +435,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                       <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border ${
                         req.type === 'sick' ? 'bg-rose-100 text-rose-800 border-rose-300' : 'bg-emerald-100 text-emerald-800 border-emerald-300'
                       }`}>
-                        {req.type === 'sick' ? '🩺 مرضية' : req.type === 'annual' ? '🌴 سنوية' : 'إجازة'}
+                        {req.type === 'sick' ? '🩺 مرضية' : req.type === 'annual' ? ' سنوية' : 'إجازة'}
                       </span>
                     </div>
                   );
