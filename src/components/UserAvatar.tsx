@@ -13,11 +13,26 @@ export const UserAvatar: React.FC<UserAvatarProps> = ({ name, code, avatar, size
   const displayName = name || (employee ? (employee.nameEn || employee.nameAr || '') : '');
   const displayCode = code || employee?.code || '';
 
+  // Some screens historically passed only name/code. Recover the employee photo
+  // from the synced local employee cache as a safe fallback in those screens.
+  const cachedAvatar = useMemo(() => {
+    if (typeof window === 'undefined' || !displayCode) return '';
+    try {
+      const raw = window.localStorage.getItem('attendance_employees');
+      const list = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(list)) return '';
+      const found = list.find((item: any) => String(item?.code || '').trim().toLowerCase() === displayCode.trim().toLowerCase());
+      return typeof found?.avatar === 'string' ? found.avatar.trim() : (typeof found?.avatarUrl === 'string' ? found.avatarUrl.trim() : '');
+    } catch {
+      return '';
+    }
+  }, [displayCode]);
+
   const imageCandidates = useMemo(() => (
-    [avatar, employee?.avatar, employee?.avatarUrl]
+    [avatar, employee?.avatar, employee?.avatarUrl, cachedAvatar]
       .map(value => typeof value === 'string' ? value.trim() : '')
       .filter((value, index, list): value is string => Boolean(value) && list.indexOf(value) === index)
-  ), [avatar, employee?.avatar, employee?.avatarUrl]);
+  ), [avatar, employee?.avatar, employee?.avatarUrl, cachedAvatar]);
 
   const [failedImageIndexes, setFailedImageIndexes] = useState<number[]>([]);
 
