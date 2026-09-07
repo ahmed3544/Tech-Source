@@ -15,7 +15,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Normalize duplicate notification declarations
+      - name: Normalize and wire notifications page
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -45,16 +45,43 @@ jobs:
                   seen_prop = True
               out.append(line)
           p.write_text(''.join(out), encoding='utf-8')
+
+          app = Path('src/App.tsx')
+          code = app.read_text(encoding='utf-8')
+
+          # The Header already forwards onOpenNotificationsPage to NotificationCenter.
+          # Wire the App callback so clicking the bell actually changes the active view.
+          if 'onOpenNotificationsPage={() => setActiveTab(\'notifications\')}' not in code:
+              anchor = 'onMarkAllNotificationsAsRead={handleMarkAllNotificationsAsRead}'
+              if anchor not in code:
+                  raise SystemExit('Header notification handler anchor not found in App.tsx')
+              code = code.replace(
+                  anchor,
+                  anchor + "\n        onOpenNotificationsPage={() => setActiveTab('notifications')}",
+                  1,
+              )
+
+          # NotificationsPage was imported but was not rendered in the active-tab content.
+          if code.count('<NotificationsPage') < 2:
+              anchor = "        {activeTab === 'schedule' && ("
+              if anchor not in code:
+                  raise SystemExit('Schedule render anchor not found in App.tsx')
+              block = """        {activeTab === 'notifications' && (\n          <NotificationsPage\n            notifications={notifications}\n            currentUserId={currentUser?.id}\n            lang={lang}\n            onMarkAsRead={handleMarkNotificationAsRead}\n            onMarkAllAsRead={handleMarkAllNotificationsAsRead}\n            onBack={() => setActiveTab(currentUser?.role === 'leader' || !currentUser ? 'dashboard' : 'portal')}\n          />\n        )}\n\n"""
+              code = code.replace(anchor, block + anchor, 1)
+
+          app.write_text(code, encoding='utf-8')
           PY
 
       - name: Build
         run: npm install && npm run build
 
-      - name: Verify
+      - name: Verify notification integration
         run: |
           test "$(grep -c "| 'notifications'" src/App.tsx)" -eq 1
           test "$(grep -c "| 'notifications'" src/components/Header.tsx)" -eq 1
           test "$(grep -c "onOpenNotificationsPage?:" src/components/Header.tsx)" -eq 1
+          grep -q "onOpenNotificationsPage={() => setActiveTab('notifications')}" src/App.tsx
+          test "$(grep -c "<NotificationsPage" src/App.tsx)" -ge 2
 
       - name: Commit cleanup
         run: |
@@ -62,5 +89,5 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add src/App.tsx src/components/Header.tsx
           if git diff --cached --quiet; then exit 0; fi
-          git commit -m "fix: remove duplicate notification declarations"
+          git commit -m "fix: wire notification bell to notifications page"
           git push origin HEAD:main
