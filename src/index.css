@@ -259,3 +259,75 @@ textarea:focus-visible {
     padding-bottom: max(8px, env(safe-area-inset-bottom));
   }
 }
+
+/* Employee portal: RTL-safe dashboard navigation and compact mobile controls. */
+html[dir="rtl"] #root .bg-white.rounded-3xl.border.border-slate-200.shadow-sm.overflow-hidden {
+  direction: rtl;
+}
+
+/* Dashboard tabs: fixed 12px gap, no wrapping, horizontal scroll on narrow screens. */
+#root .bg-white.rounded-3xl.border.border-slate-200.shadow-sm.overflow-hidden > .bg-slate-50.border-b.border-slate-200.p-3.flex.items-center {
+  display: flex;
+  gap: 12px;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  flex-wrap: nowrap;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+#root .bg-white.rounded-3xl.border.border-slate-200.shadow-sm.overflow-hidden > .bg-slate-50.border-b.border-slate-200.p-3.flex.items-center::-webkit-scrollbar {
+  display: none;
+}
+
+#root .bg-white.rounded-3xl.border.border-slate-200.shadow-sm.overflow-hidden > .bg-slate-50.border-b.border-slate-200.p-3.flex.items-center > button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  font-weight: 700;
+  max-width: none;
+}
+
+/* Keep Arabic labels visually separated and stable inside each tab. */
+html[dir="rtl"] #root .bg-white.rounded-3xl.border.border-slate-200.shadow-sm.overflow-hidden > .bg-slate-50.border-b.border-slate-200.p-3.flex.items-center > button {
+  direction: rtl;
+}
+
+html[dir="rtl"] #root .bg-white.rounded-3xl.border.border-slate-200.shadow-sm.overflow-hidden > .bg-slate-50.border-b.border-slate-200.p-3.flex.items-center > button > span {
+  font-weight: 700;
+  white-space: nowrap;
+  letter-spacing: 0;
+}
+
+/* Leave/permission actions: never force the dark card wider than the phone. */
+#root .bg-slate-900 .flex.items-center.gap-2.shrink-0 {
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: wrap;
+}
+
+#root .bg-slate-900 .flex.items-center.gap-2.shrink-0 > button {
+  min-width: 0;
+  max-width: 100%;
+  white-space: nowrap;
+}
+
+@media (max-width: 767px) {
+  /* The request buttons share the available width instead of overflowing. */
+  #root .bg-slate-900 .flex.items-center.gap-2.shrink-0 > button {
+    flex: 1 1 0;
+  }
+
+  html[dir="rtl"] #root .bg-white.rounded-3xl.border.border-slate-200.shadow-sm.overflow-hidden > .bg-slate-50.border-b.border-slate-200.p-3.flex.items-center {
+    gap: 12px;
+  }
+}
+
+@media (max-width: 390px) {
+  #root .bg-slate-900 .flex.items-center.gap-2.shrink-0 > button {
+    flex-basis: 100%;
+    width: 100%;
+  }
+}
