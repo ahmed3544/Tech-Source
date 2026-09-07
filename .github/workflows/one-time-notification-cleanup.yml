@@ -1,0 +1,64 @@
+name: One Time Notification Cleanup
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Clean duplicates
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def collapse(path, exact):
+              p = Path(path)
+              lines = p.read_text(encoding='utf-8').splitlines(keepends=True)
+              out, seen = [], False
+              for line in lines:
+                  hit = line.strip() == exact
+                  if hit:
+                      if seen:
+                          continue
+                      seen = True
+                  else:
+                      seen = False
+                  out.append(line)
+              p.write_text(''.join(out), encoding='utf-8')
+
+          collapse('src/App.tsx', "| 'notifications'")
+          collapse('src/components/Header.tsx', "| 'notifications'")
+
+          p = Path('src/components/Header.tsx')
+          lines = p.read_text(encoding='utf-8').splitlines(keepends=True)
+          out, seen = [], False
+          for line in lines:
+              if line.strip() == 'onOpenNotificationsPage?: () => void;':
+                  if seen:
+                      continue
+                  seen = True
+              out.append(line)
+          p.write_text(''.join(out), encoding='utf-8')
+          PY
+          npm install
+          npm run build
+          test "$(grep -c "| 'notifications'" src/App.tsx)" -eq 1
+          test "$(grep -c "| 'notifications'" src/components/Header.tsx)" -eq 1
+          test "$(grep -c "onOpenNotificationsPage?:" src/components/Header.tsx)" -eq 1
+
+      - name: Commit and remove this workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm -f .github/workflows/one-time-notification-cleanup.yml
+          git add src/App.tsx src/components/Header.tsx .github/workflows/one-time-notification-cleanup.yml
+          git commit -m "fix: normalize notification declarations"
+          git push origin HEAD:main
