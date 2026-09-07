@@ -1,0 +1,72 @@
+name: Verified Repair EmployeePortal
+
+on:
+  workflow_dispatch:
+
+jobs:
+  repair-and-build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Restore known-good file and apply minimal fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git show 7402c391f9fb380aa006c8987c08928eccd11424:src/components/EmployeePortal.tsx > src/components/EmployeePortal.tsx
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('src/components/EmployeePortal.tsx')
+          s = p.read_text(encoding='utf-8')
+          old = '''          <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[10px] font-bold">\n            <span className="text-slate-400">{lang === 'ar' ? 'حالة السجل:' : 'Log Status:'}</span>\n            <span className={monthlySummary.penalties.length > 0 ? 'text-rose-600' : 'text-emerald-600'}>\n              {monthlySummary.penalties.length > 0 \n                ? (lang === 'ar' ? 'توجد خصومات مسجلة' : 'Penalties Recorded')\n                : (lang === 'ar' ? 'السجل نظيف ✓' : 'Clean Record ✓')}\n            </span>\n          </div>\n        </div>\n      </div>\n\n      {/* CARD 2: MONTHLY PERMISSIONS QUOTA */}'''
+          new = old
+          # The known-good baseline has the duplicate permission button. Remove only that button block.\n          marker = '''          <div className="pt-2 border-t border-slate-100">\n            <button\n              onClick={() => setShowPermissionModal(true)}\n              disabled={monthlySummary.usedPermissionsCount >= 2}\n              className={`w-full py-1.5 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${\n                monthlySummary.usedPermissionsCount >= 2\n                  ? 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'\n                  : 'bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200'\n              }`}\n            >\n              <Clock3 className="w-3.5 h-3.5 text-sky-600 shrink-0" />\n              <span>\n                {monthlySummary.usedPermissionsCount >= 2\n                  ? (lang === 'ar' ? 'تم استيفاء الرصيد هذا الشهر' : 'Quota Exceeded')\n                  : (lang === 'ar' ? '+ طلب إذن خروج (ساعتان)' : '+ Request 2h Permission')}\n              </span>\n            </button>\n          </div>\n'''
+          if marker in s:
+              s = s.replace(marker, '', 1)
+          else:
+              raise SystemExit('Expected duplicate permission button block was not found')
+          # Ensure exactly one closing div remains after CARD 2 content; do not close the parent grid here.
+          bad = '''          </div>\n\n          </div>\n        </div>\n\n        {/* CARD 3: TOTAL WORK HOURS & STATS */}'''
+          good = '''          </div>\n        </div>\n\n        {/* CARD 3: TOTAL WORK HOURS & STATS */}'''
+          if bad in s:
+              s = s.replace(bad, good, 1)
+          else:
+              # If baseline shape differs, fail rather than guessing.
+              raise SystemExit('Expected extra closing div before CARD 3 was not found')
+          # Preserve the single-line holiday month badge.
+          s = s.replace(
+              'className="bg-amber-400 text-slate-950 text-[11px] font-black px-2.5 py-0.5 rounded-full font-mono shadow-sm"',
+              'className="bg-amber-400 text-slate-950 text-[11px] font-black px-2.5 py-0.5 rounded-full font-mono shadow-sm inline-flex items-center whitespace-nowrap shrink-0 leading-none"'
+          )
+          p.write_text(s, encoding='utf-8')
+          PY
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Full production build verification
+        run: npm run build
+
+      - name: Verify no placeholder corruption and expected fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q "OFFICIAL PUBLIC HOLIDAYS BANNER" src/components/EmployeePortal.tsx
+          grep -q "whitespace-nowrap shrink-0 leading-none" src/components/EmployeePortal.tsx
+          ! grep -q "Placeholder prevented" src/components/EmployeePortal.tsx
+
+      - name: Commit verified repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/components/EmployeePortal.tsx
+          git diff --cached --quiet && { echo "No changes to commit"; exit 0; }
+          git commit -m "fix: repair EmployeePortal JSX and verify production build"
+          git push origin HEAD:main
