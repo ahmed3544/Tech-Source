@@ -43,3 +43,5 @@ export async function registerPushNotifications(employeeId?: string) {
     if (Notification.permission === 'granted') new Notification(payload.notification?.title || 'TECH SOURCE', { body: payload.notification?.body || '' });
   });
 }
+
+// Firebase project: tech-source-attendance; web and Android use the same project.
