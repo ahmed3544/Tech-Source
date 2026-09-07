@@ -1,0 +1,42 @@
+name: Fix Holiday Month Badge
+
+on:
+  push:
+    paths:
+      - '.github/workflows/fix-holiday-badge.yml'
+
+jobs:
+  fix:
+    if: ${{ !contains(github.event.head_commit.message, '[badge-fix]') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Restore original EmployeePortal and patch badge classes
+        shell: bash
+        run: |
+          git checkout 7402c391f9fb380aa006c8987c08928eccd11424 -- src/components/EmployeePortal.tsx
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('src/components/EmployeePortal.tsx')
+          s = p.read_text(encoding='utf-8')
+          old = 'className="bg-amber-400 text-slate-950 text-[11px] font-black px-2.5 py-0.5 rounded-full font-mono shadow-sm"'
+          new = 'className="bg-amber-400 text-slate-950 text-[11px] font-black px-2.5 py-0.5 rounded-full font-mono shadow-sm inline-flex items-center whitespace-nowrap shrink-0 leading-none"'
+          if old not in s:
+              raise SystemExit('Holiday month badge class not found')
+          p.write_text(s.replace(old, new, 1), encoding='utf-8')
+          PY
+
+      - name: Commit and push
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/components/EmployeePortal.tsx
+          git commit -m "Fix holiday month badge wrapping [badge-fix]"
+          git push
