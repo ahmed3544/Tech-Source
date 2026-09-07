@@ -110,6 +110,7 @@ export default function App() {
       | 'notifications'
       | 'notifications'
       | 'notifications'
+      | 'notifications'
       | 'portal'
     >('dashboard');
 
