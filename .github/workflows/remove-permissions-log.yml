@@ -24,21 +24,17 @@ jobs:
           text = path.read_text(encoding='utf-8')
           original = text
 
-          # The permissions/leave history is no longer a dashboard tab.
           text = text.replace(
               "useState<'attendance' | 'penalties' | 'permissions'>('attendance')",
               "useState<'attendance' | 'penalties'>('attendance')"
           )
 
-          # Remove the dedicated third tab button while preserving the existing
-          # leave/permission request workflow and notification system.
           pattern = re.compile(
               r"\n\s*<button\n\s*onClick=\{\(\) => setActiveDashboardTab\('permissions'\)\}\n.*?\n\s*</button>",
               re.S,
           )
           text, removed = pattern.subn('', text, count=1)
 
-          # Fallback for formatting variants: remove the button by its unique label.
           if removed == 0:
               pattern2 = re.compile(
                   r"\n\s*<button[^>]*setActiveDashboardTab\('permissions'\)[^>]*>.*?3\. سجل الأذونات والإجازات الإدارية.*?</button>",
