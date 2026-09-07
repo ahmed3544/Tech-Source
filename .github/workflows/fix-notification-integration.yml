@@ -1,0 +1,75 @@
+name: Repair Notification Integration
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Repair duplicate notification props
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('src/components/Header.tsx')
+          s = p.read_text(encoding='utf-8')
+          s = s.replace("    | 'notifications'\n    | 'notifications'\n", "    | 'notifications'\n", 1)
+          s = s.replace("      | 'notifications'\n      | 'notifications'\n", "      | 'notifications'\n", 1)
+          s = s.replace("  onOpenNotificationsPage?: () => void;\n  onOpenNotificationsPage?: () => void;\n", "  onOpenNotificationsPage?: () => void;\n", 1)
+          p.write_text(s, encoding='utf-8')
+          
+          p = Path('src/components/NotificationCenter.tsx')
+          s = p.read_text(encoding='utf-8')
+          s = s.replace("import React, { useState } from 'react';", "import React from 'react';")
+          s = s.replace("import { Bell, CheckCheck, Check, X } from 'lucide-react';", "import { Bell } from 'lucide-react';")
+          s = s.replace("import { Notification, Language, ShiftSwapRequest, Employee } from '../types';", "import { Notification, Language } from '../types';")
+          start = s.find("  const [actingSwapId")
+          end = s.find("\n  return (", start)
+          if start != -1 and end != -1:
+              s = s[:start] + s[end:]
+          p.write_text(s, encoding='utf-8')
+          PY
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Production build
+        run: npm run build
+
+      - name: Verify notification page integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q "NotificationsPage" src/App.tsx
+          grep -q "'notifications'" src/App.tsx
+          grep -q "onOpenNotificationsPage" src/components/Header.tsx
+          grep -q "onOpenPage" src/components/NotificationCenter.tsx
+          grep -q "shift_swap_requested" src/components/NotificationsPage.tsx
+          echo "Notification integration verified."
+
+      - name: Commit and push repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/components/Header.tsx src/components/NotificationCenter.tsx
+          if git diff --cached --quiet; then
+            echo "No repair changes needed."
+            exit 0
+          fi
+          git commit -m "fix: repair notification integration"
+          git fetch origin main
+          git rebase origin/main || { git rebase --abort; git reset --hard origin/main; exit 1; }
+          git push origin HEAD:main
