@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Header } from './components/Header';
 import { NotificationCenter } from './components/NotificationCenter';
+import { NotificationsPage } from './components/NotificationsPage';
 import { DashboardOverview } from './components/DashboardOverview';
 import { KioskPunch } from './components/KioskPunch';
 import { AttendanceLogTable } from './components/AttendanceLogTable';
@@ -104,6 +105,7 @@ export default function App() {
       | 'import_leaves'
       | 'analytics'
       | 'schedule'
+      | 'notifications'
       | 'portal'
     >('dashboard');
 

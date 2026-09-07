@@ -44,6 +44,7 @@ interface HeaderProps {
     | 'import_leaves'
     | 'analytics'
     | 'schedule'
+    | 'notifications'
     | 'portal';
 
   setActiveTab: (
@@ -56,6 +57,7 @@ interface HeaderProps {
       | 'import_leaves'
       | 'analytics'
       | 'schedule'
+      | 'notifications'
       | 'portal'
   ) => void;
 
@@ -87,6 +89,7 @@ interface HeaderProps {
   currentUserId?: string;
   onMarkNotificationAsRead?: (notificationId: string) => void;
   onMarkAllNotificationsAsRead?: () => void;
+  onOpenNotificationsPage?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -112,6 +115,7 @@ export const Header: React.FC<HeaderProps> = ({
   currentUserId,
   onMarkNotificationAsRead,
   onMarkAllNotificationsAsRead,
+  onOpenNotificationsPage,
 }) => {
   const [now, setNow] = useState<Date>(new Date());
   const [showAvatarModal, setShowAvatarModal] = useState(false);
@@ -418,7 +422,7 @@ export const Header: React.FC<HeaderProps> = ({
                   <button type="button" onClick={() => {setShowProfileMenu(false);onLogout();}} className="w-full flex items-center gap-3 px-3.5 py-2.5 text-sm font-bold text-rose-300 hover:bg-rose-500/10 transition text-start"><LogOut className="w-4 h-4" /><span>{lang === 'ar' ? 'تسجيل الخروج' : 'Logout'}</span></button>
                 </div>}
               </div> : <button onClick={onOpenLoginModal} className="h-9 flex items-center justify-center gap-1.5 px-2.5 rounded-lg bg-[#0d2240] hover:bg-[#153460] text-white border border-blue-900 text-xs font-bold transition shrink-0"><LogIn className="w-3.5 h-3.5 text-emerald-400" /><span className="hidden sm:inline">{lang === 'ar' ? 'تسجيل الدخول' : 'Login'}</span></button>}
-              {currentUser && <div className="h-9 flex items-center justify-center shrink-0"><NotificationCenter notifications={notifications} currentUserId={currentUserId || currentUser.id} lang={lang} onMarkAsRead={onMarkNotificationAsRead} onMarkAllAsRead={onMarkAllNotificationsAsRead} /></div>}
+              {currentUser && <div className="h-9 flex items-center justify-center shrink-0"><NotificationCenter notifications={notifications} currentUserId={currentUserId || currentUser.id} lang={lang} onMarkAsRead={onMarkNotificationAsRead} onMarkAllAsRead={onMarkAllNotificationsAsRead} onOpenPage={onOpenNotificationsPage} /></div>}
             </div>
           </div>
         </div>
