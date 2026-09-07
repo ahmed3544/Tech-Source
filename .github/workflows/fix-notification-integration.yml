@@ -73,3 +73,5 @@ jobs:
           git fetch origin main
           git rebase origin/main || { git rebase --abort; git reset --hard origin/main; exit 1; }
           git push origin HEAD:main
+
+# Verification trigger for the notification integration repair.
