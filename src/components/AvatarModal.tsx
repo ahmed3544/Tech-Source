@@ -18,7 +18,6 @@ export const AvatarModal: React.FC<AvatarModalProps> = ({
   onSaveAvatar,
   lang,
 }) => {
-  const [customUrl, setCustomUrl] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen || !employee) return null;
@@ -43,11 +42,9 @@ export const AvatarModal: React.FC<AvatarModalProps> = ({
             height = Math.round((height * MAX_SIZE) / width);
             width = MAX_SIZE;
           }
-        } else {
-          if (height > MAX_SIZE) {
-            width = Math.round((width * MAX_SIZE) / height);
-            height = MAX_SIZE;
-          }
+        } else if (height > MAX_SIZE) {
+          width = Math.round((width * MAX_SIZE) / height);
+          height = MAX_SIZE;
         }
 
         canvas.width = width;
@@ -130,34 +127,6 @@ export const AvatarModal: React.FC<AvatarModalProps> = ({
             <Upload className="w-4 h-4 text-emerald-400" />
             <span>{lang === 'ar' ? 'اختيار ملف صورة...' : 'Choose image file...'}</span>
           </button>
-        </div>
-
-        <div className="space-y-2 pt-2 border-t border-slate-100">
-          <label className="block text-xs font-bold text-slate-800">
-            {lang === 'ar' ? 'أو ادخل رابط صورة (URL):' : 'Or enter direct image URL:'}
-          </label>
-          <div className="flex gap-2">
-            <input
-              type="url"
-              placeholder="https://example.com/photo.jpg"
-              value={customUrl}
-              onChange={(e) => setCustomUrl(e.target.value)}
-              className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono text-slate-900"
-            />
-            <button
-              type="button"
-              disabled={!customUrl.trim()}
-              onClick={() => {
-                if (customUrl.trim()) {
-                  onSaveAvatar(customUrl.trim());
-                  onClose();
-                }
-              }}
-              className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white font-bold text-xs transition shrink-0"
-            >
-              {lang === 'ar' ? 'تطبيق' : 'Apply'}
-            </button>
-          </div>
         </div>
 
         {employee.avatar && (
