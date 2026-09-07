@@ -24,8 +24,7 @@ patchFile('src/components/KioskPunch.tsx', (code) => {
 
   // Force the selected-employee header into a vertical layout.
   // Identity occupies its own full-width row; attendance status is a
-  // separate full-width row underneath it. This eliminates all collision
-  // possibilities from flex shrinking, absolute positioning, or long names.
+  // separate row underneath it. This eliminates collision possibilities.
   code = code.replace(
     /bg-slate-50 p-4 rounded-2xl border border-slate-200\/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4/g,
     'bg-slate-50 p-3 sm:p-4 rounded-2xl border border-slate-200/80 flex flex-col gap-3 overflow-visible'
@@ -36,16 +35,36 @@ patchFile('src/components/KioskPunch.tsx', (code) => {
     'className="flex items-center gap-3 min-w-0 w-full"'
   );
 
-  // The attendance card must never compete for horizontal space with the name.
+  // Compact attendance status badge: content-sized, smaller padding/icon/text.
   code = code.replace(
     /className="flex items-center gap-3 bg-slate-900 text-white px-4 py-2\.5 rounded-2xl border border-slate-800 shadow-sm shrink-0 w-full sm:w-auto"/g,
-    'className="flex items-center gap-3 bg-slate-900 text-white px-3 py-2.5 rounded-xl border border-slate-800 shadow-sm min-w-0 w-full overflow-hidden"'
+    'className="inline-flex items-center gap-2 bg-slate-900 text-white px-2.5 py-1.5 rounded-xl border border-slate-800 shadow-sm w-fit max-w-full min-w-0 overflow-hidden"'
   );
 
-  // Long attendance text is allowed to wrap instead of overflowing into the name row.
+  code = code.replace(
+    /className="flex items-center gap-3 bg-slate-900 text-white px-3 py-2\.5 rounded-xl border border-slate-800 shadow-sm min-w-0 w-full overflow-hidden"/g,
+    'className="inline-flex items-center gap-2 bg-slate-900 text-white px-2.5 py-1.5 rounded-xl border border-slate-800 shadow-sm w-fit max-w-full min-w-0 overflow-hidden"'
+  );
+
+  code = code.replace(
+    /className="flex items-center justify-center w-8 h-8 rounded-xl bg-slate-800 text-emerald-400 border border-slate-700"/g,
+    'className="flex items-center justify-center w-6 h-6 rounded-lg bg-slate-800 text-emerald-400 border border-slate-700 shrink-0"'
+  );
+
+  code = code.replace(
+    /className="text-\[10px\] text-slate-400 font-bold uppercase tracking-wider"/g,
+    'className="text-[9px] text-slate-400 font-bold uppercase tracking-wider"'
+  );
+
+  // Long attendance text is allowed to wrap instead of overflowing.
   code = code.replace(
     /className="text-xs font-mono font-bold flex items-center gap-1\.5 whitespace-nowrap w-full min-w-0 overflow-visible"/g,
-    'className="text-xs font-mono font-bold flex items-center gap-1.5 min-w-0 flex-wrap leading-5 break-words"'
+    'className="text-[10px] font-mono font-bold flex items-center gap-1 min-w-0 flex-wrap leading-4 break-words"'
+  );
+
+  code = code.replace(
+    /className="text-xs font-mono font-bold flex items-center gap-1\.5 min-w-0 flex-wrap leading-5 break-words"/g,
+    'className="text-[10px] font-mono font-bold flex items-center gap-1 min-w-0 flex-wrap leading-4 break-words"'
   );
 
   // Keep the closed-day label compact.
@@ -55,4 +74,31 @@ patchFile('src/components/KioskPunch.tsx', (code) => {
   return code;
 });
 
-console.log('Kiosk warning banner removed and employee attendance card forced into a separate row.');
+patchFile('src/App.tsx', (code) => {
+  // The theme toggle already adds the `dark` class to <html>.
+  // Make the app's root background follow that state as well, so the
+  // whole page (not only individual cards) actually becomes dark.
+  code = code.replace(
+    /className="min-h-screen bg-slate-100\/70 text-slate-900 font-sans antialiased selection:bg-emerald-500 selection:text-white"/g,
+    'className="min-h-screen bg-slate-100/70 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans antialiased selection:bg-emerald-500 selection:text-white"'
+  );
+
+  code = code.replace(
+    /min-h-screen\n\s*bg-slate-100\/70\n\s*text-slate-900\n\s*font-sans/g,
+    'min-h-screen\n        bg-slate-100/70 dark:bg-slate-950\n        text-slate-900 dark:text-slate-100\n        font-sans'
+  );
+
+  // The notification bell was rendered without the navigation callback.
+  // Wire it directly to the existing notifications tab so clicking it
+  // always changes the page.
+  if (!code.includes('onOpenNotificationsPage=')) {
+    code = code.replace(
+      /([ \t]*onMarkAllNotificationsAsRead=\{\s*handleMarkAllNotificationsAsRead\s*\}\n)([ \t]*\/>)((?:\s*\n)?)/,
+      '$1\n        onOpenNotificationsPage={() => setActiveTab(\'notifications\')}\n      $2$3'
+    );
+  }
+
+  return code;
+});
+
+console.log('Kiosk status card compacted, notifications navigation wired, and app root dark mode fixed.');
