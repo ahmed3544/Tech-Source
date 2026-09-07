@@ -28,6 +28,39 @@ const addDays = (value: Date, amount: number) => {
   return d;
 };
 
+const timeToMinutes = (value: string) => {
+  const match = value.trim().match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return NaN;
+  return Number(match[1]) * 60 + Number(match[2]);
+};
+
+const shiftTimeline = (shift: Shift) => {
+  const start = timeToMinutes(shift.startTime);
+  let end = timeToMinutes(shift.endTime);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+  if (end <= start) end += 24 * 60;
+  const duration = end - start;
+  if (duration <= 0) return null;
+
+  const breaks = (shift.breaks || []).map(item => {
+    let breakStart = timeToMinutes(item.startTime);
+    let breakEnd = timeToMinutes(item.endTime);
+    if (!Number.isFinite(breakStart) || !Number.isFinite(breakEnd)) return null;
+    while (breakStart < start) breakStart += 24 * 60;
+    while (breakEnd <= breakStart) breakEnd += 24 * 60;
+    const clippedStart = Math.max(start, breakStart);
+    const clippedEnd = Math.min(end, breakEnd);
+    if (clippedEnd <= clippedStart) return null;
+    return {
+      ...item,
+      left: ((clippedStart - start) / duration) * 100,
+      width: ((clippedEnd - clippedStart) / duration) * 100,
+    };
+  }).filter(Boolean) as Array<(Shift['breaks'] extends Array<infer T> ? T : never) & { left: number; width: number }>;
+
+  return { start, end, duration, breaks };
+};
+
 export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
   employees: suppliedEmployees,
   shifts: suppliedShifts,
@@ -238,10 +271,32 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
                 {days.map(day => {
                   const selectedId = getValue(day.key);
                   const selectedShift = shiftFor(employee.id, day.key);
+                  const timeline = selectedShift ? shiftTimeline(selectedShift) : null;
                   const isWeekend = day.date.getDay() === 5 || day.date.getDay() === 6;
-                  return <div key={day.key} className={`rounded-2xl border p-3 ${isWeekend ? 'bg-slate-50 border-slate-200' : 'bg-white border-slate-200'}`}>
-                    <div className="flex items-center justify-between gap-2 mb-2"><div><div className="text-xs font-black text-slate-900">{lang === 'ar' ? day.labelAr : day.labelEn}</div><div className="text-[10px] text-slate-400 font-mono mt-0.5">{day.key}</div></div>{isWeekend && <span className="text-[9px] font-black text-slate-500">{lang === 'ar' ? 'عطلة' : 'OFF'}</span>}</div>
-                    {isLeader ? <select value={selectedId} onChange={e => setDraft(prev => ({ ...prev, [day.key]: e.target.value }))} className="w-full min-h-11 rounded-xl border border-slate-200 bg-slate-50 px-2 py-2 text-xs font-bold text-slate-900"><option value="">{lang === 'ar' ? 'غير محدد' : 'Not assigned'}</option>{shifts.map(shift => <option key={shift.id} value={shift.id}>{lang === 'ar' ? shift.nameAr : shift.nameEn} · {shift.startTime}-{shift.endTime}</option>)}</select> : <div className="rounded-xl bg-slate-50 border border-slate-200 px-2 py-2"><div className="text-xs font-black text-slate-800 truncate">{selectedShift ? `${selectedShift.startTime} - ${selectedShift.endTime}` : (lang === 'ar' ? 'غير محدد' : 'Not assigned')}</div>{selectedShift && <div className="text-[10px] text-slate-500 font-mono mt-1 flex items-center gap-1"><Clock3 className="w-3 h-3" />{selectedShift.startTime} - {selectedShift.endTime}</div>}{selectedShift?.breaks?.length ? <div className="mt-2 pt-2 border-t border-slate-200 space-y-1">{selectedShift.breaks.map(item => <div key={item.id} className="text-[9px] text-slate-500 flex items-center justify-between gap-1"><span className="flex items-center gap-1 truncate"><Coffee className="w-3 h-3 shrink-0" />{lang === 'ar' ? item.nameAr : item.nameEn}</span><span className="font-mono shrink-0">{item.startTime}-{item.endTime}</span></div>)}</div> : null}</div>}
+                  return <div key={day.key} className={`min-w-0 overflow-hidden rounded-2xl border p-3 ${isWeekend ? 'bg-slate-50 border-slate-200' : 'bg-white border-slate-200'}`}>
+                    <div className="flex items-center justify-between gap-2 mb-2"><div><div className="text-xs font-black text-slate-900">{lang === 'ar' ? day.labelAr : day.labelEn}</div><div className="text-[10px] text-slate-400 font-mono mt-0.5 font-bold">{day.key}</div></div>{isWeekend && <span className="text-[9px] font-black text-slate-500">{lang === 'ar' ? 'عطلة' : 'OFF'}</span>}</div>
+                    {isLeader ? <select value={selectedId} onChange={e => setDraft(prev => ({ ...prev, [day.key]: e.target.value }))} className="w-full min-h-11 rounded-xl border border-slate-200 bg-slate-50 px-2 py-2 text-xs font-bold text-slate-900"><option value="">{lang === 'ar' ? 'غير محدد' : 'Not assigned'}</option>{shifts.map(shift => <option key={shift.id} value={shift.id}>{lang === 'ar' ? shift.nameAr : shift.nameEn} · {shift.startTime}-{shift.endTime}</option>)}</select> : <div className="min-w-0 rounded-xl bg-slate-50 border border-slate-200 px-2 py-2"><div className="text-xs font-black text-slate-800 truncate">{selectedShift ? `${selectedShift.startTime} - ${selectedShift.endTime}` : (lang === 'ar' ? 'غير محدد' : 'Not assigned')}</div>{selectedShift && <div className="text-[10px] text-slate-500 font-mono font-bold mt-1 flex items-center gap-1"><Clock3 className="w-3 h-3" />{selectedShift.startTime} - {selectedShift.endTime}</div>}{selectedShift?.breaks?.length ? <div className="mt-2 pt-2 border-t border-slate-200 space-y-1">{selectedShift.breaks.map(item => <div key={item.id} className="text-[9px] text-slate-500 flex items-center justify-between gap-1"><span className="flex items-center gap-1 truncate"><Coffee className="w-3 h-3 shrink-0" />{lang === 'ar' ? item.nameAr : item.nameEn}</span><span className="font-mono font-bold shrink-0">{item.startTime}-{item.endTime}</span></div>)}</div> : null}</div>}
+
+                    {selectedShift && timeline && (
+                      <div className="mt-2.5 w-full min-w-0 max-w-full overflow-hidden rounded-xl border border-slate-200 bg-white p-2">
+                        <div className="mb-1.5 flex items-center justify-between gap-2 direction-ltr">
+                          <span className="text-[10px] sm:text-[11px] font-black text-slate-700 whitespace-nowrap">{selectedShift.startTime}</span>
+                          <span className="text-[9px] sm:text-[10px] font-bold text-slate-400">{lang === 'ar' ? 'زمن الشفت' : 'Shift timeline'}</span>
+                          <span className="text-[10px] sm:text-[11px] font-black text-slate-700 whitespace-nowrap">{selectedShift.endTime}</span>
+                        </div>
+                        <div className="relative h-2.5 sm:h-3 w-full min-w-0 max-w-full overflow-hidden rounded-md bg-emerald-500 direction-ltr" role="img" aria-label={lang === 'ar' ? `من ${selectedShift.startTime} إلى ${selectedShift.endTime} مع ${timeline.breaks.length} استراحة` : `Shift from ${selectedShift.startTime} to ${selectedShift.endTime} with ${timeline.breaks.length} break(s)`}>
+                          {timeline.breaks.map(item => (
+                            <span key={item.id} className="absolute inset-y-0 rounded-sm bg-rose-500" style={{ left: `${item.left}%`, width: `${item.width}%` }} title={`${item.startTime}-${item.endTime}`} />
+                          ))}
+                        </div>
+                        <div className="mt-1.5 flex items-center justify-between gap-2 direction-ltr text-[8px] font-bold text-slate-400">
+                          <span>{lang === 'ar' ? 'بداية' : 'Start'}</span>
+                          {timeline.breaks.length > 0 && <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-rose-500" />{lang === 'ar' ? 'استراحة' : 'Break'}</span>}
+                          <span>{lang === 'ar' ? 'نهاية' : 'End'}</span>
+                        </div>
+                      </div>
+                    )}
+
                     {isLeader && selectedShift?.breaks?.length ? <div className="mt-2 rounded-lg bg-amber-50 border border-amber-100 p-2 space-y-1">{selectedShift.breaks.map(item => <div key={item.id} className="text-[9px] text-amber-800 flex justify-between gap-1"><span className="truncate">{lang === 'ar' ? item.nameAr : item.nameEn}</span><span className="font-mono shrink-0">{item.startTime}-{item.endTime}</span></div>)}</div> : null}
                   </div>;
                 })}
