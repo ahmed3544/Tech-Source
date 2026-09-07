@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { localizeBackendValue } from '../i18n';
 import { Calendar, Download, TrendingUp, Users } from 'lucide-react';
 import { Employee, AttendanceRecord, LeaveRequest, Language } from '../types';
 import { getTodayString } from '../utils/helpers';
@@ -209,7 +210,7 @@ export const TeamOverallReport: React.FC<TeamOverallReportProps> = ({
                       {lang === 'ar' ? emp.nameAr : emp.nameEn}
                     </td>
                     <td className="px-6 py-3 text-sm text-gray-600">{emp.code}</td>
-                    <td className="px-6 py-3 text-sm text-gray-600">{emp.department}</td>
+                    <td className="px-6 py-3 text-sm text-gray-600">{localizeBackendValue(emp.department, lang)}</td>
                     <td className="px-6 py-3">
                       <span className={`px-3 py-1 rounded-full text-xs font-semibold ${statusColor}`}>
                         {status}

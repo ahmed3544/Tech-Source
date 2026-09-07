@@ -1,4 +1,5 @@
 import React from 'react';
+import { localizeBackendValue } from '../i18n';
 import { 
   Users, 
   UserCheck, 
@@ -319,7 +320,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                           </div>
                         </div>
                       </td>
-                      <td className="py-2 px-2 text-slate-600 font-medium">{emp.department}</td>
+                      <td className="py-2 px-2 text-slate-600 font-medium">{localizeBackendValue(emp.department, lang)}</td>
                       <td className="py-2 px-2 font-mono text-slate-800">
                         {rec?.checkIn ? (
                           <div>

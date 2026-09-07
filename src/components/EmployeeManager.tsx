@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { localizeBackendValue } from '../i18n';
 import { 
   Users, 
   UserPlus, 
@@ -336,7 +337,7 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
                       </td>
 
                       {/* Department */}
-                      <td className="py-3.5 px-4 text-slate-700 font-semibold">{emp.department}</td>
+                      <td className="py-3.5 px-4 text-slate-700 font-semibold">{localizeBackendValue(emp.department, lang)}</td>
 
                       {/* Shift */}
                       <td className="py-3.5 px-4">
@@ -418,7 +419,7 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
                     <p className="text-xs text-emerald-600 font-semibold mt-0.5">
                       {lang === 'ar' ? emp.jobTitleAr : emp.jobTitleEn}
                     </p>
-                    <p className="text-[11px] text-slate-400 mt-0.5">{emp.department}</p>
+                    <p className="text-[11px] text-slate-400 mt-0.5">{localizeBackendValue(emp.department, lang)}</p>
                   </div>
                 </div>
 

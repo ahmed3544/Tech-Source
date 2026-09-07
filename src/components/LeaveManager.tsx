@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { localizeBackendValue } from '../i18n';
 import { 
 Plus, 
   CheckCircle2, 
@@ -487,7 +488,7 @@ export const LeaveManager: React.FC<LeaveManagerProps> = ({
                         <UserAvatar name={emp.nameEn || emp.nameAr} code={emp.code} size="md" />
                         <div>
                           <h4 className="font-bold text-slate-900 text-sm">{emp.nameAr}</h4>
-                          <p className="text-[11px] text-slate-400">{emp.department} • {emp.jobTitleAr}</p>
+                          <p className="text-[11px] text-slate-400">{localizeBackendValue(emp.department, lang)} • {emp.jobTitleAr}</p>
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
@@ -668,7 +669,7 @@ export const LeaveManager: React.FC<LeaveManagerProps> = ({
                 >
                   {employees.map(e => (
                     <option key={e.id} value={e.id}>
-                      {e.nameAr} - {e.department} (عارضة: {e.casualLeaveBalance ?? 7} | اعتيادي: {e.regularLeaveBalance ?? 8} | مرضية: {e.sickLeaveBalance ?? 30})
+                      {lang === 'en' ? e.nameEn : e.nameAr} - {localizeBackendValue(e.department, lang)} (عارضة: {e.casualLeaveBalance ?? 7} | اعتيادي: {e.regularLeaveBalance ?? 8} | مرضية: {e.sickLeaveBalance ?? 30})
                     </option>
                   ))}
                 </select>

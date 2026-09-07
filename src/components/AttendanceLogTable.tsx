@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { localizeBackendValue } from '../i18n';
 import {  
   Search, 
   FileSpreadsheet, 
@@ -547,7 +548,7 @@ export const AttendanceLogTable: React.FC<AttendanceLogTableProps> = ({
 
                         return (
                           <>
-                            <td className="py-3.5 px-4 text-slate-600 font-medium">{emp.department}</td>
+                            <td className="py-3.5 px-4 text-slate-600 font-medium">{localizeBackendValue(emp.department, lang)}</td>
                             <td className="py-3.5 px-4 font-mono font-bold text-slate-900">
                               {rec.checkIn ? formatTime(rec.checkIn, lang) : '--:--'}
                             </td>
@@ -780,7 +781,7 @@ export const AttendanceLogTable: React.FC<AttendanceLogTableProps> = ({
                 >
                   {employees.map(e => (
                     <option key={e.id} value={e.id}>
-                      {e.nameAr} ({e.code}) - {e.department}
+                      {lang === 'en' ? e.nameEn : e.nameAr} ({e.code}) - {localizeBackendValue(e.department, lang)}
                     </option>
                   ))}
                 </select>

@@ -1,3 +1,4 @@
+import { localizeBackendValue } from '../i18n';
 import { AttendanceRecord, Shift, AttendanceStatus, PermissionSlot, LeaveRequest } from '../types';
 import * as XLSX from 'xlsx';
 const APP_TIME_ZONE = 'Africa/Cairo';
@@ -591,7 +592,7 @@ export function getStatusText(status?: AttendanceStatus, lang: 'ar' | 'en' = 'ar
     weekend: 'Weekend Holiday',
   };
 
-  return lang === 'ar' ? mapAr[status] || status : mapEn[status] || status;
+  return lang === 'ar' ? mapAr[status] || status : localizeBackendValue(mapEn[status] || status, lang);
 }
 
 export function getStatusBadgeStyle(status?: AttendanceStatus): string {

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { localizeBackendValue } from '../i18n';
 
 import {
   BarChart,

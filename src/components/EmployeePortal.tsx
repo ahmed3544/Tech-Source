@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { localizeBackendValue } from '../i18n';
 import { 
   User, 
   Clock, 
@@ -781,7 +782,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
                 {lang === 'ar' ? emp.nameAr : emp.nameEn}
               </h2>
             </div>
-            <p className="text-xs text-slate-300 mt-1">{emp.jobTitleAr} • قسم {emp.department}</p>
+            <p className="text-xs text-slate-300 mt-1">{emp.jobTitleAr} • قسم {localizeBackendValue(emp.department, lang)}</p>
             <button
               onClick={() => setShowAvatarModal(true)}
               className="mt-1.5 text-[11px] text-emerald-400 hover:text-emerald-300 flex items-center gap-1 font-bold underline decoration-dotted"
@@ -835,7 +836,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
                         type="button"
                         onClick={() => {
                           setCurrentEmpId(e.id);
-                          setEmpSearchTerm(`${e.code} - ${e.nameAr}`);
+                          setEmpSearchTerm(`${e.code} - ${lang === 'en' ? e.nameEn : e.nameAr}`);
                           setShowEmpDropdown(false);
                         }}
                         className={`w-full text-right px-3 py-2 text-xs flex items-center justify-between hover:bg-slate-800 transition ${
@@ -843,8 +844,8 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
                         }`}
                       >
                         <div>
-                          <span className="font-bold block text-right">{e.nameAr}</span>
-                          <span className="text-[10px] text-slate-400 font-mono block text-right">#{e.code} • {ui.department} {e.department}</span>
+                          <span className="font-bold block text-right">{lang === 'en' ? e.nameEn : e.nameAr}</span>
+                          <span className="text-[10px] text-slate-400 font-mono block text-right">#{e.code} • {ui.department} {localizeBackendValue(e.department, lang)}</span>
                         </div>
                         {e.id === currentEmpId && <Check className="w-4 h-4 text-emerald-400 shrink-0" />}
                       </button>
@@ -2314,7 +2315,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
                 >
                   {employees.map(e => (
                     <option key={e.id} value={e.id}>
-                      {e.nameAr} ({e.code}) - {e.department}
+                      {lang === 'en' ? e.nameEn : e.nameAr} ({e.code}) - {localizeBackendValue(e.department, lang)}
                     </option>
                   ))}
                 </select>
