@@ -52,43 +52,28 @@ jobs:
           if old_badges in text:
               text = text.replace(old_badges, new_badges, 1)
 
-          # Make every status badge independently sized, non-wrapping, and compact on mobile.
           text = re.sub(
               r'(className="inline-flex items-center gap-1 text-\[10px\] font-bold )',
-              r'\\1whitespace-nowrap shrink-0 px-1.5 sm:px-2 ',
+              r'\1whitespace-nowrap shrink-0 px-1.5 sm:px-2 ',
               text,
               count=1,
           )
-          text = text.replace(
-              'className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-300 animate-pulse"',
+          replacements = {
+              'className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-300 animate-pulse"':
               'className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-100 px-1.5 sm:px-2 py-0.5 rounded-full border border-amber-300 animate-pulse whitespace-nowrap shrink-0"',
-              1,
-          )
-          text = text.replace(
-              'className="inline-flex items-center gap-1.5 text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full border border-emerald-300"',
+              'className="inline-flex items-center gap-1.5 text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full border border-emerald-300"':
               'className="inline-flex items-center gap-1.5 text-[10px] font-bold text-emerald-800 bg-emerald-100 px-1.5 sm:px-2 py-0.5 rounded-full border border-emerald-300 whitespace-nowrap shrink-0"',
-              1,
-          )
-          text = text.replace(
-              'className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-600 bg-slate-200 px-2 py-0.5 rounded-full"',
+              'className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-600 bg-slate-200 px-2 py-0.5 rounded-full"':
               'className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-600 bg-slate-200 px-1.5 sm:px-2 py-0.5 rounded-full whitespace-nowrap shrink-0"',
-              1,
-          )
-          text = text.replace(
-              'className="inline-flex items-center gap-1 text-[10px] font-bold text-sky-700 bg-sky-50 px-2 py-0.5 rounded-full border border-sky-200"',
+              'className="inline-flex items-center gap-1 text-[10px] font-bold text-sky-700 bg-sky-50 px-2 py-0.5 rounded-full border border-sky-200"':
               'className="inline-flex items-center gap-1 text-[10px] font-bold text-sky-700 bg-sky-50 px-1.5 sm:px-2 py-0.5 rounded-full border border-sky-200 whitespace-nowrap shrink-0"',
-              1,
-          )
-          text = text.replace(
-              'className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200"',
+              'className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200"':
               'className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 px-1.5 sm:px-2 py-0.5 rounded-full border border-amber-200 whitespace-nowrap shrink-0"',
-              1,
-          )
-          text = text.replace(
-              'className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200"',
+              'className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200"':
               'className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-700 bg-rose-50 px-1.5 sm:px-2 py-0.5 rounded-full border border-rose-200 whitespace-nowrap shrink-0"',
-              1,
-          )
+          }
+          for old, new in replacements.items():
+              text = text.replace(old, new, 1)
 
           path.write_text(text, encoding='utf-8')
           PY
