@@ -871,8 +871,7 @@ export const KioskPunch: React.FC<KioskPunchProps> = ({
                       : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-md border border-emerald-500 animate-pulse'
                   }`}
                 >
-                  <Sparkles className="w-4 h-4" />
-                  <span>{lang === 'ar' ? 'العودة من الاستراحة' : 'End Break'}</span>
+                                    <span>{lang === 'ar' ? 'العودة من الاستراحة' : 'End Break'}</span>
                 </button>
               </div>
             </>

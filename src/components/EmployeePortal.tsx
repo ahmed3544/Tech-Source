@@ -1174,8 +1174,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
                 : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-md border border-emerald-500 animate-pulse'
             }`}
           >
-            <Sparkles className="w-4 h-4" />
-            <span>{lang === 'ar' ? ui.endBreak : ui.endBreak}</span>
+                        <span>{lang === 'ar' ? ui.endBreak : ui.endBreak}</span>
           </button>
         </div>
       </div>
