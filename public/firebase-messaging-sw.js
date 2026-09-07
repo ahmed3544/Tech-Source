@@ -2,12 +2,13 @@ importScripts('https://www.gstatic.com/firebasejs/12.3.0/firebase-app-compat.js'
 importScripts('https://www.gstatic.com/firebasejs/12.3.0/firebase-messaging-compat.js');
 
 firebase.initializeApp({
-  apiKey: 'AIzaSyCULaavzAbW3_ZgvJP7W4nxD3s-X9WsPg',
-  authDomain: 'hidden-tesla-xt8c4.firebaseapp.com',
-  projectId: 'hidden-tesla-xt8c4',
-  storageBucket: 'hidden-tesla-xt8c4.firebasestorage.app',
-  messagingSenderId: '501556944186',
-  appId: '1:501556944186:web:6ca49a703d63de2561c403'
+  apiKey: 'AIzaSyBfp-MUx3aNXXTiZ3EDGIxkPt_IkNn1bIE',
+  authDomain: 'tech-source-attendance.firebaseapp.com',
+  projectId: 'tech-source-attendance',
+  storageBucket: 'tech-source-attendance.firebasestorage.app',
+  messagingSenderId: '745139448493',
+  appId: '1:745139448493:web:57dd3cd719cffba47f3424',
+  measurementId: 'G-LG6NZZ2PYL'
 });
 
 const messaging = firebase.messaging();
