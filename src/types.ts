@@ -70,6 +70,7 @@ export interface DailyShiftAssignment {
   employeeId: string;
   date: string; // YYYY-MM-DD
   shiftId: string;
+  isOffDay?: boolean; // true when this employee has a scheduled weekly off day
   assignedBy?: string;
   updatedAt: string;
 }

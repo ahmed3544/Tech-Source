@@ -28,6 +28,8 @@ const addDays = (value: Date, amount: number) => {
   return d;
 };
 
+const OFF_DAY_SHIFT_ID = '__OFF_DAY__';
+
 const timeToMinutes = (value: string) => {
   const match = value.trim().match(/^(\d{1,2}):(\d{2})/);
   if (!match) return NaN;
@@ -174,7 +176,11 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
     const assignment = assignmentFor(employeeId, date);
     return assignment ? shifts.find(s => s.id === assignment.shiftId) : undefined;
   };
-  const getValue = (date: string) => draft[date] ?? assignmentFor(employee?.id || '', date)?.shiftId ?? '';
+  const getValue = (date: string) => {
+    const assignment = assignmentFor(employee?.id || '', date);
+    if (assignment?.isOffDay) return OFF_DAY_SHIFT_ID;
+    return draft[date] ?? assignment?.shiftId ?? '';
+  };
 
   const saveWeek = async () => {
     if (!employee || !isLeader) return;
@@ -185,13 +191,14 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
     for (const day of days) {
       const draftValue = Object.prototype.hasOwnProperty.call(draft, day.key) ? draft[day.key] : undefined;
       const existing = assignmentFor(employee.id, day.key);
-      const shiftId = draftValue !== undefined ? draftValue : existing?.shiftId || '';
+      const isOffDay = draftValue !== undefined ? draftValue === OFF_DAY_SHIFT_ID : Boolean(existing?.isOffDay);
+      const shiftId = isOffDay ? '' : (draftValue !== undefined ? draftValue : existing?.shiftId || '');
       const existingIndex = next.findIndex(a => a.employeeId === employee.id && a.date === day.key);
-      if (!shiftId) {
+      if (!shiftId && !isOffDay) {
         if (existingIndex >= 0) next.splice(existingIndex, 1);
         continue;
       }
-      const assignment: DailyShiftAssignment = { employeeId: employee.id, date: day.key, shiftId, assignedBy: currentUser?.id, updatedAt };
+      const assignment: DailyShiftAssignment = { employeeId: employee.id, date: day.key, shiftId, isOffDay, assignedBy: currentUser?.id, updatedAt };
       if (existingIndex >= 0) next[existingIndex] = assignment;
       else next.push(assignment);
       onSaveDailyShift?.(assignment);
@@ -270,12 +277,27 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
               <div data-weekly-schedule-table className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-7 gap-3 min-w-[760px] md:min-w-0 p-1">
                 {days.map(day => {
                   const selectedId = getValue(day.key);
+                  const selectedAssignment = assignmentFor(employee.id, day.key);
                   const selectedShift = shiftFor(employee.id, day.key);
-                  const timeline = selectedShift ? shiftTimeline(selectedShift) : null;
-                  const isWeekend = day.date.getDay() === 5 || day.date.getDay() === 6;
+                  const isOffDay = selectedId === OFF_DAY_SHIFT_ID || Boolean(selectedAssignment?.isOffDay);
+                  const timeline = selectedShift && !isOffDay ? shiftTimeline(selectedShift) : null;
+                  const isWeekend = isOffDay || day.date.getDay() === 5 || day.date.getDay() === 6;
                   return <div key={day.key} className={`min-w-0 overflow-hidden rounded-2xl border p-3 ${isWeekend ? 'bg-slate-50 border-slate-200' : 'bg-white border-slate-200'}`}>
+                    <div className="flex items-center justify-between gap-2 mb-3">
+                      <label className="inline-flex items-center gap-2 text-xs font-black text-slate-700 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={isOffDay}
+                          disabled={!isLeader}
+                          onChange={(e) => setDraft(prev => ({ ...prev, [day.key]: e.target.checked ? OFF_DAY_SHIFT_ID : '' }))}
+                          className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                        />
+                        {lang === 'ar' ? 'عطلة أسبوعية' : 'Off Day'}
+                      </label>
+                      {isOffDay && <span className="rounded-lg bg-slate-200 px-2 py-1 text-[10px] font-black text-slate-700">{lang === 'ar' ? 'عطلة أسبوعية' : 'Weekend'}</span>}
+                    </div>
                     <div className="flex items-center justify-between gap-2 mb-2"><div><div className="text-xs font-black text-slate-900">{lang === 'ar' ? day.labelAr : day.labelEn}</div><div className="text-[10px] text-slate-400 font-mono mt-0.5 font-bold">{day.key}</div></div>{isWeekend && <span className="text-[9px] font-black text-slate-500">{lang === 'ar' ? 'عطلة' : 'OFF'}</span>}</div>
-                    {isLeader ? <select value={selectedId} onChange={e => setDraft(prev => ({ ...prev, [day.key]: e.target.value }))} className="w-full min-h-11 rounded-xl border border-slate-200 bg-slate-50 px-2 py-2 text-xs font-bold text-slate-900"><option value="">{lang === 'ar' ? 'غير محدد' : 'Not assigned'}</option>{shifts.map(shift => <option key={shift.id} value={shift.id}>{lang === 'ar' ? shift.nameAr : shift.nameEn} · {shift.startTime}-{shift.endTime}</option>)}</select> : <div className="min-w-0 rounded-xl bg-slate-50 border border-slate-200 px-2 py-2"><div className="text-xs font-black text-slate-800 truncate">{selectedShift ? `${selectedShift.startTime} - ${selectedShift.endTime}` : (lang === 'ar' ? 'غير محدد' : 'Not assigned')}</div>{selectedShift && <div className="text-[10px] text-slate-500 font-mono font-bold mt-1 flex items-center gap-1"><Clock3 className="w-3 h-3" />{selectedShift.startTime} - {selectedShift.endTime}</div>}{selectedShift?.breaks?.length ? <div className="mt-2 pt-2 border-t border-slate-200 space-y-1">{selectedShift.breaks.map(item => <div key={item.id} className="text-[9px] text-slate-500 flex items-center justify-between gap-1"><span className="flex items-center gap-1 truncate"><Coffee className="w-3 h-3 shrink-0" />{lang === 'ar' ? item.nameAr : item.nameEn}</span><span className="font-mono font-bold shrink-0">{item.startTime}-{item.endTime}</span></div>)}</div> : null}</div>}
+                    {isLeader ? <select value={isOffDay ? '' : selectedId} disabled={!isLeader || isOffDay} onChange={e => setDraft(prev => ({ ...prev, [day.key]: e.target.value }))} className="w-full min-h-11 rounded-xl border border-slate-200 bg-slate-50 px-2 py-2 text-xs font-bold text-slate-900"><option value="">{lang === 'ar' ? 'غير محدد' : 'Not assigned'}</option>{shifts.map(shift => <option key={shift.id} value={shift.id}>{lang === 'ar' ? shift.nameAr : shift.nameEn} · {shift.startTime}-{shift.endTime}</option>)}</select> : <div className="min-w-0 rounded-xl bg-slate-50 border border-slate-200 px-2 py-2"><div className="text-xs font-black text-slate-800 truncate">{selectedShift ? `${selectedShift.startTime} - ${selectedShift.endTime}` : (lang === 'ar' ? 'غير محدد' : 'Not assigned')}</div>{selectedShift && <div className="text-[10px] text-slate-500 font-mono font-bold mt-1 flex items-center gap-1"><Clock3 className="w-3 h-3" />{selectedShift.startTime} - {selectedShift.endTime}</div>}{selectedShift?.breaks?.length ? <div className="mt-2 pt-2 border-t border-slate-200 space-y-1">{selectedShift.breaks.map(item => <div key={item.id} className="text-[9px] text-slate-500 flex items-center justify-between gap-1"><span className="flex items-center gap-1 truncate"><Coffee className="w-3 h-3 shrink-0" />{lang === 'ar' ? item.nameAr : item.nameEn}</span><span className="font-mono font-bold shrink-0">{item.startTime}-{item.endTime}</span></div>)}</div> : null}</div>}
 
                     {selectedShift && timeline && (
                       <div className="mt-2.5 w-full min-w-0 max-w-full overflow-hidden rounded-xl border border-slate-200 bg-white p-2">
