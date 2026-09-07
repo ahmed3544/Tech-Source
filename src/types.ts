@@ -36,6 +36,9 @@ export type NotificationType =
   | 'overtime_approved' 
   | 'overtime_rejected' 
   | 'shift_changed' 
+  | 'shift_swap_requested'
+  | 'shift_swap_accepted'
+  | 'shift_swap_rejected'
   | 'admin_notice';
 
 /** A planned break configured as part of a shift template. */
@@ -71,7 +74,7 @@ export interface DailyShiftAssignment {
   updatedAt: string;
 }
 
-export type ShiftSwapStatus = 'pending' | 'approved' | 'rejected';
+export type ShiftSwapStatus = 'awaiting_target' | 'pending' | 'approved' | 'rejected';
 
 export interface ShiftSwapRequest {
   id: string;
@@ -84,6 +87,7 @@ export interface ShiftSwapRequest {
   createdAt: string;
   reviewedBy?: string;
   reviewedAt?: string;
+  targetRespondedAt?: string;
 }
 
 export interface Employee {
@@ -203,6 +207,7 @@ export interface Notification {
   relatedEmployeeId?: string;
   relatedLeaveId?: string;
   relatedOvertimeId?: string;
+  relatedShiftSwapId?: string;
   isRead: boolean;
   createdAt: string;
   updatedAt: string;
