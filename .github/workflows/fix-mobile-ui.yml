@@ -1,0 +1,110 @@
+name: Fix mobile button visibility
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor == 'ahmed3544'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Remove Sparkles and improve mobile contrast
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          files = [Path('src/components/KioskPunch.tsx'), Path('src/components/EmployeePortal.tsx')]
+          for p in files:
+              s = p.read_text(encoding='utf-8')
+              s = s.replace('  Sparkles,\n', '')
+              s = s.replace('import { Sparkles, ', 'import { ')
+              s = s.replace('                  <Sparkles className="w-4 h-4" />\n', '')
+              s = s.replace('            <Sparkles className="w-4 h-4" />\n', '')
+              s = s.replace('العودة من الاستراحة ✨', 'العودة من الاستراحة')
+              s = s.replace('End Break ✨', 'End Break')
+              s = s.replace('العودة من الاستراحة</span>', 'العودة من الاستراحة</span>')
+              p.write_text(s, encoding='utf-8')
+          css = Path('src/index.css')
+          extra = r'''
+
+/* Mobile attendance controls: high contrast, bold, compact, and single-line. */
+#root button:disabled,
+#root button[disabled] {
+  color: #374151 !important;
+  font-weight: 700 !important;
+  opacity: 1 !important;
+}
+
+#root button:disabled span,
+#root button[disabled] span {
+  color: #374151 !important;
+  font-weight: 700 !important;
+  white-space: nowrap !important;
+}
+
+#root button {
+  align-items: center;
+  justify-content: center;
+}
+
+#root button span {
+  white-space: nowrap;
+}
+
+@media (max-width: 767px) {
+  #root button {
+    font-size: 0.78rem;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+
+  #root button:disabled,
+  #root button[disabled] {
+    font-size: 0.76rem;
+    color: #1f2937 !important;
+    background-color: #e5e7eb !important;
+    border-color: #d1d5db !important;
+  }
+
+  #root button:disabled span,
+  #root button[disabled] span {
+    color: #1f2937 !important;
+    font-size: 0.76rem;
+    font-weight: 700 !important;
+  }
+
+  /* Remove remaining decorative sparkle SVGs from action buttons. */
+  #root button .lucide-sparkles {
+    display: none !important;
+  }
+}
+
+@media (max-width: 390px) {
+  #root button,
+  #root button:disabled,
+  #root button[disabled] {
+    font-size: 0.73rem;
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+}
+'''
+          s = css.read_text(encoding='utf-8')
+          if 'Mobile attendance controls: high contrast' not in s:
+              css.write_text(s + extra, encoding='utf-8')
+          PY
+      - name: Commit changes
+        shell: bash
+        run: |
+          rm -f .github/workflows/fix-mobile-ui.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/components/KioskPunch.tsx src/components/EmployeePortal.tsx src/index.css .github/workflows/fix-mobile-ui.yml
+          git diff --cached --quiet && exit 0
+          git commit -m "Improve mobile button contrast and remove sparkle icons"
+          git push
