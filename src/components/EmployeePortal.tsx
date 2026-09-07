@@ -1434,23 +1434,6 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
             </div>
           </div>
 
-          <div className="pt-2 border-t border-slate-100">
-            <button
-              onClick={() => setShowPermissionModal(true)}
-              disabled={monthlySummary.usedPermissionsCount >= 2}
-              className={`w-full py-1.5 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${
-                monthlySummary.usedPermissionsCount >= 2
-                  ? 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'
-                  : 'bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200'
-              }`}
-            >
-              <Clock3 className="w-3.5 h-3.5 text-sky-600 shrink-0" />
-              <span>
-                {monthlySummary.usedPermissionsCount >= 2
-                  ? (lang === 'ar' ? 'تم استيفاء الرصيد هذا الشهر' : 'Quota Exceeded')
-                  : (lang === 'ar' ? '+ طلب إذن خروج (ساعتان)' : '+ Request 2h Permission')}
-              </span>
-            </button>
           </div>
         </div>
 
