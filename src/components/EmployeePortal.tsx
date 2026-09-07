@@ -1,5 +1,4 @@
 import React, { useState, useRef } from 'react';
-import { localizeBackendValue } from '../i18n';
 import { 
   User, 
   Clock, 
@@ -121,7 +120,7 @@ export const EmployeePortal: React.FC<EmployeePortalProps> = ({
   const [searchDayQuery, setSearchDayQuery] = useState('');
 
   // Active view tab inside dashboard
-  const [activeDashboardTab, setActiveDashboardTab] = useState<'attendance' | 'penalties'>('attendance');
+  const [activeDashboardTab, setActiveDashboardTab] = useState<'attendance' | 'penalties' | 'permissions'>('attendance');
 
   // Avatar Modal State
   const [showAvatarModal, setShowAvatarModal] = useState(false);
@@ -782,7 +781,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
                 {lang === 'ar' ? emp.nameAr : emp.nameEn}
               </h2>
             </div>
-            <p className="text-xs text-slate-300 mt-1">{emp.jobTitleAr} • قسم {localizeBackendValue(emp.department, lang)}</p>
+            <p className="text-xs text-slate-300 mt-1">{emp.jobTitleAr} • قسم {emp.department}</p>
             <button
               onClick={() => setShowAvatarModal(true)}
               className="mt-1.5 text-[11px] text-emerald-400 hover:text-emerald-300 flex items-center gap-1 font-bold underline decoration-dotted"
@@ -836,7 +835,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
                         type="button"
                         onClick={() => {
                           setCurrentEmpId(e.id);
-                          setEmpSearchTerm(`${e.code} - ${lang === 'en' ? e.nameEn : e.nameAr}`);
+                          setEmpSearchTerm(`${e.code} - ${e.nameAr}`);
                           setShowEmpDropdown(false);
                         }}
                         className={`w-full text-right px-3 py-2 text-xs flex items-center justify-between hover:bg-slate-800 transition ${
@@ -844,8 +843,8 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
                         }`}
                       >
                         <div>
-                          <span className="font-bold block text-right">{lang === 'en' ? e.nameEn : e.nameAr}</span>
-                          <span className="text-[10px] text-slate-400 font-mono block text-right">#{e.code} • {ui.department} {localizeBackendValue(e.department, lang)}</span>
+                          <span className="font-bold block text-right">{e.nameAr}</span>
+                          <span className="text-[10px] text-slate-400 font-mono block text-right">#{e.code} • {ui.department} {e.department}</span>
                         </div>
                         {e.id === currentEmpId && <Check className="w-4 h-4 text-emerald-400 shrink-0" />}
                       </button>
@@ -1631,6 +1630,22 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
                 : `2. Administrative Penalties (${monthlySummary.penalties.length})`}
             </span>
           </button>
+
+          <button
+            onClick={() => setActiveDashboardTab('permissions')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+              activeDashboardTab === 'permissions'
+                ? 'bg-slate-900 text-white shadow-sm'
+                : 'text-slate-600 hover:bg-slate-200'
+            }`}
+          >
+            <Clock3 className="w-4 h-4 text-sky-400" />
+            <span>
+              {lang === 'ar'
+                ? `3. سجل الأذونات والإجازات الإدارية (${leaveRequests.filter(l => l.employeeId === emp.id).length})`
+                : `3. Permissions & Requests (${leaveRequests.filter(l => l.employeeId === emp.id).length})`}
+            </span>
+          </button>
         </div>
 
         {/* TAB 1: ATTENDANCE & LATENESS LOGS TABLE */}
@@ -2315,7 +2330,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
                 >
                   {employees.map(e => (
                     <option key={e.id} value={e.id}>
-                      {lang === 'en' ? e.nameEn : e.nameAr} ({e.code}) - {localizeBackendValue(e.department, lang)}
+                      {e.nameAr} ({e.code}) - {e.department}
                     </option>
                   ))}
                 </select>
