@@ -1,0 +1,71 @@
+name: Remove palm icons from UI
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Remove palm icons and leave palm emojis
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          root = Path('.')
+          extensions = {'.tsx', '.ts', '.jsx', '.js', '.css'}
+          changed = []
+
+          for path in root.rglob('*'):
+              if not path.is_file() or path.suffix not in extensions:
+                  continue
+              if '.git' in path.parts or 'node_modules' in path.parts:
+                  continue
+              text = path.read_text(encoding='utf-8')
+              original = text
+              text = text.replace('🌴', '')
+              text = re.sub(r'^\s*<Palmtree\b[^>]*/>\s*\n?', '', text, flags=re.MULTILINE)
+              text = re.sub(r'^\s*Palmtree,\s*\n?', '', text, flags=re.MULTILINE)
+              if text != original:
+                  path.write_text(text, encoding='utf-8')
+                  changed.append(str(path))
+
+          print('Changed:', *changed, sep='\n- ')
+          PY
+
+      - name: Commit cleanup
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src
+          if git diff --cached --quiet; then
+            echo 'No UI cleanup changes needed.'
+            exit 0
+          fi
+          git commit -m 'fix: remove palm icons and emojis from UI'
+          git push
+
+      - name: Remove temporary workflow
+        if: always()
+        shell: bash
+        run: |
+          git rm -f .github/workflows/remove-palm-icons.yml || true
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'chore: remove temporary cleanup workflow'
+          git push
