@@ -1,0 +1,1 @@
+Temporary trigger for the one-off navbar RTL layout fix. This file is removed by the workflow.
