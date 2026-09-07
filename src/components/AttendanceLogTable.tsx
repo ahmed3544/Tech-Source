@@ -380,43 +380,30 @@ export const AttendanceLogTable: React.FC<AttendanceLogTableProps> = ({
         <div className="flex flex-wrap items-center gap-2.5">
           {isLeader && (
             <>
-              <button
-                type="button"
-                onClick={() => openCreateWeekendModal()}
-                className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-bold text-xs shadow transition border border-amber-700 cursor-pointer select-none"
-                title={lang === 'ar' ? 'إضافة عطلة أسبوعية يدوية (مانيوال) لموظف محدد' : 'Add manual weekend for employee'}
-              >
-                <span className="text-sm">🏖️</span>
-                <span>{lang === 'ar' ? 'إضافة عطلة أسبوعية (مانيوال)' : 'Add Weekend (Manual)'}</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={openCreateModal}
-                className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-[#0d2240] hover:bg-[#153460] active:scale-95 text-white font-bold text-xs shadow transition border border-blue-900 cursor-pointer select-none"
-              >
-                <Plus className="w-4 h-4 text-emerald-400" />
-                <span>{lang === 'ar' ? 'تسجيل يدوي (يوم)' : 'Single Record'}</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setShowBulkModal(true)}
-                className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 active:scale-95 text-white font-bold text-xs shadow transition border border-emerald-800 cursor-pointer select-none"
-              >
-                <Users className="w-4 h-4 text-white" />
-                <span>{lang === 'ar' ? 'تسجيل حضور جماعي (إجمالي الأيام)' : 'Bulk Manual Entry'}</span>
-              </button>
+              
+          <select
+            defaultValue=""
+            aria-label={lang === 'ar' ? 'إجراءات الحضور' : 'Attendance Actions'}
+            onChange={(e) => {
+              const action = e.target.value;
+              if (action === 'bulk') setShowBulkModal(true);
+              if (action === 'manual') openCreateModal();
+              if (action === 'holiday') openCreateWeekendModal();
+              if (action === 'export') onExportCSV();
+              e.currentTarget.value = '';
+            }}
+            className="w-full sm:w-auto min-w-[190px] h-10 rounded-xl border border-slate-300 bg-white px-3 text-xs font-bold text-slate-800 shadow-sm outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+          >
+            <option value="" disabled>{lang === 'ar' ? 'إجراءات الحضور' : 'Attendance Actions'}</option>
+            <option value="bulk">{lang === 'ar' ? 'تسجيل حضور جماعي' : 'Bulk Attendance Entry'}</option>
+            <option value="manual">{lang === 'ar' ? 'تسجيل يدوي' : 'Manual Entry'}</option>
+            <option value="holiday">{lang === 'ar' ? 'إضافة عطلة' : 'Add Holiday'}</option>
+            <option value="export">{lang === 'ar' ? 'تصدير تقرير' : 'Export Report'}</option>
+          </select>
             </>
           )}
 
-          <button
-            onClick={onExportCSV}
-            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow transition"
-          >
-            <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
-            <span>{lang === 'ar' ? 'تصدير تقرير (CSV)' : 'Export CSV Report'}</span>
-          </button>
+          
         </div>
       </div>
       {/* Filters Bar */}

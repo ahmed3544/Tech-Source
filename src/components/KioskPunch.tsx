@@ -10,8 +10,7 @@ import {
   MapPin, 
   ShieldCheck, 
   User, 
-  Sparkles,
-  AlertCircle,
+    AlertCircle,
   KeyRound,
   Play,
   Square,
@@ -557,7 +556,7 @@ export const KioskPunch: React.FC<KioskPunchProps> = ({
                     <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
                       {lang === 'ar' ? 'حالة الحضور اليوم' : 'Today Attendance'}
                     </div>
-                    <div className="text-xs font-mono font-bold flex items-center gap-1.5">
+                    <div className="text-xs font-mono font-bold flex items-center gap-1.5 whitespace-nowrap w-full min-w-0 overflow-visible">
                       {(() => {
                         const todayStr = getTodayString();
                         const selLeaveObj = leaveRequests.find(
@@ -728,18 +727,18 @@ export const KioskPunch: React.FC<KioskPunchProps> = ({
                     <div>
                       <span className="font-extrabold text-sm text-emerald-950 block">
                         {lang === 'ar' 
-                          ? 'تم إغلاق اليوم وانصراف الموظف بنجاح (اليوم مقفل ومكتمل)' 
-                          : 'Day Closed and Checked Out Successfully (Locked)'}
+                          ? 'تم إغلاق اليوم' 
+                          : 'Day Closed'}
                       </span>
                       <span className="text-emerald-700 text-xs font-medium">
                         {lang === 'ar'
-                          ? `حضور: ${formatTime(currentRecord?.checkIn, lang)} | انصراف: ${formatTime(currentRecord?.checkOut, lang)} | ساعات العمل: ${currentRecord?.workHours || 8} ساعة (لا يمكن التعديل أو الإلغاء)`
+                          ? `حضور: ${formatTime(currentRecord?.checkIn, lang)} | انصراف: ${formatTime(currentRecord?.checkOut, lang)} | ساعات العمل: ${currentRecord?.workHours || 8} ساعة`
                           : `In: ${formatTime(currentRecord?.checkIn, lang)} | Out: ${formatTime(currentRecord?.checkOut, lang)} | Total: ${currentRecord?.workHours || 8} hrs`}
                       </span>
                     </div>
                   </div>
                   <span className="font-mono font-black bg-emerald-600 text-white px-3 py-1.5 rounded-xl text-xs shrink-0 shadow-xs">
-                    {lang === 'ar' ? '🔒 اليوم مقفل' : '🔒 Day Closed'}
+                    {lang === 'ar' ? ' اليوم مقفل' : ' Day Closed'}
                   </span>
                 </div>
               )}
@@ -838,7 +837,7 @@ export const KioskPunch: React.FC<KioskPunchProps> = ({
                   </button>
                   {isBreakActive && !isOnLeaveToday && (
                     <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-rose-700 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow pointer-events-none whitespace-nowrap">
-                      {lang === 'ar' ? 'إنهاء الاستراحة أولاً ⚠️' : 'End Break First ⚠️'}
+                      {lang === 'ar' ? 'إنهاء الاستراحة أولاً ' : 'End Break First '}
                     </div>
                   )}
                 </div>
