@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Camera, Upload, Trash2, X, CheckCircle2, User } from 'lucide-react';
+import { Camera, Upload, Trash2, X } from 'lucide-react';
 import { Employee, Language } from '../types';
 import { UserAvatar } from './UserAvatar';
 
@@ -10,17 +10,6 @@ interface AvatarModalProps {
   onSaveAvatar: (newAvatarUrl: string) => void;
   lang: Language;
 }
-
-export const PRESET_AVATARS = [
-  'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=250&q=80',
-  'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=250&q=80',
-  'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=250&q=80',
-  'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=250&q=80',
-  'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=250&q=80',
-  'https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&w=250&q=80',
-  'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&w=250&q=80',
-  'https://images.unsplash.com/photo-1580489944761-15a19d654956?auto=format&fit=crop&w=250&q=80',
-];
 
 export const AvatarModal: React.FC<AvatarModalProps> = ({
   isOpen,
@@ -79,8 +68,6 @@ export const AvatarModal: React.FC<AvatarModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="bg-white w-full max-w-md rounded-3xl p-6 shadow-2xl border border-slate-200 space-y-5 animate-in fade-in zoom-in-95">
-        
-        {/* Modal Header */}
         <div className="flex items-center justify-between pb-3 border-b border-slate-100">
           <div className="flex items-center gap-2">
             <div className="p-2 bg-emerald-50 rounded-xl border border-emerald-100">
@@ -105,7 +92,6 @@ export const AvatarModal: React.FC<AvatarModalProps> = ({
           </button>
         </div>
 
-        {/* Current Avatar Preview */}
         <div className="flex flex-col items-center justify-center p-4 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-2">
           <div className="relative group">
             <UserAvatar name={employee.nameEn || employee.nameAr} code={employee.code} avatar={employee.avatar} size="xl" />
@@ -125,10 +111,9 @@ export const AvatarModal: React.FC<AvatarModalProps> = ({
           </div>
         </div>
 
-        {/* Option 1: File Upload */}
         <div className="space-y-2">
           <label className="block text-xs font-bold text-slate-800">
-            {lang === 'ar' ? '1. رفع صورة من جهازك أو موبايلك:' : '1. Upload photo from device:'}
+            {lang === 'ar' ? 'رفع صورة من جهازك أو موبايلك:' : 'Upload photo from device:'}
           </label>
           <input
             type="file"
@@ -147,32 +132,9 @@ export const AvatarModal: React.FC<AvatarModalProps> = ({
           </button>
         </div>
 
-        {/* Option 2: Presets */}
         <div className="space-y-2 pt-2 border-t border-slate-100">
           <label className="block text-xs font-bold text-slate-800">
-            {lang === 'ar' ? 'اختر صورة جاهزة' : 'Select a preset avatar'}
-          </label>
-          <div className="grid grid-cols-4 sm:grid-cols-8 gap-2">
-            {PRESET_AVATARS.map((url, idx) => (
-              <button
-                key={idx}
-                type="button"
-                onClick={() => {
-                  onSaveAvatar(url);
-                  onClose();
-                }}
-                className="w-10 h-10 rounded-full overflow-hidden border-2 border-slate-200 hover:border-emerald-500 transition hover:scale-105 focus:outline-none shrink-0"
-              >
-                <img src={url} alt={`Avatar ${idx}`} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Option 3: Direct URL */}
-        <div className="space-y-2 pt-2 border-t border-slate-100">
-          <label className="block text-xs font-bold text-slate-800">
-            {lang === 'ar' ? '3. أو ادخل رابط صورة (URL):' : '3. Or enter direct image URL:'}
+            {lang === 'ar' ? 'أو ادخل رابط صورة (URL):' : 'Or enter direct image URL:'}
           </label>
           <div className="flex gap-2">
             <input
@@ -198,7 +160,6 @@ export const AvatarModal: React.FC<AvatarModalProps> = ({
           </div>
         </div>
 
-        {/* Option 4: Reset / Delete photo */}
         {employee.avatar && (
           <div className="pt-2 border-t border-slate-100">
             <button
