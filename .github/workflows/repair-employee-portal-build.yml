@@ -35,7 +35,7 @@ jobs:
 
       - name: Verify TypeScript build
         run: |
-          npm ci
+          npm install
           npm run build
 
       - name: Commit repaired file
