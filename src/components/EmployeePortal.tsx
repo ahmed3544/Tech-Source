@@ -8,8 +8,7 @@ import {
 Calendar, 
   FilePlus, 
   Coffee,
-  Sparkles,
-  RotateCcw,
+    RotateCcw,
   Camera,
   Upload,
   Image as ImageIcon,
@@ -38,6 +37,7 @@ import { getStatusBadgeStyle, getStatusText, getFirstTwoNames, formatTime, forma
 import { calculateMonthlyEmployeeSummary } from '../utils/penalties';
 import { AvatarModal } from './AvatarModal';
 import { BreakTimer } from './BreakTimer';
+import { getUiText } from '../i18n';
 
 interface EmployeePortalProps {
   employees: Employee[];
@@ -85,6 +85,7 @@ export const EmployeePortal: React.FC<EmployeePortalProps> = ({
   lang,
   currentUser,
 }) => {
+  const ui = getUiText(lang);
   const [currentEmpId, setCurrentEmpId] = useState<string>(() => {
     if (currentUser?.id && employees.some(e => e.id === currentUser.id)) {
       return currentUser.id;
@@ -119,7 +120,7 @@ export const EmployeePortal: React.FC<EmployeePortalProps> = ({
   const [searchDayQuery, setSearchDayQuery] = useState('');
 
   // Active view tab inside dashboard
-  const [activeDashboardTab, setActiveDashboardTab] = useState<'attendance' | 'penalties' | 'permissions'>('attendance');
+  const [activeDashboardTab, setActiveDashboardTab] = useState<'attendance' | 'penalties'>('attendance');
 
   // Avatar Modal State
   const [showAvatarModal, setShowAvatarModal] = useState(false);
@@ -843,7 +844,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
                       >
                         <div>
                           <span className="font-bold block text-right">{e.nameAr}</span>
-                          <span className="text-[10px] text-slate-400 font-mono block text-right">#{e.code} • قسم {e.department}</span>
+                          <span className="text-[10px] text-slate-400 font-mono block text-right">#{e.code} • {ui.department} {e.department}</span>
                         </div>
                         {e.id === currentEmpId && <Check className="w-4 h-4 text-emerald-400 shrink-0" />}
                       </button>
@@ -994,7 +995,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
                 className="w-full sm:w-auto px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs shadow-md transition flex items-center justify-center gap-1.5 cursor-pointer"
               >
                 <Coffee className="w-4 h-4 text-emerald-100" />
-                <span>{lang === 'ar' ? 'إنهاء الاستراحة والعودة للعمل ✨' : 'End Break Now ✨'}</span>
+                <span>{lang === 'ar' ? ui.endBreak : ui.endBreak}</span>
               </button>
             </div>
           </div>
@@ -1174,7 +1175,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
             }`}
           >
             <Sparkles className="w-4 h-4" />
-            <span>{lang === 'ar' ? 'العودة من الاستراحة ✨' : 'End Break ✨'}</span>
+            <span>{lang === 'ar' ? ui.endBreak : ui.endBreak}</span>
           </button>
         </div>
       </div>
@@ -1630,22 +1631,6 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
                 : `2. Administrative Penalties (${monthlySummary.penalties.length})`}
             </span>
           </button>
-
-          <button
-            onClick={() => setActiveDashboardTab('permissions')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
-              activeDashboardTab === 'permissions'
-                ? 'bg-slate-900 text-white shadow-sm'
-                : 'text-slate-600 hover:bg-slate-200'
-            }`}
-          >
-            <Clock3 className="w-4 h-4 text-sky-400" />
-            <span>
-              {lang === 'ar'
-                ? `3. سجل الأذونات والإجازات الإدارية (${leaveRequests.filter(l => l.employeeId === emp.id).length})`
-                : `3. Permissions & Requests (${leaveRequests.filter(l => l.employeeId === emp.id).length})`}
-            </span>
-          </button>
         </div>
 
         {/* TAB 1: ATTENDANCE & LATENESS LOGS TABLE */}
@@ -1735,7 +1720,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
                           {r.checkOut ? formatTime(r.checkOut, lang) : '--:--'}
                         </td>
                         <td className="py-3.5 px-4 text-center font-mono font-bold text-slate-800">
-                          {r.workHours ? `${r.workHours.toFixed(1)} س` : '0 س'}
+                          {r.workHours ? `${r.workHours.toFixed(1)} ${ui.hourUnit}` : '0 س'}
                         </td>
                         {(() => {
                           const matchingApprovedPerm = leaveRequests.find(
@@ -1755,10 +1740,10 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
                               <td className="py-3.5 px-4 text-center font-mono font-bold">
                                 {effectiveLateMins > 0 ? (
                                   <span className="text-amber-700 bg-amber-100 px-2.5 py-1 rounded-full border border-amber-200">
-                                    +{effectiveLateMins} دقيقة
+                                    +{effectiveLateMins} {ui.minuteUnit}
                                   </span>
                                 ) : (
-                                  <span className="text-slate-400">0 دقيقة</span>
+                                  <span className="text-slate-400">0 {ui.minuteUnit}</span>
                                 )}
                               </td>
                               <td className="py-3.5 px-4 text-center">
@@ -2114,7 +2099,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
                   onChange={(e) => setPermissionHours(Number(e.target.value))}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-bold text-slate-900"
                 >
-                  <option value={0.5}>0.5 ساعة (30 دقيقة)</option>
+                  <option value={0.5}>0.5 ساعة (30 {ui.minuteUnit})</option>
                   <option value={1}>1.0 ساعة (ساعة واحدة)</option>
                   <option value={1.5}>1.5 ساعة (ساعة ونصف)</option>
                   <option value={2}>2.0 ساعة (ساعتان - أقصى حد مسموح)</option>
