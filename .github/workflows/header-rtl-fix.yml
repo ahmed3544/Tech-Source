@@ -1,0 +1,39 @@
+name: Header RTL fix
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch header and navbar CSS
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('src/components/Header.tsx')
+          s = p.read_text(encoding='utf-8')
+          s = s.replace('<header className="bg-slate-900 text-white border-b border-slate-800 sticky top-0 z-30 shadow-md">', '<header dir={lang === \'ar\' ? \'rtl\' : \'ltr\'} className="bg-slate-900 text-white border-b border-slate-800 sticky top-0 z-30 shadow-md">', 1)
+          s = s.replace('<nav className="bg-slate-950/80 border-t border-slate-800/80 px-4 sm:px-6">', '<nav dir={lang === \'ar\' ? \'rtl\' : \'ltr\'} className="bg-slate-950/80 border-t border-slate-800/80 px-4 sm:px-6">', 1)
+          s = s.replace('className="max-w-7xl mx-auto flex items-center gap-1.5 overflow-x-auto py-1.5 scrollbar-none"', 'className="max-w-7xl mx-auto flex items-center gap-3 overflow-x-auto py-1.5 scrollbar-none"', 1)
+          p.write_text(s, encoding='utf-8')
+          css = Path('src/index.css')
+          s = css.read_text(encoding='utf-8')
+          marker = '/* Header/Navbar tabs: deterministic RTL/LTR direction'
+          if marker not in s:
+              s += '''\n\n/* Header/Navbar tabs: deterministic RTL/LTR direction, clean Arabic typography, and safe horizontal scrolling. */\n#root header nav { direction: rtl; font-family: 'Cairo', Inter, ui-sans-serif, system-ui, sans-serif; letter-spacing: 0; }\n#root header nav > div { display: flex; align-items: center; gap: 12px !important; min-width: 0; max-width: 100%; overflow-x: auto; overflow-y: hidden; flex-wrap: nowrap; scrollbar-width: none; -ms-overflow-style: none; -webkit-overflow-scrolling: touch; }\n#root header nav > div::-webkit-scrollbar { display: none; }\n#root header nav button { flex: 0 0 auto !important; white-space: nowrap !important; min-width: max-content; max-width: none; display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-family: 'Cairo', Inter, ui-sans-serif, system-ui, sans-serif; font-weight: 700 !important; letter-spacing: 0 !important; direction: inherit; }\n#root header nav button span { white-space: nowrap !important; letter-spacing: 0 !important; font-weight: 700 !important; }\n@media (max-width: 767px) { #root header nav { padding-left: 8px; padding-right: 8px; } #root header nav > div { gap: 12px !important; padding-top: 4px; padding-bottom: 4px; } #root header nav button { font-size: 0.75rem !important; line-height: 1.25 !important; padding-left: 10px; padding-right: 10px; } }\n@media (max-width: 390px) { #root header nav button { font-size: 0.71rem !important; padding-left: 9px; padding-right: 9px; } }\n'''
+              css.write_text(s, encoding='utf-8')
+          PY
+      - name: Commit
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/components/Header.tsx src/index.css
+          git diff --cached --quiet && exit 0
+          git commit -m 'Fix navbar RTL layout and mobile tab scrolling'
+          git push
