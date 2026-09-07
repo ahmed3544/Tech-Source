@@ -52,25 +52,49 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${FIREBASE_ANDROID_CONFIG_JSON:-}" ]; then
-            echo "FIREBASE_ANDROID_CONFIG_JSON is not configured. Add the google-services.json content as a GitHub Actions secret before building the Android APK."
+            echo "FIREBASE_ANDROID_CONFIG_JSON is not configured."
             exit 1
           fi
-          printf '%s' "$FIREBASE_ANDROID_CONFIG_JSON" > android/app/google-services.json
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          raw = """${FIREBASE_ANDROID_CONFIG_JSON}""".strip()
+          if raw.startswith('```'):
+              lines = raw.splitlines()
+              if lines and lines[0].strip().startswith('```'):
+                  lines = lines[1:]
+              if lines and lines[-1].strip() == '```':
+                  lines = lines[:-1]
+              raw = '\n'.join(lines).strip()
+
+          try:
+              parsed = json.loads(raw)
+              if isinstance(parsed, str):
+                  parsed = json.loads(parsed)
+          except Exception as exc:
+              raise SystemExit(f'FIREBASE_ANDROID_CONFIG_JSON is not valid JSON: {exc}')
+
+          if not isinstance(parsed, dict) or parsed.get('project_info', {}).get('project_id') != 'tech-source-attendance':
+              raise SystemExit('FIREBASE_ANDROID_CONFIG_JSON is not the expected tech-source-attendance Firebase config.')
+
+          Path('android/app/google-services.json').write_text(json.dumps(parsed, indent=2) + '\n')
+          PY
 
           python - <<'PY'
           from pathlib import Path
 
           root = Path('android/build.gradle')
           if root.exists():
-              p = root
-              s = p.read_text()
+              s = root.read_text()
               if 'com.google.gms:google-services:4.5.0' not in s:
                   marker = 'dependencies {'
                   if marker in s:
                       s = s.replace(marker, marker + "\n        classpath 'com.google.gms:google-services:4.5.0'", 1)
                   else:
                       s += "\n\nbuildscript {\n    dependencies {\n        classpath 'com.google.gms:google-services:4.5.0'\n    }\n}\n"
-                  p.write_text(s)
+                  root.write_text(s)
           else:
               raise SystemExit('android/build.gradle was not generated')
 
@@ -111,5 +135,3 @@ jobs:
           name: tech-source-attendance-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
-
-      # Rebuild after UI-only changes so the test APK always matches the branch head.
