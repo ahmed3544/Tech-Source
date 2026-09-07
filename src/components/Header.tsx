@@ -46,6 +46,7 @@ interface HeaderProps {
     | 'schedule'
     | 'notifications'
     | 'notifications'
+    | 'notifications'
     | 'portal';
 
   setActiveTab: (
@@ -58,6 +59,7 @@ interface HeaderProps {
       | 'import_leaves'
       | 'analytics'
       | 'schedule'
+      | 'notifications'
       | 'notifications'
       | 'notifications'
       | 'portal'
@@ -91,6 +93,7 @@ interface HeaderProps {
   currentUserId?: string;
   onMarkNotificationAsRead?: (notificationId: string) => void;
   onMarkAllNotificationsAsRead?: () => void;
+  onOpenNotificationsPage?: () => void;
   onOpenNotificationsPage?: () => void;
   onOpenNotificationsPage?: () => void;
 }
