@@ -11,7 +11,7 @@ on:
       - 'index.html'
       - 'public/**'
       - 'scripts/**'
-      - 'android/app/google-services.json'
+      - 'firebase/android/google-services.json'
       - '.github/workflows/build-android-app.yml'
 
 jobs:
@@ -45,11 +45,18 @@ jobs:
         run: npm run build
 
       - name: Create Android project
-        run: npx cap add android
+        run: |
+          set -euo pipefail
+          rm -rf android
+          npx cap add android
+          test -d android
+          mkdir -p android/app
+          cp firebase/android/google-services.json android/app/google-services.json
 
       - name: Configure Firebase Android
         run: |
           set -euo pipefail
+          test -f firebase/android/google-services.json
           test -f android/app/google-services.json
           python - <<'PY'
           import json
