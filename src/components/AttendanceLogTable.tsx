@@ -21,6 +21,7 @@ import { AttendanceRecord, Employee, Shift, AttendanceStatus, Language, LeaveReq
 import { UserAvatar } from './UserAvatar';
 import { BreakTimer } from './BreakTimer';
 import { BulkAttendanceModal } from './BulkAttendanceModal';
+import { getUiText } from '../i18n';
 import { formatHoursToHHMM,  getStatusBadgeStyle, getStatusText, getLeaveTypeLabel, evaluatePunch, formatTime, formatDate, toWesternDigits, getFirstTwoNames, getTodayString, isWeekend  } from '../utils/helpers';
 
 interface AttendanceLogTableProps {
@@ -58,6 +59,7 @@ export const AttendanceLogTable: React.FC<AttendanceLogTableProps> = ({
   currentUser,
   globalSearchTerm,
 }) => {
+  const ui = getUiText(lang);
   const isLeader = !currentUser || currentUser.role === 'leader' || currentUser.code === 'leader' || (currentUser as any)?.role === 'admin';
 
   const [searchTerm, setSearchTerm] = useState('');

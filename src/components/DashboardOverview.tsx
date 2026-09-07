@@ -371,7 +371,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                           </span>
                         ) : isTodayWeekend && !rec?.checkIn ? (
                           <span className="inline-block px-2 py-0.5 rounded-full text-[9px] font-bold border bg-emerald-50 text-emerald-800 border-emerald-300">
-                            🏖️ {lang === 'ar' ? 'عطلة أسبوعية' : 'Weekend Holiday'}
+                            {lang === 'ar' ? 'عطلة أسبوعية' : 'Weekend Holiday'}
                           </span>
                         ) : (
                           <span className={`inline-block px-2 py-0.5 rounded-full text-[9px] font-bold border ${getStatusBadgeStyle(status)}`}>

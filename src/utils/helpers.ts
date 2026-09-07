@@ -561,7 +561,7 @@ export function getStatusText(status?: AttendanceStatus, lang: 'ar' | 'en' = 'ar
   }
 
   if (status === 'weekend') {
-    return lang === 'ar' ? 'عطلة أسبوعية 🏖️' : 'Weekend Holiday 🏖️';
+    return lang === 'ar' ? 'عطلة أسبوعية' : 'Weekend Holiday';
   }
 
   if (status === 'on_leave') {
@@ -577,7 +577,7 @@ export function getStatusText(status?: AttendanceStatus, lang: 'ar' | 'en' = 'ar
     absent: 'غائب',
     on_leave: 'إجازة اعتيادية ',
     in_progress: 'قيد العمل الان',
-    weekend: 'عطلة أسبوعية 🏖️',
+    weekend: 'عطلة أسبوعية',
   };
 
   const mapEn: Record<AttendanceStatus, string> = {
@@ -588,7 +588,7 @@ export function getStatusText(status?: AttendanceStatus, lang: 'ar' | 'en' = 'ar
     absent: 'Absent',
     on_leave: 'On Leave',
     in_progress: 'Currently Clocked In',
-    weekend: 'Weekend Holiday 🏖️',
+    weekend: 'Weekend Holiday',
   };
 
   return lang === 'ar' ? mapAr[status] || status : mapEn[status] || status;
