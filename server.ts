@@ -7,11 +7,13 @@ import { fileURLToPath } from "url";
 import { sql } from "drizzle-orm";
 import { db } from "./src/db/index.js";
 import * as schema from "./src/db/schema.js";
+import { registerFcmRoutes } from "./server/fcm.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+registerFcmRoutes(app);
 
 const PORT = Number(process.env.PORT || 3000);
 const TZ = process.env.SERVER_TIME_ZONE || "Africa/Cairo";
