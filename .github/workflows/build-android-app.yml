@@ -11,6 +11,7 @@ on:
       - 'index.html'
       - 'public/**'
       - 'scripts/**'
+      - 'android/app/google-services.json'
       - '.github/workflows/build-android-app.yml'
 
 jobs:
@@ -47,40 +48,20 @@ jobs:
         run: npx cap add android
 
       - name: Configure Firebase Android
-        env:
-          FIREBASE_ANDROID_CONFIG_JSON: ${{ secrets.FIREBASE_ANDROID_CONFIG_JSON }}
         run: |
           set -euo pipefail
-          if [ -z "${FIREBASE_ANDROID_CONFIG_JSON:-}" ]; then
-            echo "FIREBASE_ANDROID_CONFIG_JSON is not configured."
-            exit 1
-          fi
-
+          test -f android/app/google-services.json
           python - <<'PY'
           import json
-          import os
           from pathlib import Path
-
-          raw = os.environ['FIREBASE_ANDROID_CONFIG_JSON'].strip()
-          if raw.startswith('```'):
-              lines = raw.splitlines()
-              if lines and lines[0].strip().startswith('```'):
-                  lines = lines[1:]
-              if lines and lines[-1].strip() == '```':
-                  lines = lines[:-1]
-              raw = '\n'.join(lines).strip()
-
-          try:
-              parsed = json.loads(raw)
-              if isinstance(parsed, str):
-                  parsed = json.loads(parsed)
-          except Exception as exc:
-              raise SystemExit(f'FIREBASE_ANDROID_CONFIG_JSON is not valid JSON: {exc}')
-
-          if not isinstance(parsed, dict) or parsed.get('project_info', {}).get('project_id') != 'tech-source-attendance':
-              raise SystemExit('FIREBASE_ANDROID_CONFIG_JSON is not the expected tech-source-attendance Firebase config.')
-
-          Path('android/app/google-services.json').write_text(json.dumps(parsed, indent=2) + '\n')
+          p = Path('android/app/google-services.json')
+          parsed = json.loads(p.read_text())
+          if parsed.get('project_info', {}).get('project_id') != 'tech-source-attendance':
+              raise SystemExit('Unexpected Firebase project_id')
+          clients = parsed.get('client', [])
+          if not any(c.get('client_info', {}).get('android_client_info', {}).get('package_name') == 'com.techsource.attendance' for c in clients):
+              raise SystemExit('Expected Android package com.techsource.attendance not found')
+          print('Firebase Android config validated.')
           PY
 
           python - <<'PY'
