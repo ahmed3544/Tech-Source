@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 
 interface UserAvatarProps {
   name?: string;
@@ -10,15 +10,23 @@ interface UserAvatarProps {
 }
 
 export const UserAvatar: React.FC<UserAvatarProps> = ({ name, code, avatar, size = 'md', className = '', employee }) => {
-  const [imgError, setImgError] = useState(false);
-
   const displayName = name || (employee ? (employee.nameEn || employee.nameAr || '') : '');
   const displayCode = code || employee?.code || '';
-  const displayAvatar = avatar || employee?.avatar || employee?.avatarUrl || '';
+
+  const imageCandidates = useMemo(() => (
+    [avatar, employee?.avatar, employee?.avatarUrl]
+      .map(value => typeof value === 'string' ? value.trim() : '')
+      .filter((value, index, list): value is string => Boolean(value) && list.indexOf(value) === index)
+  ), [avatar, employee?.avatar, employee?.avatarUrl]);
+
+  const [failedImageIndexes, setFailedImageIndexes] = useState<number[]>([]);
 
   useEffect(() => {
-    setImgError(false);
-  }, [displayAvatar]);
+    setFailedImageIndexes([]);
+  }, [imageCandidates.join('|')]);
+
+  const activeImageIndex = imageCandidates.findIndex((_, index) => !failedImageIndexes.includes(index));
+  const displayAvatar = activeImageIndex >= 0 ? imageCandidates[activeImageIndex] : '';
 
   const sizeClasses = {
     xs: 'w-6 h-6 text-[10px] border',
@@ -28,28 +36,24 @@ export const UserAvatar: React.FC<UserAvatarProps> = ({ name, code, avatar, size
     xl: 'w-16 h-16 text-xl border-2',
   };
 
-  if (displayAvatar && !imgError) {
+  if (displayAvatar) {
     return (
-      <div
-        className={`rounded-full shrink-0 overflow-hidden border-emerald-500/30 shadow-sm ${sizeClasses[size]} ${className}`}
-        title={displayName}
-      >
+      <div className={`rounded-full shrink-0 overflow-hidden border-emerald-500/30 shadow-sm ${sizeClasses[size]} ${className}`} title={displayName}>
         <img
           src={displayAvatar}
           alt={displayName}
           className="w-full h-full object-cover"
           referrerPolicy="no-referrer"
-          onError={() => setImgError(true)}
+          onError={() => setFailedImageIndexes(prev => prev.includes(activeImageIndex) ? prev : [...prev, activeImageIndex])}
         />
       </div>
     );
   }
 
-  // Generate 2 initials from name (e.g. "Adham Niazy Jalal" -> "AN")
   const safeName = displayName || '';
   const cleanName = safeName.replace(/[^a-zA-Z0-9\s]/g, '').trim();
   const words = cleanName.split(/\s+/).filter(w => w.length > 0);
-  
+
   let initials = '';
   if (words.length >= 2) {
     initials = `${words[0][0]}${words[1][0]}`.toUpperCase();
@@ -61,7 +65,6 @@ export const UserAvatar: React.FC<UserAvatarProps> = ({ name, code, avatar, size
     initials = 'TS';
   }
 
-  // Consistent pleasant background color based on name hash
   const bgColors = [
     'bg-gradient-to-br from-emerald-600 to-teal-800 text-white border-emerald-400/40',
     'bg-gradient-to-br from-blue-600 to-indigo-800 text-white border-blue-400/40',
@@ -74,17 +77,11 @@ export const UserAvatar: React.FC<UserAvatarProps> = ({ name, code, avatar, size
   ];
 
   let hash = 0;
-  for (let i = 0; i < safeName.length; i++) {
-    hash = safeName.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  const colorIndex = Math.abs(hash) % bgColors.length;
-  const colorClass = bgColors[colorIndex];
+  for (let i = 0; i < safeName.length; i++) hash = safeName.charCodeAt(i) + ((hash << 5) - hash);
+  const colorClass = bgColors[Math.abs(hash) % bgColors.length];
 
   return (
-    <div
-      className={`rounded-full flex items-center justify-center shrink-0 font-mono font-bold tracking-wider shadow-sm select-none ${sizeClasses[size]} ${colorClass} ${className}`}
-      title={displayName}
-    >
+    <div className={`rounded-full flex items-center justify-center shrink-0 font-mono font-bold tracking-wider shadow-sm select-none ${sizeClasses[size]} ${colorClass} ${className}`} title={displayName}>
       {initials}
     </div>
   );
