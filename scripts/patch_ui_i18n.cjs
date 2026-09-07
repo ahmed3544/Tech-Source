@@ -40,43 +40,24 @@ patchFile('src/components/KioskPunch.tsx', (code) => {
   code = code.replace(/تم إغلاق اليوم وانصراف الموظف بنجاح \(اليوم مقفل ومكتمل\)/g, 'تم إغلاق اليوم');
   code = code.replace(/Day Closed and Checked Out Successfully \(Locked\)/g, 'Day Closed');
   code = code.replace(/(\$\{currentRecord\?\.workHours \|\| 8\} ساعة) \(لا يمكن التعديل أو الإلغاء\)/g, '$1');
-
-  // Keep the selected employee header in a real responsive grid so the status
-  // card can never overlap or squeeze the employee identity block.
   code = code.replace(
     'bg-slate-50 p-4 rounded-2xl border border-slate-200/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4',
-    'bg-slate-50 p-4 rounded-2xl border border-slate-200/80 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_auto] items-center gap-3'
+    'bg-slate-50 p-3 sm:p-4 rounded-2xl border border-slate-200/80 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(280px,auto)] items-center gap-3 overflow-visible'
   );
-
-  // Make the employee identity side shrink safely inside the grid.
-  code = code.replace(
-    'flex items-center gap-4 min-w-0',
-    'flex items-center gap-3 min-w-0'
-  );
-
-  // Compact, auto-width attendance status card with no absolute positioning.
+  code = code.replace('flex items-center gap-4 min-w-0', 'flex items-center gap-3 min-w-0');
   code = code.replace(
     'flex items-center gap-3 bg-slate-900 text-white px-4 py-2.5 rounded-2xl border border-slate-800 shadow-sm shrink-0 w-full sm:w-auto',
-    'flex items-center gap-2.5 bg-slate-900 text-white px-3 py-2 rounded-xl border border-slate-800 shadow-sm min-w-0 w-full lg:w-auto max-w-full shrink-0'
+    'flex items-center gap-3 bg-slate-900 text-white px-3 py-2 rounded-xl border border-slate-800 shadow-sm min-w-0 w-full lg:w-auto max-w-full shrink-0 overflow-hidden'
   );
-
   code = code.replace(
     'className="text-xs font-mono font-bold flex items-center gap-1.5 whitespace-nowrap w-full min-w-0 overflow-visible"',
-    'className="text-xs font-mono font-bold flex items-center gap-1.5 min-w-0 whitespace-nowrap overflow-hidden"'
+    'className="text-xs font-mono font-bold flex items-center gap-1.5 min-w-0 whitespace-nowrap overflow-x-auto scrollbar-hide"'
   );
-
-  // Replace the oversized status wording with a clean time + hours presentation.
   code = code.replace(
     /<span className="text-emerald-300 font-sans font-black text-xs">\s*\(\{lang === 'ar' \? `اليوم مقفل ومكتمل • \$\{currentRecord\.workHours \|\| 8\}س` : `Day Closed • \$\{currentRecord\.workHours \|\| 8\}h`\}\)\s*<\/span>/,
     '<span className="text-emerald-300 font-sans font-black text-[11px] shrink-0">• {currentRecord.workHours || 8}{lang === \'ar\' ? \'س\' : \'h\'}</span>'
   );
-
-  // Keep the completion icon proportional to the compact status row.
-  code = code.replace(
-    '<span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shrink-0 shadow-xs" />',
-    '<CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />'
-  );
-
+  code = code.replace('<span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shrink-0 shadow-xs" />', '<CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />');
   return code;
 });
 
@@ -100,25 +81,16 @@ patchFile('src/components/AttendanceLogTable.tsx', (code) => {
   }
   code = code.replace(/(\$\{[^}]+\}) س`/g, '$1 ${ui.hourUnit}`');
   code = code.replace(/(\$\{[^}]+\}) دقيقة`/g, '$1 ${ui.minuteUnit}`');
-
   const menu = `\n          <select\n            defaultValue=""\n            aria-label={lang === 'ar' ? 'إجراءات الحضور' : 'Attendance Actions'}\n            onChange={(e) => {\n              const action = e.target.value;\n              if (action === 'bulk') setShowBulkModal(true);\n              if (action === 'manual') openCreateModal();\n              if (action === 'holiday') openCreateWeekendModal();\n              if (action === 'export') onExportCSV();\n              e.currentTarget.value = '';\n            }}\n            className="w-full sm:w-auto min-w-[190px] h-10 rounded-xl border border-slate-300 bg-white px-3 text-xs font-bold text-slate-800 shadow-sm outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"\n          >\n            <option value="" disabled>{lang === 'ar' ? 'إجراءات الحضور' : 'Attendance Actions'}</option>\n            <option value="bulk">{lang === 'ar' ? 'تسجيل حضور جماعي' : 'Bulk Attendance Entry'}</option>\n            <option value="manual">{lang === 'ar' ? 'تسجيل يدوي' : 'Manual Entry'}</option>\n            <option value="holiday">{lang === 'ar' ? 'إضافة عطلة' : 'Add Holiday'}</option>\n            <option value="export">{lang === 'ar' ? 'تصدير تقرير' : 'Export Report'}</option>\n          </select>`;
-
   const patterns = [
     /<button\b[\s\S]*?<span>\{lang === 'ar' \? 'تسجيل حضور جماعي \(إجمالي الأيام\)' : 'Bulk Manual Entry'\}<\/span>[\s\S]*?<\/button>/,
     /<button\b[\s\S]*?<span>\{lang === 'ar' \? 'تسجيل يدوي \(يوم\)' : 'Manual Punch'\}<\/span>[\s\S]*?<\/button>/,
     /<button\b[\s\S]*?<span>\{lang === 'ar' \? 'إضافة عطلة أسبوعية \(مانيوال\)' : 'Add Weekend \(Manual\)'\}<\/span>[\s\S]*?<\/button>/,
     /<button\b[\s\S]*?<span>\{lang === 'ar' \? 'تصدير تقرير \(CSV\)' : 'Export CSV Report'\}<\/span>[\s\S]*?<\/button>/,
   ];
-
   let inserted = false;
   for (const pattern of patterns) {
-    code = code.replace(pattern, () => {
-      if (!inserted) {
-        inserted = true;
-        return menu;
-      }
-      return '';
-    });
+    code = code.replace(pattern, () => { if (!inserted) { inserted = true; return menu; } return ''; });
   }
   return code;
 });
