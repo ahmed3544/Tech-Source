@@ -120,7 +120,7 @@ export const EmployeePortal: React.FC<EmployeePortalProps> = ({
   const [searchDayQuery, setSearchDayQuery] = useState('');
 
   // Active view tab inside dashboard
-  const [activeDashboardTab, setActiveDashboardTab] = useState<'attendance' | 'penalties'>('attendance');
+  const [activeDashboardTab, setActiveDashboardTab] = useState<'attendance' | 'penalties' | 'permissions'>('attendance');
 
   // Avatar Modal State
   const [showAvatarModal, setShowAvatarModal] = useState(false);
@@ -1628,6 +1628,22 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
               {lang === 'ar'
                 ? `2. سجل الجزاءات والخصومات الإدارية (${monthlySummary.penalties.length})`
                 : `2. Administrative Penalties (${monthlySummary.penalties.length})`}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setActiveDashboardTab('permissions')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+              activeDashboardTab === 'permissions'
+                ? 'bg-slate-900 text-white shadow-sm'
+                : 'text-slate-600 hover:bg-slate-200'
+            }`}
+          >
+            <Clock3 className="w-4 h-4 text-sky-400" />
+            <span>
+              {lang === 'ar'
+                ? `3. سجل الأذونات والإجازات الإدارية (${leaveRequests.filter(l => l.employeeId === emp.id).length})`
+                : `3. Permissions & Requests (${leaveRequests.filter(l => l.employeeId === emp.id).length})`}
             </span>
           </button>
         </div>
