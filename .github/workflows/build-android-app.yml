@@ -46,6 +46,48 @@ jobs:
       - name: Create Android project
         run: npx cap add android
 
+      - name: Configure Firebase Android
+        env:
+          FIREBASE_ANDROID_CONFIG_JSON: ${{ secrets.FIREBASE_ANDROID_CONFIG_JSON }}
+        run: |
+          set -euo pipefail
+          if [ -z "${FIREBASE_ANDROID_CONFIG_JSON:-}" ]; then
+            echo "FIREBASE_ANDROID_CONFIG_JSON is not configured. Add the google-services.json content as a GitHub Actions secret before building the Android APK."
+            exit 1
+          fi
+          printf '%s' "$FIREBASE_ANDROID_CONFIG_JSON" > android/app/google-services.json
+
+          python - <<'PY'
+          from pathlib import Path
+
+          root = Path('android/build.gradle')
+          if root.exists():
+              p = root
+              s = p.read_text()
+              if 'com.google.gms:google-services:4.5.0' not in s:
+                  marker = 'dependencies {'
+                  if marker in s:
+                      s = s.replace(marker, marker + "\n        classpath 'com.google.gms:google-services:4.5.0'", 1)
+                  else:
+                      s += "\n\nbuildscript {\n    dependencies {\n        classpath 'com.google.gms:google-services:4.5.0'\n    }\n}\n"
+                  p.write_text(s)
+          else:
+              raise SystemExit('android/build.gradle was not generated')
+
+          app_candidates = [Path('android/app/build.gradle'), Path('android/app/build.gradle.kts')]
+          app = next((p for p in app_candidates if p.exists()), None)
+          if app is None:
+              raise SystemExit('Android app Gradle file was not generated')
+          s = app.read_text()
+          if app.name == 'build.gradle':
+              if "apply plugin: 'com.google.gms.google-services'" not in s:
+                  s += "\napply plugin: 'com.google.gms.google-services'\n"
+          else:
+              if 'com.google.gms.google-services' not in s:
+                  s = s.replace('plugins {', 'plugins {\n    id("com.google.gms.google-services")', 1)
+          app.write_text(s)
+          PY
+
       - name: Generate Android app icon from company logo
         run: npx -y @capacitor/assets generate --android
 
