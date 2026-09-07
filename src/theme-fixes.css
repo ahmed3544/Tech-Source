@@ -10,6 +10,7 @@ html:not(.dark) body {
 html:not(.dark) #root {
   background: #ffffff !important;
   color: #0f172a !important;
+  color-scheme: light;
 }
 
 /* Remove dark-only shell surfaces when the user switches back to Light mode. */
@@ -68,4 +69,31 @@ html.dark .tech-source-logo img {
   filter: none !important;
   opacity: 1 !important;
   mix-blend-mode: normal !important;
+}
+
+/* Header/profile dropdown: keep it anchored to its trigger and wide enough for menu labels. */
+header.sticky .relative:has(> button[aria-expanded]) {
+  position: relative !important;
+  flex-shrink: 0 !important;
+}
+
+header.sticky .relative > button[aria-expanded] + div.absolute {
+  position: absolute !important;
+  top: calc(100% + 8px) !important;
+  inset-inline-end: 0 !important;
+  inset-inline-start: auto !important;
+  width: 16rem !important;
+  min-width: 16rem !important;
+  max-width: min(16rem, calc(100vw - 24px)) !important;
+  z-index: 1000 !important;
+  white-space: normal !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+}
+
+header.sticky .relative > button[aria-expanded] + div.absolute button {
+  width: 100% !important;
+  min-width: 0 !important;
+  white-space: nowrap !important;
+  box-sizing: border-box !important;
 }
