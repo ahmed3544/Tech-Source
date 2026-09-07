@@ -16,19 +16,41 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Repair duplicate notification props
+      - name: Repair duplicate notification integration
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
-          p = Path('src/components/Header.tsx')
-          s = p.read_text(encoding='utf-8')
-          s = s.replace("    | 'notifications'\n    | 'notifications'\n", "    | 'notifications'\n", 1)
-          s = s.replace("      | 'notifications'\n      | 'notifications'\n", "      | 'notifications'\n", 1)
-          s = s.replace("  onOpenNotificationsPage?: () => void;\n  onOpenNotificationsPage?: () => void;\n", "  onOpenNotificationsPage?: () => void;\n", 1)
-          p.write_text(s, encoding='utf-8')
-          
+
+          def collapse(path, line):
+              p = Path(path)
+              s = p.read_text(encoding='utf-8')
+              lines = s.splitlines(keepends=True)
+              out = []
+              seen = False
+              for item in lines:
+                  if item.strip() == line.strip():
+                      if seen:
+                          continue
+                      seen = True
+                  else:
+                      seen = False
+                  out.append(item)
+              p.write_text(''.join(out), encoding='utf-8')
+
+          collapse('src/App.tsx', "| 'notifications'")
+          collapse('src/components/Header.tsx', "| 'notifications'")
+
+          for path in ['src/components/Header.tsx']:
+              p = Path(path)
+              s = p.read_text(encoding='utf-8')
+              while s.count('  onOpenNotificationsPage?: () => void;') > 1:
+                  first = s.find('  onOpenNotificationsPage?: () => void;')
+                  second = s.find('  onOpenNotificationsPage?: () => void;', first + 1)
+                  s = s[:second] + s[second + len('  onOpenNotificationsPage?: () => void;\n'):]
+              p.write_text(s, encoding='utf-8')
+
           p = Path('src/components/NotificationCenter.tsx')
           s = p.read_text(encoding='utf-8')
           s = s.replace("import React, { useState } from 'react';", "import React from 'react';")
@@ -53,7 +75,9 @@ jobs:
           set -euo pipefail
           grep -q "NotificationsPage" src/App.tsx
           grep -q "'notifications'" src/App.tsx
-          grep -q "onOpenNotificationsPage" src/components/Header.tsx
+          test "$(grep -c "| 'notifications'" src/App.tsx)" -eq 1
+          test "$(grep -c "| 'notifications'" src/components/Header.tsx)" -eq 1
+          test "$(grep -c "onOpenNotificationsPage?:" src/components/Header.tsx)" -eq 1
           grep -q "onOpenPage" src/components/NotificationCenter.tsx
           grep -q "shift_swap_requested" src/components/NotificationsPage.tsx
           echo "Notification integration verified."
@@ -64,14 +88,12 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/components/Header.tsx src/components/NotificationCenter.tsx
+          git add src/App.tsx src/components/Header.tsx src/components/NotificationCenter.tsx
           if git diff --cached --quiet; then
             echo "No repair changes needed."
             exit 0
           fi
-          git commit -m "fix: repair notification integration"
+          git commit -m "fix: normalize notification integration"
           git fetch origin main
           git rebase origin/main || { git rebase --abort; git reset --hard origin/main; exit 1; }
           git push origin HEAD:main
-
-# Verification trigger for the notification integration repair.
