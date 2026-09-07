@@ -1,0 +1,55 @@
+name: Verify and repair EmployeePortal JSX
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    if: "!contains(github.event.head_commit.message, '[employeeportal-jsx-verified]')"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Remove extra JSX closing div before holiday banner
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('src/components/EmployeePortal.tsx')
+          s = p.read_text(encoding='utf-8')
+          marker = '        {/* OFFICIAL PUBLIC HOLIDAYS BANNER (Calculated separately for current month) */}'
+          target = '          </div>\n\n' + marker
+          if target not in s:
+              raise SystemExit('Expected extra closing div before holiday banner was not found')
+          s = s.replace(target, marker, 1)
+          p.write_text(s, encoding='utf-8')
+          PY
+
+      - name: Full production build verification
+        run: |
+          npm install
+          npm run build
+
+      - name: Commit only after successful build
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/components/EmployeePortal.tsx
+          git diff --cached --quiet && exit 0
+          git commit -m "fix: repair EmployeePortal JSX closing tag [employeeportal-jsx-verified]"
+          git push
+
+      - name: Cleanup verification workflow
+        if: success()
+        shell: bash
+        run: |
+          git rm .github/workflows/verify-employeeportal-jsx.yml
+          git commit -m "chore: remove temporary EmployeePortal verification workflow [employeeportal-jsx-verified]"
+          git push
