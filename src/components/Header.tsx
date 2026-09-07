@@ -16,6 +16,9 @@ import {
   Scale,
   Camera,
   Megaphone,
+  Moon,
+  Sun,
+  ChevronDown,
   X
 } from 'lucide-react';
 
@@ -112,6 +115,19 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const [now, setNow] = useState<Date>(new Date());
   const [showAvatarModal, setShowAvatarModal] = useState(false);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(true);
+
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('tech-source-theme');
+    const dark = savedTheme !== 'light';
+    setIsDarkMode(dark);
+    document.documentElement.classList.toggle('dark', dark);
+  }, []);
+
+  const toggleDarkMode = () => {
+    setIsDarkMode(prev => { const next=!prev; localStorage.setItem('tech-source-theme', next?'dark':'light'); document.documentElement.classList.toggle('dark', next); return next; });
+  };
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -148,7 +164,7 @@ export const Header: React.FC<HeaderProps> = ({
       {/* =========================
           Top Main Bar
       ========================== */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 min-h-[72px] py-2 flex items-center justify-between gap-4">
+      <div className="w-full max-w-full mx-auto px-3 sm:px-6 min-h-[60px] sm:min-h-[72px] py-2 flex items-center justify-between gap-2 sm:gap-4 overflow-visible">
 
         {/* Unified Logo */}
         <div className="flex items-center gap-3">
@@ -379,217 +395,32 @@ export const Header: React.FC<HeaderProps> = ({
         ========================== */}
         <div className="flex items-center gap-2 sm:gap-3">
 
-          {/* Language Switcher */}
-          <button
-            onClick={() => setLang(lang === 'ar' ? 'en' : 'ar')}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700 text-xs font-bold transition shadow-xs"
-            title={
-              lang === 'ar'
-                ? 'Switch to English'
-                : 'التحويل للغة العربية'
-            }
-          >
-            <Globe className="w-4 h-4 text-sky-400" />
-
-            <span className="font-sans text-[11px] font-extrabold uppercase tracking-wide">
-              {lang === 'ar' ? 'English' : 'عربي'}
-            </span>
-          </button>
-
-          {/* Company Rules */}
-          <button
-            onClick={onOpenRulesModal}
-            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-bold transition shadow-xs"
-            title={
-              lang === 'ar'
-                ? 'عرض لائحة العمل والجزاءات المعتمدة (قانون العمل 2025)'
-                : 'Company Work Regulations'
-            }
-          >
-            <Scale className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-
-            <span className="whitespace-nowrap hidden sm:inline">
-              {lang === 'ar'
-                ? 'لائحة الشركة'
-                : 'Company Rules'}
-            </span>
-          </button>
-
-          {/* Urgent Announcement */}
-          {isLeader && onOpenNoticeModal && (
-            <button
-              onClick={onOpenNoticeModal}
-              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 text-xs font-bold transition shadow-xs animate-pulse"
-              title={
-                lang === 'ar'
-                  ? 'نشر وإدارة التنبيهات والأوامر العاجلة للموظفين'
-                  : 'Manage Urgent Notices'
-              }
-            >
-              <Megaphone className="w-3.5 h-3.5 text-rose-400 shrink-0" />
-
-              <span className="whitespace-nowrap hidden sm:inline">
-                {lang === 'ar'
-                  ? 'تنبيه عاجل'
-                  : 'Urgent Notice'}
-              </span>
-            </button>
-          )}
-
-          {/* Live Digital Clock */}
-          <div className="hidden lg:flex items-center gap-2.5 bg-slate-800/80 px-3 py-1.5 rounded-xl border border-slate-700/60">
-
-            <Clock className="w-4 h-4 text-emerald-400 animate-pulse" />
-
-            <div className="text-right">
-
-              <div className="text-xs font-mono font-bold text-white tracking-wider">
-                {timeStr}
-              </div>
-
-              <div className="text-[10px] text-slate-400">
-                {dateStr}
-              </div>
-
+          <div className="flex items-center justify-between gap-2 sm:gap-3 w-full min-w-0">
+            <div className="flex items-center gap-2 min-w-0 shrink-0">
+              <button onClick={() => setLang(lang === 'ar' ? 'en' : 'ar')} className="h-9 min-w-9 flex items-center justify-center gap-1.5 px-2 sm:px-3 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-100 border border-slate-700/70 text-xs font-bold transition shrink-0" title={lang === 'ar' ? 'Switch to English' : 'التحويل للغة العربية'}>
+                <Globe className="w-4 h-4 text-sky-400 shrink-0" /><span className="hidden sm:inline text-[11px] font-extrabold whitespace-nowrap">{lang === 'ar' ? 'English' : 'عربي'}</span>
+              </button>
+              <button onClick={onOpenRulesModal} className="hidden sm:flex h-9 items-center justify-center gap-1.5 px-2.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-bold transition shrink-0"><Scale className="w-3.5 h-3.5 text-amber-400" /><span className="whitespace-nowrap">{lang === 'ar' ? 'لائحة الشركة' : 'Company Rules'}</span></button>
+              {isLeader && onOpenNoticeModal && <button onClick={onOpenNoticeModal} className="hidden md:flex h-9 items-center justify-center gap-1.5 px-2.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 text-xs font-bold transition shrink-0"><Megaphone className="w-3.5 h-3.5 text-rose-400" /><span className="whitespace-nowrap">{lang === 'ar' ? 'تنبيه عاجل' : 'Urgent Notice'}</span></button>}
             </div>
-
+            <div className="flex items-center gap-2 shrink-0">
+              {isLeader && pendingLeavesCount > 0 && <button onClick={() => setActiveTab('leaves')} className="relative h-9 w-9 flex items-center justify-center rounded-lg bg-slate-800/70 hover:bg-slate-700 text-slate-300 transition shrink-0" title={`${pendingLeavesCount} طلبات معلقة`}><Bell className="w-4 h-4 text-amber-400" /><span className="absolute -top-1 -end-1 min-w-4 h-4 px-0.5 bg-amber-500 text-slate-950 font-bold text-[10px] rounded-full flex items-center justify-center">{pendingLeavesCount}</span></button>}
+              {currentUser ? <div className="relative shrink-0">
+                <button type="button" onClick={() => setShowProfileMenu(v=>!v)} className="h-9 flex items-center justify-center gap-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 border border-slate-700/70 px-1.5 sm:px-2 transition" aria-expanded={showProfileMenu} title={lang === 'ar' ? 'قائمة البروفايل' : 'Profile menu'}>
+                  <UserAvatar name={currentUser.nameEn || currentUser.nameAr} code={currentUser.code} avatar={currentUser.avatar} size="xs" />
+                  <ChevronDown className={`hidden sm:block w-3.5 h-3.5 text-slate-400 transition-transform ${showProfileMenu ? 'rotate-180' : ''}`} />
+                </button>
+                {showProfileMenu && <div className="absolute top-full mt-2 end-0 w-64 max-w-[calc(100vw-24px)] rounded-xl border border-slate-700/80 bg-slate-900/95 backdrop-blur-md shadow-xl overflow-hidden z-[70]">
+                  <div className="px-3 py-2.5 border-b border-slate-700/70"><p className="text-sm font-bold text-white truncate">{getFirstTwoNames(lang === 'ar' ? currentUser.nameAr : currentUser.nameEn)}</p><p className="text-[10px] font-bold text-emerald-400 mt-0.5">{currentUser.role === 'leader' ? 'TL' : (lang === 'ar' ? 'حساب موظف' : 'Employee Account')}</p></div>
+                  <button type="button" onClick={() => {setShowProfileMenu(false);setShowAvatarModal(true);}} className="w-full flex items-center gap-3 px-3.5 py-2.5 text-sm font-bold text-slate-100 hover:bg-slate-800 transition text-start"><Camera className="w-4 h-4 text-emerald-400" /><span>{lang === 'ar' ? 'تغيير الصورة الشخصية' : 'Change profile photo'}</span></button>
+                  <div className="flex items-center justify-between gap-3 px-3.5 py-2.5 text-sm font-bold text-slate-100 hover:bg-slate-800"><div className="flex items-center gap-3 min-w-0">{isDarkMode ? <Moon className="w-4 h-4 text-sky-400" /> : <Sun className="w-4 h-4 text-amber-400" />}<span>{lang === 'ar' ? 'الوضع الداكن' : 'Dark Mode'}</span></div><button type="button" role="switch" aria-checked={isDarkMode} onClick={toggleDarkMode} className={`relative h-6 w-11 shrink-0 rounded-full transition ${isDarkMode ? 'bg-emerald-600' : 'bg-slate-600'}`}><span className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow transition-all ${isDarkMode ? 'right-1' : 'left-1'}`} /></button></div>
+                  <div className="border-t border-slate-700/70" />
+                  <button type="button" onClick={() => {setShowProfileMenu(false);onLogout();}} className="w-full flex items-center gap-3 px-3.5 py-2.5 text-sm font-bold text-rose-300 hover:bg-rose-500/10 transition text-start"><LogOut className="w-4 h-4" /><span>{lang === 'ar' ? 'تسجيل الخروج' : 'Logout'}</span></button>
+                </div>}
+              </div> : <button onClick={onOpenLoginModal} className="h-9 flex items-center justify-center gap-1.5 px-2.5 rounded-lg bg-[#0d2240] hover:bg-[#153460] text-white border border-blue-900 text-xs font-bold transition shrink-0"><LogIn className="w-3.5 h-3.5 text-emerald-400" /><span className="hidden sm:inline">{lang === 'ar' ? 'تسجيل الدخول' : 'Login'}</span></button>}
+              {currentUser && <div className="h-9 flex items-center justify-center shrink-0"><NotificationCenter notifications={notifications} currentUserId={currentUserId || currentUser.id} lang={lang} onMarkAsRead={onMarkNotificationAsRead} onMarkAllAsRead={onMarkAllNotificationsAsRead} /></div>}
+            </div>
           </div>
-
-          {/* =========================
-              User Status
-          ========================== */}
-          {currentUser ? (
-
-            <div className="flex items-center gap-2 bg-slate-800/90 border border-slate-700/80 rounded-xl px-2.5 py-1">
-
-              {/* Avatar */}
-              <button
-                type="button"
-                onClick={() => setShowAvatarModal(true)}
-                className="relative group cursor-pointer"
-                title={
-                  lang === 'ar'
-                    ? 'تغيير صورة البروفايل'
-                    : 'Change profile photo'
-                }
-              >
-
-                <UserAvatar
-                  name={currentUser.nameEn || currentUser.nameAr}
-                  code={currentUser.code}
-                  avatar={currentUser.avatar}
-                  size="xs"
-                />
-
-                <div className="absolute inset-0 rounded-full bg-slate-950/70 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-
-                  <Camera className="w-3 h-3 text-emerald-400" />
-
-                </div>
-
-              </button>
-
-              <div
-                className="hidden sm:block text-right cursor-pointer"
-                onClick={() => setShowAvatarModal(true)}
-                title={
-                  lang === 'ar'
-                    ? 'تغيير صورة البروفايل'
-                    : 'Change profile photo'
-                }
-              >
-
-                <div
-                  className="text-xs font-bold text-white whitespace-nowrap"
-                  title={
-                    lang === 'ar'
-                      ? currentUser.nameAr
-                      : currentUser.nameEn
-                  }
-                >
-                  {getFirstTwoNames(
-                    lang === 'ar'
-                      ? currentUser.nameAr
-                      : currentUser.nameEn
-                  )}
-                </div>
-
-                <div className="text-[10px] text-emerald-400 font-semibold flex items-center gap-1 justify-end">
-
-                  <span>
-                    {currentUser.role === 'leader'
-                      ? 'TL'
-                      : (
-                        lang === 'ar'
-                          ? 'حساب موظف'
-                          : 'Employee Account'
-                      )}
-                  </span>
-
-                  <Camera className="w-2.5 h-2.5 text-slate-400 hover:text-emerald-400" />
-
-                </div>
-
-              </div>
-
-              {/* Logout */}
-              <button
-                onClick={onLogout}
-                className="p-1 rounded-md text-slate-400 hover:text-rose-400 hover:bg-slate-700/50 transition mr-1"
-                title={
-                  lang === 'ar'
-                    ? 'تسجيل الخروج'
-                    : 'Logout'
-                }
-              >
-                <LogOut className="w-3.5 h-3.5" />
-              </button>
-
-            </div>
-
-          ) : (
-
-            <button
-              onClick={onOpenLoginModal}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#0d2240] hover:bg-[#153460] text-white border border-blue-900 text-xs font-bold transition shadow-sm"
-            >
-              <LogIn className="w-3.5 h-3.5 text-emerald-400" />
-
-              <span>
-                {lang === 'ar'
-                  ? 'تسجيل الدخول'
-                  : 'Login'}
-              </span>
-            </button>
-
-          )}
-
-          {/* Notifications */}
-          {isLeader && pendingLeavesCount > 0 && (
-            <button
-              onClick={() => setActiveTab('leaves')}
-              className="relative p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
-              title={`${pendingLeavesCount} طلبات معلقة`}
-            >
-              <Bell className="w-4 h-4 text-amber-400" />
-
-              <span className="absolute -top-1 -right-1 w-4 h-4 bg-amber-500 text-slate-950 font-bold text-[10px] rounded-full flex items-center justify-center animate-bounce font-mono">
-                {pendingLeavesCount}
-              </span>
-            </button>
-          )}
-
-          {/* Notification Center */}
-          {currentUser && (
-            <NotificationCenter
-              notifications={notifications}
-              currentUserId={currentUserId || currentUser?.id}
-              lang={lang}
-              onMarkAsRead={onMarkNotificationAsRead}
-              onMarkAllAsRead={onMarkAllNotificationsAsRead}
-            />
-          )}
-
         </div>
       </div>
 
