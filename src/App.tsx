@@ -16,6 +16,7 @@ import { UrgentNoticeBanner } from './components/UrgentNoticeBanner';
 import { UrgentNoticeModal } from './components/UrgentNoticeModal';
 import { ImportLeavesView } from './components/ImportLeavesView';
 import { WeeklyShiftSchedule } from './components/WeeklyShiftSchedule';
+import { registerPushNotifications } from './firebase-messaging';
 
 import {
   Employee,
@@ -105,11 +106,6 @@ export default function App() {
       | 'import_leaves'
       | 'analytics'
       | 'schedule'
-      | 'notifications'
-      | 'notifications'
-      | 'notifications'
-      | 'notifications'
-      | 'notifications'
       | 'notifications'
       | 'portal'
     >('dashboard');
@@ -516,6 +512,14 @@ export default function App() {
         }
       );
     };
+
+
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    registerPushNotifications(currentUser.id).catch((error) => {
+      console.warn('[FCM] push registration failed', error);
+    });
+  }, [currentUser?.id]);
 
 
   /* =========================================================
