@@ -74,7 +74,6 @@ textarea:focus-visible {
   background: rgba(23, 105, 170, 0.18);
 }
 
-/* Responsive foundation: every direct app section may shrink safely. */
 #root > *,
 #root main,
 #root section,
@@ -86,7 +85,6 @@ textarea:focus-visible {
   max-width: 100%;
 }
 
-/* Keep common card surfaces inside the available viewport. */
 #root .w-full {
   max-width: 100%;
 }
@@ -95,7 +93,6 @@ textarea:focus-visible {
   min-width: 0;
 }
 
-/* Tables: scroll horizontally instead of wrapping dates/times vertically. */
 #root .overflow-x-auto {
   max-width: 100%;
   overflow-x: auto;
@@ -119,7 +116,6 @@ textarea:focus-visible {
   white-space: nowrap;
 }
 
-/* Keep long labels from forcing flex/grid parents wider than the viewport. */
 #root .flex,
 #root .grid {
   min-width: 0;
@@ -133,7 +129,6 @@ textarea:focus-visible {
   overflow-wrap: anywhere;
 }
 
-/* Better touch targets without letting controls create horizontal overflow. */
 @media (pointer: coarse) {
   #root button {
     min-height: 38px;
@@ -144,7 +139,61 @@ textarea:focus-visible {
   }
 }
 
-/* Mobile: compact, consistent spacing and safe Android viewport behavior. */
+/* Attendance/leave cards: remove decorative palm/tree icons everywhere. */
+#root .lucide-palmtree,
+#root .lucide-tree-palm,
+#root .lucide-tree-deciduous,
+#root .lucide-tree-pine,
+#root .lucide-trees {
+  display: none !important;
+}
+
+/* Keep attendance/leave card headers compact, aligned and single-line. */
+#root .bg-white.rounded-3xl > .flex.items-center.justify-between {
+  min-width: 0;
+  gap: 10px;
+}
+
+#root .bg-white.rounded-3xl > .flex.items-center.justify-between > div:first-child {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+#root .bg-white.rounded-3xl > .flex.items-center.justify-between h3,
+#root .bg-white.rounded-3xl > .flex.items-center.justify-between h4 {
+  margin: 0;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 0.95rem;
+  line-height: 1.25;
+}
+
+#root .bg-white.rounded-3xl > .flex.items-center.justify-between p {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 0.7rem;
+  line-height: 1.25;
+}
+
+/* Status/badge content stays beside the title without wrapping. */
+#root .bg-white.rounded-3xl > .flex.items-center.justify-between > div:last-child,
+#root .bg-white.rounded-3xl > .flex.items-center.justify-between > span:last-child {
+  flex: 0 0 auto;
+  min-width: 0;
+  max-width: 48%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#root .bg-white.rounded-3xl button {
+  white-space: nowrap;
+}
+
+/* Mobile: smaller bold headings while preserving one-line labels. */
 @media (max-width: 767px) {
   body {
     min-width: 0;
@@ -163,12 +212,10 @@ textarea:focus-visible {
     max-width: 100%;
   }
 
-  /* Prevent wide control rows from pushing the bottom/side edges off-screen. */
   #root .flex-wrap {
     row-gap: 8px;
   }
 
-  /* Mobile typography: compact but readable. */
   #root h1 {
     font-size: 1.15rem;
     line-height: 1.25;
@@ -184,7 +231,6 @@ textarea:focus-visible {
     line-height: 1.3;
   }
 
-  /* Cards use tighter horizontal padding on phones. */
   #root .p-6 {
     padding: 14px;
   }
@@ -197,14 +243,12 @@ textarea:focus-visible {
     padding: 12px;
   }
 
-  /* Keep controls and KPI cards from becoming oversized. */
   #root .text-2xl,
   #root .text-3xl,
   #root .text-4xl {
     line-height: 1.2;
   }
 
-  /* Table text stays compact and dates/times stay on one line. */
   #root table {
     min-width: 640px;
     font-size: 0.8125rem;
@@ -220,7 +264,6 @@ textarea:focus-visible {
     min-width: 760px;
   }
 
-  /* Modals fit narrow Android screens and remain scrollable vertically. */
   #root .fixed.inset-0 {
     padding-top: max(10px, env(safe-area-inset-top));
     padding-right: max(10px, env(safe-area-inset-right));
@@ -231,9 +274,28 @@ textarea:focus-visible {
   #root .fixed.inset-0 > * {
     max-width: 100%;
   }
+
+  #root .bg-white.rounded-3xl > .flex.items-center.justify-between {
+    gap: 8px;
+    align-items: center;
+  }
+
+  #root .bg-white.rounded-3xl > .flex.items-center.justify-between h3,
+  #root .bg-white.rounded-3xl > .flex.items-center.justify-between h4 {
+    font-size: 0.875rem;
+    line-height: 1.2;
+  }
+
+  #root .bg-white.rounded-3xl > .flex.items-center.justify-between p {
+    font-size: 0.65rem;
+  }
+
+  #root .bg-white.rounded-3xl > .flex.items-center.justify-between > div:last-child,
+  #root .bg-white.rounded-3xl > .flex.items-center.justify-between > span:last-child {
+    max-width: 44%;
+  }
 }
 
-/* Very small Android devices. */
 @media (max-width: 390px) {
   #root .px-6,
   #root .px-5 {
@@ -249,9 +311,13 @@ textarea:focus-visible {
     min-width: 600px;
     font-size: 0.75rem;
   }
+
+  #root .bg-white.rounded-3xl > .flex.items-center.justify-between h3,
+  #root .bg-white.rounded-3xl > .flex.items-center.justify-between h4 {
+    font-size: 0.8125rem;
+  }
 }
 
-/* Landscape phones: keep fixed dialogs usable. */
 @media (max-height: 520px) and (orientation: landscape) {
   #root .fixed.inset-0 {
     align-items: flex-start;
@@ -260,12 +326,10 @@ textarea:focus-visible {
   }
 }
 
-/* Employee portal: RTL-safe dashboard navigation and compact mobile controls. */
 html[dir="rtl"] #root .bg-white.rounded-3xl.border.border-slate-200.shadow-sm.overflow-hidden {
   direction: rtl;
 }
 
-/* Dashboard tabs: fixed 12px gap, no wrapping, horizontal scroll on narrow screens. */
 #root .bg-white.rounded-3xl.border.border-slate-200.shadow-sm.overflow-hidden > .bg-slate-50.border-b.border-slate-200.p-3.flex.items-center {
   display: flex;
   gap: 12px;
@@ -290,7 +354,6 @@ html[dir="rtl"] #root .bg-white.rounded-3xl.border.border-slate-200.shadow-sm.ov
   max-width: none;
 }
 
-/* Keep Arabic labels visually separated and stable inside each tab. */
 html[dir="rtl"] #root .bg-white.rounded-3xl.border.border-slate-200.shadow-sm.overflow-hidden > .bg-slate-50.border-b.border-slate-200.p-3.flex.items-center > button {
   direction: rtl;
 }
@@ -301,7 +364,6 @@ html[dir="rtl"] #root .bg-white.rounded-3xl.border.border-slate-200.shadow-sm.ov
   letter-spacing: 0;
 }
 
-/* Leave/permission actions: never force the dark card wider than the phone. */
 #root .bg-slate-900 .flex.items-center.gap-2.shrink-0 {
   min-width: 0;
   max-width: 100%;
@@ -315,7 +377,6 @@ html[dir="rtl"] #root .bg-white.rounded-3xl.border.border-slate-200.shadow-sm.ov
 }
 
 @media (max-width: 767px) {
-  /* The request buttons share the available width instead of overflowing. */
   #root .bg-slate-900 .flex.items-center.gap-2.shrink-0 > button {
     flex: 1 1 0;
   }
