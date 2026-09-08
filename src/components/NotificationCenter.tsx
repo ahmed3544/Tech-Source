@@ -18,7 +18,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
   onOpenPage,
 }) => {
   const userNotifications = currentUserId
-    ? notifications.filter(n => n.recipientId === currentUserId)
+    ? notifications.filter(n => n.recipientId === currentUserId && n?.id && (String(n.title || '').trim() || String(n.message || '').trim()))
     : [];
   const unreadCount = userNotifications.filter(n => !n.isRead).length;
 
