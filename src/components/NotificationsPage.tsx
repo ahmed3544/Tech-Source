@@ -110,6 +110,7 @@ export const NotificationsPage: React.FC<Props> = ({ notifications, currentUserI
 
       const now = new Date().toISOString();
       const nextStatus: ShiftSwapRequest['status'] = action === 'accept' ? 'pending' : 'rejected';
+      const nextRequests = requests.map(r => r.id === request.id ? { ...r, status: nextStatus, reviewedAt: now } : r);
       let nextNotifications = currentNotifications.map(n => n.id === notification.id ? { ...n, isRead: true, updatedAt: now } : n);
 
       if (action === 'accept') {
@@ -164,17 +165,42 @@ export const NotificationsPage: React.FC<Props> = ({ notifications, currentUserI
         </div>
         {unread > 0 && <button onClick={onMarkAllAsRead} className="h-9 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black flex items-center gap-1.5"><CheckCheck size={15}/>{lang === 'ar' ? 'قراءة الكل' : 'Mark all read'}</button>}
       </div>
-      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
-        {list.length === 0 ? <div className="py-20 text-center text-slate-500 dark:text-slate-400"><Bell className="mx-auto mb-3 opacity-40" size={34}/><p className="font-bold">{lang === 'ar' ? 'لا توجد إشعارات' : 'No notifications'}</p></div> : <div className="divide-y divide-slate-100 dark:divide-slate-800">
-          {list.map(n => <article key={n.id} className={`p-4 sm:p-5 transition ${!n.isRead ? 'bg-emerald-50/60 dark:bg-emerald-950/20' : ''}`}>
-            <div className="flex gap-3">
-              <div className={`mt-0.5 h-9 w-9 rounded-xl flex items-center justify-center shrink-0 ${!n.isRead ? 'bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-300' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'}`}><Bell size={17}/></div>
-              <div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><h2 className="text-sm font-black text-slate-900 dark:text-white">{title(n)}</h2><p className="text-sm text-slate-600 dark:text-slate-300 mt-1 leading-6">{n.message}</p><time className="block text-[11px] text-slate-400 mt-2 font-semibold">{new Date(n.createdAt).toLocaleString(lang === 'ar' ? 'ar-EG' : 'en-US')}</time>
-                {n.type === 'shift_swap_requested' && n.relatedShiftSwapId && <div className="flex gap-2 mt-3"><button type="button" disabled={actingSwapId === n.relatedShiftSwapId} onClick={() => void respondToSwap(n, 'accept')} className="flex-1 rounded-lg bg-emerald-600 text-white px-3 py-2 text-xs font-black flex items-center justify-center gap-1 disabled:opacity-50"><Check size={14}/>{lang === 'ar' ? 'موافقة' : 'Accept'}</button><button type="button" disabled={actingSwapId === n.relatedShiftSwapId} onClick={() => void respondToSwap(n, 'reject')} className="flex-1 rounded-lg bg-rose-600 text-white px-3 py-2 text-xs font-black flex items-center justify-center gap-1 disabled:opacity-50"><X size={14}/>{lang === 'ar' ? 'رفض' : 'Reject'}</button></div>}
-              </div>{!n.isRead && n.type !== 'shift_swap_requested' && <button onClick={() => onMarkAsRead?.(n.id)} className="shrink-0 text-[11px] font-black text-emerald-600 dark:text-emerald-400 flex items-center gap-1"><Check size={13}/>{lang === 'ar' ? 'مقروء' : 'Read'}</button>}</div></div>
-            </div>
-          </article>)}
-        </div>}
+
+      <div className="space-y-2.5">
+        {list.length === 0 ? (
+          <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-10 text-center text-slate-500 dark:text-slate-400">
+            <Bell size={30} className="mx-auto mb-2 opacity-50" />
+            <p className="font-bold">{lang === 'ar' ? 'لا توجد إشعارات' : 'No notifications'}</p>
+          </div>
+        ) : list.map(notification => {
+          const isUnread = !notification.isRead;
+          const canRespond = notification.type === 'shift_swap_requested' && Boolean(notification.relatedShiftSwapId);
+          const isActing = actingSwapId === notification.relatedShiftSwapId;
+          return (
+            <article key={notification.id} className={`rounded-xl border p-4 bg-white dark:bg-slate-900 ${isUnread ? 'border-emerald-300 dark:border-emerald-700' : 'border-slate-200 dark:border-slate-800'}`}>
+              <div className="flex items-start gap-3">
+                <div className={`h-9 w-9 shrink-0 rounded-lg flex items-center justify-center ${isUnread ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' : 'bg-slate-100 text-slate-500 dark:bg-slate-800'}`}><Bell size={17}/></div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h2 className={`text-sm font-black ${isUnread ? 'text-slate-900 dark:text-white' : 'text-slate-700 dark:text-slate-300'}`}>{title(notification)}</h2>
+                      <p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-400">{notification.message}</p>
+                    </div>
+                    {isUnread && <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-emerald-500" aria-label="unread" />}
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <span className="text-[11px] font-bold text-slate-400">{new Date(notification.createdAt).toLocaleString(lang === 'ar' ? 'ar-EG' : 'en-US')}</span>
+                    {isUnread && !canRespond && <button onClick={() => onMarkAsRead?.(notification.id)} className="h-8 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-black text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"><Check size={14} className="inline mr-1"/>{lang === 'ar' ? 'تحديد كمقروء' : 'Mark read'}</button>}
+                    {canRespond && <>
+                      <button disabled={isActing} onClick={() => respondToSwap(notification, 'accept')} className="h-8 px-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-black"><Check size={14} className="inline mr-1"/>{lang === 'ar' ? 'موافقة' : 'Accept'}</button>
+                      <button disabled={isActing} onClick={() => respondToSwap(notification, 'reject')} className="h-8 px-2.5 rounded-lg bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white text-xs font-black"><X size={14} className="inline mr-1"/>{lang === 'ar' ? 'رفض' : 'Reject'}</button>
+                    </>}
+                  </div>
+                </div>
+              </div>
+            </article>
+          );
+        })}
       </div>
     </div>
   </section>;
