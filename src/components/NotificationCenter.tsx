@@ -119,7 +119,6 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
     return normalizeNotifications(source, currentUserId);
   }, [serverNotifications, notifications, currentUserId]);
 
-  // Always derive the badge from the actual notifications currently available to this user.
   const unreadCount = userNotifications.filter(notification => !notification.isRead).length;
   const previewNotifications = userNotifications.slice(0, 6);
 
@@ -134,10 +133,13 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
   };
 
   return (
-    <div ref={containerRef} className="relative flex items-center gap-1 z-[100]">
+    <div ref={containerRef} className="relative flex items-center gap-1 z-[100] shrink-0">
       <button
         type="button"
-        onClick={() => setIsOpen(open => !open)}
+        onClick={(event) => {
+          event.stopPropagation();
+          setIsOpen(open => !open);
+        }}
         className="relative p-2 text-slate-300 hover:text-white transition-colors rounded-lg hover:bg-slate-800/70"
         aria-label={lang === 'ar' ? 'الإشعارات' : 'Notifications'}
         aria-expanded={isOpen}
@@ -156,11 +158,11 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
         <div
           role="dialog"
           aria-label={lang === 'ar' ? 'قائمة الإشعارات' : 'Notification list'}
-          className="absolute top-full mt-2 right-0 w-[min(92vw,380px)] overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl z-[9999]"
+          className="absolute top-full left-0 mt-2 w-80 max-w-[calc(100vw-24px)] overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl z-[9999]"
           onClick={event => event.stopPropagation()}
         >
           <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-slate-200 dark:border-slate-800">
-            <div>
+            <div className="min-w-0">
               <h3 className="text-sm font-black text-slate-900 dark:text-white">
                 {lang === 'ar' ? 'الإشعارات' : 'Notifications'}
               </h3>
@@ -172,7 +174,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
               <button
                 type="button"
                 onClick={handleMarkAll}
-                className="text-[11px] font-black text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1"
+                className="shrink-0 text-[11px] font-black text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1"
               >
                 <CheckCheck size={14} />
                 {lang === 'ar' ? 'قراءة الكل' : 'Mark all read'}
@@ -200,10 +202,10 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
                       <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${unread ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'}`} />
                       <div className="min-w-0 flex-1">
                         <div className="flex items-start justify-between gap-2">
-                          <p className={`text-xs font-black ${unread ? 'text-slate-900 dark:text-white' : 'text-slate-600 dark:text-slate-300'}`}>
+                          <p className={`min-w-0 text-xs font-black ${unread ? 'text-slate-900 dark:text-white' : 'text-slate-600 dark:text-slate-300'}`}>
                             {getNotificationTitle(notification, lang)}
                           </p>
-                          {unread && <span className="text-[10px] font-black text-emerald-600 dark:text-emerald-400">{lang === 'ar' ? 'جديد' : 'New'}</span>}
+                          {unread && <span className="shrink-0 text-[10px] font-black text-emerald-600 dark:text-emerald-400">{lang === 'ar' ? 'جديد' : 'New'}</span>}
                         </div>
                         <p className="mt-1 text-[11px] leading-5 text-slate-500 dark:text-slate-400 line-clamp-2">
                           {notification.message?.trim() || (lang === 'ar' ? 'لديك إشعار جديد.' : 'You have a new notification.')}
