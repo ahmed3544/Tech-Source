@@ -28,7 +28,7 @@ for (const [marker, key] of kpis) {
   if (openIndex === -1) continue;
   const insertAt = code.indexOf('"', openIndex + '<div className="'.length) + 1;
   if (insertAt <= 0) continue;
-  const attrs = ` onClick={() => setDashboardKpiDetails('${key}')} role="button" tabIndex={0} aria-label="${marker}" onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setDashboardKpiDetails('${key}'); }}`;
+  const attrs = ` onClick={() => setDashboardKpiDetails('${key}')} role="button" tabIndex={0} aria-label="${marker}" style={{ cursor: 'pointer' }} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setDashboardKpiDetails('${key}'); }}`;
   code = code.slice(0, insertAt) + attrs + code.slice(insertAt);
 }
 
