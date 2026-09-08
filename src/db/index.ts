@@ -8,12 +8,15 @@ declare global {
 
 export const createPool = () => {
   if (!global._postgresPool) {
+    // Prefer the new Neon DATABASE_URL. Keep SUPABASE_DB_URL as a fallback
+    // during migration so the production database is never switched until
+    // the Neon copy has been verified.
     const connectionString =
-      process.env.SUPABASE_DB_URL;
+      process.env.DATABASE_URL || process.env.SUPABASE_DB_URL;
 
     if (!connectionString) {
       console.warn(
-        "SUPABASE_DB_URL is not set. Database operations will fail if invoked."
+        "DATABASE_URL/SUPABASE_DB_URL is not set. Database operations will fail if invoked."
       );
     }
 
