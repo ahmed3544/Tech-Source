@@ -8,8 +8,9 @@ const stamp = (v:any) => String(v || new Date().toISOString());
 
 async function upsert(table:any,id:string,values:any,existing:any){
   if(!existing) return db.insert(table).values(values as any);
-  const incoming=ms(values.updatedAt||values.createdAt),current=ms(existing.updatedAt||existing.createdAt);
-  // An old client without a mutation timestamp must never overwrite the DB.
+  // Existing records are never allowed to be overwritten by a legacy/full-snapshot
+  // client that does not carry the record's own mutation timestamp.
+  const incoming=ms(values.updatedAt),current=ms(existing.updatedAt||existing.createdAt);
   if(!incoming) return;
   if(!current || incoming>=current) return db.update(table).set(values as any).where(eq(table.id,id));
 }
@@ -17,8 +18,8 @@ async function upsert(table:any,id:string,values:any,existing:any){
 async function upsertEmployee(e:any){
   if(!e?.id)return;
   const id=String(e.id),v=pick(e,['id','code','nameAr','nameEn','avatar','email','phone','department','jobTitleAr','jobTitleEn','shiftId','pin','role','joinedDate','status','annualLeaveBalance','casualLeaveBalance','regularLeaveBalance','sickLeaveBalance','isPhotoRemoved','updatedAt']);
-  v.updatedAt=stamp(v.updatedAt);
   const a=await db.select().from(schema.employees).where(eq(schema.employees.id,id));
+  if(!a[0]) { v.updatedAt=stamp(v.updatedAt); await db.insert(schema.employees).values(v as any); return; }
   await upsert(schema.employees,id,v,a[0]);
 }
 
@@ -37,28 +38,24 @@ async function upsertAttendance(r:any){
 async function upsertLeave(r:any){
   if(!r?.id||!r?.employeeId)return;
   const id=String(r.id),v=pick(r,['id','employeeId','type','startDate','endDate','reason','status','createdAt','updatedAt','hours','permissionSlot','attachmentUrl','attachmentName','reviewedBy','reviewNotes']);
-  v.updatedAt=stamp(v.updatedAt || v.createdAt);
   const a=await db.select().from(schema.leaveRequests).where(eq(schema.leaveRequests.id,id));
-  if(!a[0]) { await db.insert(schema.leaveRequests).values(v as any); return; }
-  const incoming=ms(v.updatedAt),current=ms((a[0] as any).updatedAt||(a[0] as any).createdAt);
-  if(!incoming || (current && incoming<current)) return;
-  await db.update(schema.leaveRequests).set(v as any).where(eq(schema.leaveRequests.id,id));
+  if(!a[0]) { v.updatedAt=stamp(v.updatedAt || v.createdAt); await db.insert(schema.leaveRequests).values(v as any); return; }
+  await upsert(schema.leaveRequests,id,v,a[0]);
 }
-
-async function upsertOvertime(r:any){if(!r?.id||!r?.employeeId)return;const id=String(r.id),v=pick(r,['id','employeeId','date','type','durationSeconds','reason','status','reviewedBy','reviewNotes','createdAt','updatedAt']),a=await db.select().from(schema.overtimeRequests).where(eq(schema.overtimeRequests.id,id));v.updatedAt=stamp(v.updatedAt||v.createdAt);await upsert(schema.overtimeRequests,id,v,a[0]);}
-async function upsertShift(r:any){if(!r?.id||!r?.name)return;const id=String(r.id),v=pick(r,['id','name','startTime','endTime','durationMinutes','breakMinutes','gracePeriodMinutes','overtimeEnabled','isOvernight','createdAt','updatedAt']),a=await db.select().from(schema.shifts).where(eq(schema.shifts.id,id));v.updatedAt=stamp(v.updatedAt||v.createdAt);await upsert(schema.shifts,id,v,a[0]);}
-async function upsertAssignment(r:any){if(!r?.id||!r?.employeeId||!r?.scheduleDate)return;const id=String(r.id),v=pick(r,['id','employeeId','scheduleDate','shiftTemplateId','customStartTime','customEndTime','durationMinutes','status','createdAt','updatedAt','version']),a=await db.select().from(schema.employeeShiftAssignments).where(eq(schema.employeeShiftAssignments.id,id));v.updatedAt=stamp(v.updatedAt||v.createdAt);await upsert(schema.employeeShiftAssignments,id,v,a[0]);}
-async function upsertNotification(r:any){if(!r?.id||!r?.recipientId)return;const id=String(r.id),v=pick(r,['id','recipientId','type','title','message','relatedEmployeeId','relatedLeaveId','relatedOvertimeId','relatedShiftSwapId','isRead','createdAt','updatedAt']),a=await db.select().from(schema.notifications).where(eq(schema.notifications.id,id));v.updatedAt=stamp(v.updatedAt||v.createdAt);await upsert(schema.notifications,id,v,a[0]);}
+async function upsertOvertime(r:any){if(!r?.id||!r?.employeeId)return;const id=String(r.id),v=pick(r,['id','employeeId','date','type','durationSeconds','reason','status','reviewedBy','reviewNotes','createdAt','updatedAt']),a=await db.select().from(schema.overtimeRequests).where(eq(schema.overtimeRequests.id,id));if(!a[0]){v.updatedAt=stamp(v.updatedAt||v.createdAt);await db.insert(schema.overtimeRequests).values(v as any);return;}await upsert(schema.overtimeRequests,id,v,a[0]);}
+async function upsertShift(r:any){if(!r?.id||!r?.name)return;const id=String(r.id),v=pick(r,['id','name','startTime','endTime','durationMinutes','breakMinutes','gracePeriodMinutes','overtimeEnabled','isOvernight','createdAt','updatedAt']),a=await db.select().from(schema.shifts).where(eq(schema.shifts.id,id));if(!a[0]){v.updatedAt=stamp(v.updatedAt||v.createdAt);await db.insert(schema.shifts).values(v as any);return;}await upsert(schema.shifts,id,v,a[0]);}
+async function upsertAssignment(r:any){if(!r?.id||!r?.employeeId||!r?.scheduleDate)return;const id=String(r.id),v=pick(r,['id','employeeId','scheduleDate','shiftTemplateId','customStartTime','customEndTime','durationMinutes','status','createdAt','updatedAt','version']),a=await db.select().from(schema.employeeShiftAssignments).where(eq(schema.employeeShiftAssignments.id,id));if(!a[0]){v.updatedAt=stamp(v.updatedAt||v.createdAt);await db.insert(schema.employeeShiftAssignments).values(v as any);return;}await upsert(schema.employeeShiftAssignments,id,v,a[0]);}
+async function upsertNotification(r:any){if(!r?.id||!r?.recipientId)return;const id=String(r.id),v=pick(r,['id','recipientId','type','title','message','relatedEmployeeId','relatedLeaveId','relatedOvertimeId','relatedShiftSwapId','isRead','createdAt','updatedAt']),a=await db.select().from(schema.notifications).where(eq(schema.notifications.id,id));if(!a[0]){v.updatedAt=stamp(v.updatedAt||v.createdAt);await db.insert(schema.notifications).values(v as any);return;}await upsert(schema.notifications,id,v,a[0]);}
 
 async function setting(k:string,v:any,updatedAt?:any){
   const a=await db.select().from(schema.settings).where(eq(schema.settings.key,k));
   if(!a[0]) { await db.insert(schema.settings).values({key:k,value:v} as any); return; }
-  // Settings are shared collections. Keep a server-side timestamp beside each setting.
   const stampKey=`__sync_updated_at:${k}`;
   const ts=ms(updatedAt);
   const t=await db.select().from(schema.settings).where(eq(schema.settings.key,stampKey));
   const current=ms(t[0]?.value);
-  if(ts && current && ts<current) return;
+  if(!ts) return;
+  if(current && ts<current) return;
   await db.update(schema.settings).set({value:v} as any).where(eq(schema.settings.key,k));
   const next=stamp(updatedAt);
   if(!t[0]) await db.insert(schema.settings).values({key:stampKey,value:next} as any); else await db.update(schema.settings).set({value:next} as any).where(eq(schema.settings.key,stampKey));
