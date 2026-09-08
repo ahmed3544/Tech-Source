@@ -13,7 +13,7 @@ interface Props {
 
 export const NotificationsPage: React.FC<Props> = ({ notifications, currentUserId, lang, onMarkAsRead, onMarkAllAsRead, onBack }) => {
   const [actingSwapId, setActingSwapId] = useState<string | null>(null);
-  const list = useMemo(() => currentUserId ? notifications.filter(n => n.recipientId === currentUserId).slice().sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()) : [], [notifications, currentUserId]);
+  const list = useMemo(() => currentUserId ? notifications.filter(n => n.recipientId === currentUserId && n?.id && (String(n.title || '').trim() || String(n.message || '').trim())).slice().sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()) : [], [notifications, currentUserId]);
   const unread = list.filter(n => !n.isRead).length;
 
   const title = (n: Notification) => {
