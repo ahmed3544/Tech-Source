@@ -21,9 +21,15 @@ const kpis = [
 ];
 
 for (const [marker, key] of kpis) {
-  const escapedMarker = marker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const re = new RegExp(`(${escapedMarker} \\*\\/}\\s*\\n\\s*<div className="[^"]+")`);
-  code = code.replace(re, `$1 onClick={() => setDashboardKpiDetails('${key}')} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setDashboardKpiDetails('${key}'); }}`);
+  const comment = `{/* ${marker} */}`;
+  const commentIndex = code.indexOf(comment);
+  if (commentIndex === -1) continue;
+  const openIndex = code.indexOf('<div className="', commentIndex + comment.length);
+  if (openIndex === -1) continue;
+  const insertAt = code.indexOf('"', openIndex + '<div className="'.length) + 1;
+  if (insertAt <= 0) continue;
+  const attrs = ` onClick={() => setDashboardKpiDetails('${key}')} role="button" tabIndex={0} aria-label="${marker}" onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setDashboardKpiDetails('${key}'); }}`;
+  code = code.slice(0, insertAt) + attrs + code.slice(insertAt);
 }
 
 const modal = `\n      {dashboardKpiDetails && (\n        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/50 backdrop-blur-sm p-4" onClick={() => setDashboardKpiDetails(null)}>\n          <div className="w-full max-w-md max-h-[80vh] overflow-hidden rounded-2xl bg-white border border-slate-200 shadow-2xl" dir={lang === 'ar' ? 'rtl' : 'ltr'} onClick={(e) => e.stopPropagation()}>\n            <div className="flex items-center justify-between gap-3 p-4 border-b border-slate-100">\n              <div>\n                <h3 className="text-base font-black text-slate-900">{dashboardKpiTitle}</h3>\n                <p className="text-[11px] text-slate-500 mt-0.5">{toWesternDigits(dashboardKpiEmployees.length)} {lang === 'ar' ? 'موظف' : 'employees'}</p>\n              </div>\n              <button type="button" onClick={() => setDashboardKpiDetails(null)} className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold">{lang === 'ar' ? 'إغلاق' : 'Close'}</button>\n            </div>\n            <div className="p-3 overflow-y-auto max-h-[62vh] space-y-2">\n              {dashboardKpiEmployees.length > 0 ? dashboardKpiEmployees.map((employee) => (\n                <div key={employee.id} className="flex items-center gap-3 p-2.5 rounded-xl border border-slate-100 bg-slate-50">\n                  <UserAvatar employee={employee} size="sm" />\n                  <div className="min-w-0 flex-1">\n                    <div className="font-bold text-sm text-slate-900 truncate">{lang === 'ar' ? employee.nameAr : employee.nameEn}</div>\n                    <div className="text-[10px] text-slate-500 truncate">{employee.code}</div>\n                  </div>\n                </div>\n              )) : (\n                <div className="py-10 text-center text-sm text-slate-400">{lang === 'ar' ? 'لا يوجد موظفون في هذه الفئة اليوم' : 'No employees in this category today'}</div>\n              )}\n            </div>\n          </div>\n        </div>\n      )}\n`;
