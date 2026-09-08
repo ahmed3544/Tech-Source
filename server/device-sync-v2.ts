@@ -118,6 +118,10 @@ export function registerDeviceSyncV2(app:any){
     if(!process.env.SUPABASE_DB_URL)return next();
     if(req.method!=='GET'&&req.method!=='POST')return next();
     if(req.path!=='/api/data'&&req.path!=='/api/sync')return next();
+    // Never allow Vercel/browser/proxy caches to serve an older attendance snapshot.
+    res.setHeader('Cache-Control','no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma','no-cache');
+    res.setHeader('Expires','0');
     try{
       if(req.method==='GET'&&req.path==='/api/data')return res.json(await snapshot());
       const b=req.body||{};
@@ -130,7 +134,7 @@ export function registerDeviceSyncV2(app:any){
       for(const r of Array.isArray(b.overtimeRequests)?b.overtimeRequests:[])await upsertOvertime(r);
       for(const s of Array.isArray(b.shifts)?b.shifts:[])await upsertShift(s);
       for(const a of Array.isArray(b.employeeShiftAssignments)?b.employeeShiftAssignments:[])await upsertAssignment(a);
-      for(const n of Array.isArray(b.notifications)?b.notifications:[])await upsertNotification(n);
+      for(const n of Array.isArray(b.notifications)?n:[])await upsertNotification(n);
       if(Array.isArray(b.dailyShiftAssignments))await setting('dailyShiftAssignments',b.dailyShiftAssignments,syncTime);
       if(Array.isArray(b.shiftSwapRequests))await setting('shiftSwapRequests',b.shiftSwapRequests,syncTime);
       if(b.companyNameAr!==undefined)await setting('companyNameAr',b.companyNameAr,syncTime);
