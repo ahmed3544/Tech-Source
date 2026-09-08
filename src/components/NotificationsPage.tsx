@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Bell, CheckCheck, Check, X, ArrowRight, ArrowLeft } from 'lucide-react';
 import { Notification, Language, ShiftSwapRequest, Employee } from '../types';
 
@@ -11,9 +11,76 @@ interface Props {
   onBack?: () => void;
 }
 
+const normalizeNotifications = (items: unknown, currentUserId?: string): Notification[] => {
+  if (!Array.isArray(items) || !currentUserId) return [];
+
+  const userId = String(currentUserId).trim();
+  const seen = new Set<string>();
+
+  return items.filter((item): item is Notification => {
+    if (!item || typeof item !== 'object') return false;
+    const n = item as Notification;
+    const id = String(n.id || '').trim();
+    const recipientId = String(n.recipientId || '').trim();
+    const hasContent = Boolean(String(n.title || '').trim() || String(n.message || '').trim());
+
+    if (!id || !recipientId || recipientId !== userId || !hasContent || seen.has(id)) {
+      return false;
+    }
+
+    seen.add(id);
+    return true;
+  });
+};
+
 export const NotificationsPage: React.FC<Props> = ({ notifications, currentUserId, lang, onMarkAsRead, onMarkAllAsRead, onBack }) => {
   const [actingSwapId, setActingSwapId] = useState<string | null>(null);
-  const list = useMemo(() => currentUserId ? notifications.filter(n => n.recipientId === currentUserId && n?.id && (String(n.title || '').trim() || String(n.message || '').trim())).slice().sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()) : [], [notifications, currentUserId]);
+  const [serverNotifications, setServerNotifications] = useState<Notification[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!currentUserId) {
+      setServerNotifications([]);
+      return () => { cancelled = true; };
+    }
+
+    const loadNotifications = async () => {
+      try {
+        const response = await fetch(`/api/data?_=${Date.now()}`, {
+          method: 'GET',
+          cache: 'no-store',
+          headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
+        });
+
+        if (!response.ok) throw new Error(`Notification data request failed: ${response.status}`);
+
+        const data = await response.json();
+
+        if (!cancelled) {
+          setServerNotifications(normalizeNotifications(data?.notifications, currentUserId));
+        }
+      } catch {
+        if (!cancelled) setServerNotifications(null);
+      }
+    };
+
+    void loadNotifications();
+    const interval = window.setInterval(() => { void loadNotifications(); }, 5000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [currentUserId]);
+
+  const list = useMemo(() => {
+    const source = serverNotifications ?? notifications;
+    return normalizeNotifications(source, currentUserId)
+      .slice()
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }, [serverNotifications, notifications, currentUserId]);
+
   const unread = list.filter(n => !n.isRead).length;
 
   const title = (n: Notification) => {
@@ -43,7 +110,6 @@ export const NotificationsPage: React.FC<Props> = ({ notifications, currentUserI
 
       const now = new Date().toISOString();
       const nextStatus: ShiftSwapRequest['status'] = action === 'accept' ? 'pending' : 'rejected';
-      const nextRequests = requests.map(r => r.id === request.id ? { ...r, status: nextStatus, targetRespondedAt: now } : r);
       let nextNotifications = currentNotifications.map(n => n.id === notification.id ? { ...n, isRead: true, updatedAt: now } : n);
 
       if (action === 'accept') {
