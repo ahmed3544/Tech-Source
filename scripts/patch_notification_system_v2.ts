@@ -12,12 +12,11 @@ if (!code.includes("./server/notification-system-v2.js")) {
   );
 }
 
+code = code.replace(/\nregisterNotificationSystemV2\(app\);/g, '');
+const parserMarker = 'app.use(express.urlencoded({ extended: true, limit: "10mb" }));';
 if (!code.includes('registerNotificationSystemV2(app);')) {
-  code = code.replace(
-    'registerFcmRoutes(app);',
-    'registerFcmRoutes(app);\nregisterNotificationSystemV2(app);'
-  );
+  code = code.replace(parserMarker, `${parserMarker}\nregisterNotificationSystemV2(app);`);
 }
 
 fs.writeFileSync(serverPath, code);
-console.log('[notifications-v2] server integration active');
+console.log('[notifications-v2] server integration active after body parser');
