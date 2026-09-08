@@ -1,6 +1,5 @@
 const fs = require('fs');
 const path = require('path');
-const sharp = require('sharp');
 
 async function generateAppIcons() {
   const root = path.join(__dirname, '..');
@@ -10,8 +9,28 @@ async function generateAppIcons() {
 
   fs.mkdirSync(assetsDir, { recursive: true });
 
-  // Use the exact same company logo shown in the app header.
-  // Fit it inside a square canvas so Android/PWA receives valid square icons.
+  // Vercel builds do not need the optional image-processing package just to
+  // complete the web build. If sharp is installed, generate properly sized
+  // square icons; otherwise keep the existing logo as the icon source.
+  let sharp = null;
+  try {
+    sharp = require('sharp');
+  } catch {
+    console.warn('[generate_app_icons] sharp is not installed; using the existing logo.png as the icon source.');
+  }
+
+  if (!fs.existsSync(logoPath)) {
+    console.warn('[generate_app_icons] public/logo.png not found; skipping icon generation.');
+    return;
+  }
+
+  if (!sharp) {
+    fs.copyFileSync(logoPath, path.join(publicDir, 'icon-192.png'));
+    fs.copyFileSync(logoPath, path.join(publicDir, 'icon-512.png'));
+    fs.copyFileSync(logoPath, path.join(assetsDir, 'icon.png'));
+    return;
+  }
+
   const logo = sharp(logoPath);
 
   await logo.clone()
@@ -24,7 +43,6 @@ async function generateAppIcons() {
     .png()
     .toFile(path.join(publicDir, 'icon-512.png'));
 
-  // Capacitor Assets uses assets/icon.png as the Android app-icon source.
   await logo.clone()
     .resize(1024, 1024, { fit: 'contain', background: '#ffffff' })
     .png()
