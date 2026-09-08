@@ -7,25 +7,15 @@ import { db } from '../src/db/index.js';
 import * as schema from '../src/db/schema.js';
 
 type NotificationRecord = {
-  id: string;
-  recipientId: string;
-  type: string;
-  title: string;
-  message: string;
-  relatedEmployeeId?: string;
-  relatedLeaveId?: string;
-  relatedOvertimeId?: string;
-  relatedShiftSwapId?: string;
-  isRead: boolean;
-  createdAt: string;
-  updatedAt: string;
+  id: string; recipientId: string; type: string; title: string; message: string;
+  relatedEmployeeId?: string; relatedLeaveId?: string; relatedOvertimeId?: string; relatedShiftSwapId?: string;
+  isRead: boolean; createdAt: string; updatedAt: string;
 };
 
 const USE_DATABASE = Boolean(process.env.SUPABASE_DB_URL);
 const LOCAL_FILE = path.join(process.cwd(), 'notifications_v2.json');
 const VERSION = '2';
 let readyPromise: Promise<void> | null = null;
-
 const clean = (value: unknown) => String(value ?? '').trim();
 const nowIso = () => new Date().toISOString();
 
@@ -41,17 +31,14 @@ function normalize(raw: any): NotificationRecord | null {
   const createdAt = clean(raw?.createdAt) || nowIso();
   const updatedAt = clean(raw?.updatedAt) || createdAt;
   const item: Omit<NotificationRecord, 'id'> = {
-    recipientId,
-    type,
+    recipientId, type,
     title: clean(raw?.title) || 'إشعار جديد',
     message: clean(raw?.message) || 'لديك إشعار جديد.',
     relatedEmployeeId: clean(raw?.relatedEmployeeId) || undefined,
     relatedLeaveId: clean(raw?.relatedLeaveId) || undefined,
     relatedOvertimeId: clean(raw?.relatedOvertimeId) || undefined,
     relatedShiftSwapId: clean(raw?.relatedShiftSwapId) || undefined,
-    isRead: Boolean(raw?.isRead),
-    createdAt,
-    updatedAt,
+    isRead: Boolean(raw?.isRead), createdAt, updatedAt,
   };
   return { id: stableId(item), ...item };
 }
@@ -61,17 +48,11 @@ function readLocal(): NotificationRecord[] {
     if (!fs.existsSync(LOCAL_FILE)) return [];
     const parsed = JSON.parse(fs.readFileSync(LOCAL_FILE, 'utf8'));
     return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+  } catch { return []; }
 }
-
 function writeLocal(items: NotificationRecord[]) {
-  try {
-    fs.writeFileSync(LOCAL_FILE, JSON.stringify(items, null, 2));
-  } catch (error) {
-    console.warn('[Notifications v2] local persistence failed', error);
-  }
+  try { fs.writeFileSync(LOCAL_FILE, JSON.stringify(items, null, 2)); }
+  catch (error) { console.warn('[Notifications v2] local persistence failed', error); }
 }
 
 async function ensureReady() {
@@ -79,29 +60,15 @@ async function ensureReady() {
     readyPromise = (async () => {
       if (USE_DATABASE) {
         await db.execute(sql`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS related_shift_swap_id text`);
-        await db.execute(sql`
-          CREATE TABLE IF NOT EXISTS notification_system_meta (
-            key text PRIMARY KEY,
-            value text NOT NULL
-          )
-        `);
+        await db.execute(sql`CREATE TABLE IF NOT EXISTS notification_system_meta (key text PRIMARY KEY, value text NOT NULL)`);
         const rows = await db.execute(sql`SELECT value FROM notification_system_meta WHERE key = 'version' LIMIT 1`);
         const current = (rows.rows?.[0] as any)?.value;
         if (current !== VERSION) {
           await db.execute(sql`DELETE FROM notifications`);
-          await db.execute(sql`
-            INSERT INTO notification_system_meta (key, value)
-            VALUES ('version', ${VERSION})
-            ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
-          `);
+          await db.execute(sql`INSERT INTO notification_system_meta (key, value) VALUES ('version', ${VERSION}) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`);
         }
-      } else if (!fs.existsSync(LOCAL_FILE)) {
-        writeLocal([]);
-      }
-    })().catch(error => {
-      readyPromise = null;
-      throw error;
-    });
+      } else if (!fs.existsSync(LOCAL_FILE)) writeLocal([]);
+    })().catch(error => { readyPromise = null; throw error; });
   }
   return readyPromise;
 }
@@ -121,7 +88,6 @@ async function saveOne(input: any): Promise<NotificationRecord | null> {
   const item = normalize(input);
   if (!item) return null;
   await ensureReady();
-
   if (!USE_DATABASE) {
     const items = readLocal();
     const index = items.findIndex(existing => existing.id === item.id);
@@ -132,7 +98,6 @@ async function saveOne(input: any): Promise<NotificationRecord | null> {
     writeLocal(items);
     return items.find(existing => existing.id === item.id) || item;
   }
-
   const existingRows = await db.select().from(schema.notifications).where(eq(schema.notifications.id, item.id));
   const existing: any = existingRows[0];
   if (existing) {
@@ -145,23 +110,18 @@ async function saveOne(input: any): Promise<NotificationRecord | null> {
     await db.update(schema.notifications).set(changes as any).where(eq(schema.notifications.id, item.id));
     return merged;
   }
-
   await db.insert(schema.notifications).values(item as any);
   return item;
 }
 
 async function markRead(id: string, recipientId: string) {
   await ensureReady();
-  const notificationId = clean(id);
-  const userId = clean(recipientId);
+  const notificationId = clean(id); const userId = clean(recipientId);
   if (!notificationId || !userId) return false;
   if (!USE_DATABASE) {
-    const items = readLocal();
-    const index = items.findIndex(item => item.id === notificationId && item.recipientId === userId);
+    const items = readLocal(); const index = items.findIndex(item => item.id === notificationId && item.recipientId === userId);
     if (index < 0) return false;
-    items[index] = { ...items[index], isRead: true, updatedAt: nowIso() };
-    writeLocal(items);
-    return true;
+    items[index] = { ...items[index], isRead: true, updatedAt: nowIso() }; writeLocal(items); return true;
   }
   await db.update(schema.notifications).set({ isRead: true, updatedAt: nowIso() }).where(and(eq(schema.notifications.id, notificationId), eq(schema.notifications.recipientId, userId)));
   return true;
@@ -169,25 +129,17 @@ async function markRead(id: string, recipientId: string) {
 
 async function markAllRead(recipientId: string) {
   await ensureReady();
-  const userId = clean(recipientId);
-  if (!userId) return 0;
+  const userId = clean(recipientId); if (!userId) return 0;
   if (!USE_DATABASE) {
-    const items = readLocal();
-    let count = 0;
-    const updated = items.map(item => {
-      if (item.recipientId === userId && !item.isRead) { count += 1; return { ...item, isRead: true, updatedAt: nowIso() }; }
-      return item;
-    });
-    writeLocal(updated);
-    return count;
+    const items = readLocal(); let count = 0;
+    const updated = items.map(item => { if (item.recipientId === userId && !item.isRead) { count += 1; return { ...item, isRead: true, updatedAt: nowIso() }; } return item; });
+    writeLocal(updated); return count;
   }
   const result = await db.update(schema.notifications).set({ isRead: true, updatedAt: nowIso() }).where(and(eq(schema.notifications.recipientId, userId), eq(schema.notifications.isRead, false)));
   return Number((result as any)?.rowCount ?? 0);
 }
 
-function bodyOf(req: Request) {
-  return req.body && typeof req.body === 'object' ? req.body : {};
-}
+function bodyOf(req: Request) { return req.body && typeof req.body === 'object' ? req.body : {}; }
 
 export function registerNotificationSystemV2(app: Express) {
   app.get('/api/notifications', async (req, res) => {
@@ -201,17 +153,6 @@ export function registerNotificationSystemV2(app: Express) {
     }
   });
 
-  app.put('/api/notifications/:id/mark-read', async (req, res) => {
-    try {
-      const userId = clean(bodyOf(req).userId || req.query.userId);
-      const ok = await markRead(req.params.id, userId);
-      res.json({ success: ok });
-    } catch (error) {
-      console.error('[Notifications v2] mark-read failed', error);
-      res.status(500).json({ success: false });
-    }
-  });
-
   app.put('/api/notifications/mark-all-read', async (req, res) => {
     try {
       const userId = clean(bodyOf(req).userId || req.query.userId);
@@ -220,6 +161,17 @@ export function registerNotificationSystemV2(app: Express) {
     } catch (error) {
       console.error('[Notifications v2] mark-all-read failed', error);
       res.status(500).json({ success: false, count: 0 });
+    }
+  });
+
+  app.put('/api/notifications/:id/mark-read', async (req, res) => {
+    try {
+      const userId = clean(bodyOf(req).userId || req.query.userId);
+      const ok = await markRead(req.params.id, userId);
+      res.json({ success: ok });
+    } catch (error) {
+      console.error('[Notifications v2] mark-read failed', error);
+      res.status(500).json({ success: false });
     }
   });
 
