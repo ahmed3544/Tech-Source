@@ -13,21 +13,15 @@ interface Props {
 
 const normalizeNotifications = (items: unknown, currentUserId?: string): Notification[] => {
   if (!Array.isArray(items) || !currentUserId) return [];
-
   const userId = String(currentUserId).trim();
   const seen = new Set<string>();
-
   return items.filter((item): item is Notification => {
     if (!item || typeof item !== 'object') return false;
     const n = item as Notification;
     const id = String(n.id || '').trim();
     const recipientId = String(n.recipientId || '').trim();
     const hasContent = Boolean(String(n.title || '').trim() || String(n.message || '').trim());
-
-    if (!id || !recipientId || recipientId !== userId || !hasContent || seen.has(id)) {
-      return false;
-    }
-
+    if (!id || !recipientId || recipientId !== userId || !hasContent || seen.has(id)) return false;
     seen.add(id);
     return true;
   });
@@ -39,46 +33,30 @@ export const NotificationsPage: React.FC<Props> = ({ notifications, currentUserI
 
   useEffect(() => {
     let cancelled = false;
-
     if (!currentUserId) {
       setServerNotifications([]);
       return () => { cancelled = true; };
     }
-
     const loadNotifications = async () => {
       try {
-        const response = await fetch(`/api/data?_=${Date.now()}`, {
-          method: 'GET',
-          cache: 'no-store',
-          headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
+        const response = await fetch(`/api/notifications?userId=${encodeURIComponent(String(currentUserId).trim())}&_=${Date.now()}`, {
+          method: 'GET', cache: 'no-store', headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
         });
-
-        if (!response.ok) throw new Error(`Notification data request failed: ${response.status}`);
-
+        if (!response.ok) throw new Error(`Notification request failed: ${response.status}`);
         const data = await response.json();
-
-        if (!cancelled) {
-          setServerNotifications(normalizeNotifications(data?.notifications, currentUserId));
-        }
+        if (!cancelled) setServerNotifications(normalizeNotifications(data?.notifications, currentUserId));
       } catch {
         if (!cancelled) setServerNotifications(null);
       }
     };
-
     void loadNotifications();
-    const interval = window.setInterval(() => { void loadNotifications(); }, 5000);
-
-    return () => {
-      cancelled = true;
-      window.clearInterval(interval);
-    };
+    const interval = window.setInterval(() => { void loadNotifications(); }, 3000);
+    return () => { cancelled = true; window.clearInterval(interval); };
   }, [currentUserId]);
 
   const list = useMemo(() => {
     const source = serverNotifications ?? notifications;
-    return normalizeNotifications(source, currentUserId)
-      .slice()
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return normalizeNotifications(source, currentUserId).slice().sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [serverNotifications, notifications, currentUserId]);
 
   const unread = list.filter(n => !n.isRead).length;
@@ -107,53 +85,34 @@ export const NotificationsPage: React.FC<Props> = ({ notifications, currentUserI
       const employees: Employee[] = Array.isArray(data.employees) ? data.employees : [];
       const request = requests.find(r => r.id === notification.relatedShiftSwapId && r.targetEmployeeId === currentUserId && r.status === 'awaiting_target');
       if (!request) return;
-
       const now = new Date().toISOString();
       const nextStatus: ShiftSwapRequest['status'] = action === 'accept' ? 'pending' : 'rejected';
       const nextRequests = requests.map(r => r.id === request.id ? { ...r, status: nextStatus, reviewedAt: now } : r);
       let nextNotifications = currentNotifications.map(n => n.id === notification.id ? { ...n, isRead: true, updatedAt: now } : n);
-
       if (action === 'accept') {
         const leaderId = employees.find(e => e.id === request.requesterId)?.teamLeaderId;
         const recipients = leaderId ? [leaderId] : employees.filter(e => e.role === 'leader' || e.role === 'admin').map(e => e.id);
         const additions: Notification[] = recipients.map(recipientId => ({
           id: `notif-swap-${request.id}-${recipientId}-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
-          recipientId,
-          type: 'shift_swap_accepted',
-          title: lang === 'ar' ? 'تمت الموافقة على Swap' : 'Shift Swap Accepted',
+          recipientId, type: 'shift_swap_accepted', title: lang === 'ar' ? 'تمت الموافقة على Swap' : 'Shift Swap Accepted',
           message: lang === 'ar' ? `تمت موافقة الموظف المستلم على طلب تبديل الشفت ليوم ${request.date}. الطلب الآن ظاهر لليدر للمراجعة.` : `The receiving employee accepted the shift swap for ${request.date}. The request is now ready for leader review.`,
-          relatedShiftSwapId: request.id,
-          isRead: false,
-          createdAt: now,
-          updatedAt: now,
+          relatedShiftSwapId: request.id, isRead: false, createdAt: now, updatedAt: now,
         }));
         nextNotifications = [...nextNotifications, ...additions];
       } else {
         nextNotifications = [...nextNotifications, {
           id: `notif-swap-rejected-${request.id}-${request.requesterId}-${Date.now()}`,
-          recipientId: request.requesterId,
-          type: 'shift_swap_rejected',
-          title: lang === 'ar' ? 'تم رفض طلب تبديل الشفت' : 'Shift Swap Rejected',
+          recipientId: request.requesterId, type: 'shift_swap_rejected', title: lang === 'ar' ? 'تم رفض طلب تبديل الشفت' : 'Shift Swap Rejected',
           message: lang === 'ar' ? `تم رفض طلب تبديل الشفت ليوم ${request.date}.` : `The shift swap request for ${request.date} was rejected.`,
-          relatedShiftSwapId: request.id,
-          isRead: false,
-          createdAt: now,
-          updatedAt: now,
+          relatedShiftSwapId: request.id, isRead: false, createdAt: now, updatedAt: now,
         }];
       }
-
       localStorage.setItem('shift_swap_requests', JSON.stringify(nextRequests));
       localStorage.setItem('notifications', JSON.stringify(nextNotifications));
-      const sync = await fetch('/api/sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ shiftSwapRequests: nextRequests, notifications: nextNotifications, lastUpdated: Date.now() })
-      });
+      const sync = await fetch('/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shiftSwapRequests: nextRequests, notifications: nextNotifications, lastUpdated: Date.now() }) });
       if (!sync.ok) throw new Error(`Sync failed: ${sync.status}`);
       onMarkAsRead?.(notification.id);
-    } finally {
-      setActingSwapId(null);
-    }
+    } finally { setActingSwapId(null); }
   };
 
   return <section dir={lang === 'ar' ? 'rtl' : 'ltr'} className="min-h-[calc(100vh-72px)] w-full bg-slate-50 dark:bg-slate-950 px-3 sm:px-6 py-4 sm:py-6">
@@ -165,41 +124,22 @@ export const NotificationsPage: React.FC<Props> = ({ notifications, currentUserI
         </div>
         {unread > 0 && <button onClick={onMarkAllAsRead} className="h-9 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black flex items-center gap-1.5"><CheckCheck size={15}/>{lang === 'ar' ? 'قراءة الكل' : 'Mark all read'}</button>}
       </div>
-
       <div className="space-y-2.5">
         {list.length === 0 ? (
-          <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-10 text-center text-slate-500 dark:text-slate-400">
-            <Bell size={30} className="mx-auto mb-2 opacity-50" />
-            <p className="font-bold">{lang === 'ar' ? 'لا توجد إشعارات' : 'No notifications'}</p>
-          </div>
+          <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-10 text-center text-slate-500 dark:text-slate-400"><Bell size={30} className="mx-auto mb-2 opacity-50" /><p className="font-bold">{lang === 'ar' ? 'لا توجد إشعارات' : 'No notifications'}</p></div>
         ) : list.map(notification => {
           const isUnread = !notification.isRead;
           const canRespond = notification.type === 'shift_swap_requested' && Boolean(notification.relatedShiftSwapId);
           const isActing = actingSwapId === notification.relatedShiftSwapId;
-          return (
-            <article key={notification.id} className={`rounded-xl border p-4 bg-white dark:bg-slate-900 ${isUnread ? 'border-emerald-300 dark:border-emerald-700' : 'border-slate-200 dark:border-slate-800'}`}>
-              <div className="flex items-start gap-3">
-                <div className={`h-9 w-9 shrink-0 rounded-lg flex items-center justify-center ${isUnread ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' : 'bg-slate-100 text-slate-500 dark:bg-slate-800'}`}><Bell size={17}/></div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <h2 className={`text-sm font-black ${isUnread ? 'text-slate-900 dark:text-white' : 'text-slate-700 dark:text-slate-300'}`}>{title(notification)}</h2>
-                      <p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-400">{notification.message}</p>
-                    </div>
-                    {isUnread && <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-emerald-500" aria-label="unread" />}
-                  </div>
-                  <div className="mt-3 flex flex-wrap items-center gap-2">
-                    <span className="text-[11px] font-bold text-slate-400">{new Date(notification.createdAt).toLocaleString(lang === 'ar' ? 'ar-EG' : 'en-US')}</span>
-                    {isUnread && !canRespond && <button onClick={() => onMarkAsRead?.(notification.id)} className="h-8 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-black text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"><Check size={14} className="inline mr-1"/>{lang === 'ar' ? 'تحديد كمقروء' : 'Mark read'}</button>}
-                    {canRespond && <>
-                      <button disabled={isActing} onClick={() => respondToSwap(notification, 'accept')} className="h-8 px-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-black"><Check size={14} className="inline mr-1"/>{lang === 'ar' ? 'موافقة' : 'Accept'}</button>
-                      <button disabled={isActing} onClick={() => respondToSwap(notification, 'reject')} className="h-8 px-2.5 rounded-lg bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white text-xs font-black"><X size={14} className="inline mr-1"/>{lang === 'ar' ? 'رفض' : 'Reject'}</button>
-                    </>}
-                  </div>
-                </div>
+          return <article key={notification.id} className={`rounded-xl border p-4 bg-white dark:bg-slate-900 ${isUnread ? 'border-emerald-300 dark:border-emerald-700' : 'border-slate-200 dark:border-slate-800'}`}>
+            <div className="flex items-start gap-3">
+              <div className={`h-9 w-9 shrink-0 rounded-lg flex items-center justify-center ${isUnread ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' : 'bg-slate-100 text-slate-500 dark:bg-slate-800'}`}><Bell size={17}/></div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-start justify-between gap-3"><div><h2 className={`text-sm font-black ${isUnread ? 'text-slate-900 dark:text-white' : 'text-slate-700 dark:text-slate-300'}`}>{title(notification)}</h2><p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-400">{notification.message}</p></div>{isUnread && <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-emerald-500" aria-label="unread" />}</div>
+                <div className="mt-3 flex flex-wrap items-center gap-2"><span className="text-[11px] font-bold text-slate-400">{new Date(notification.createdAt).toLocaleString(lang === 'ar' ? 'ar-EG' : 'en-US')}</span>{isUnread && !canRespond && <button onClick={() => onMarkAsRead?.(notification.id)} className="h-8 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-black text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"><Check size={14} className="inline mr-1"/>{lang === 'ar' ? 'تحديد كمقروء' : 'Mark read'}</button>}{canRespond && <><button disabled={isActing} onClick={() => respondToSwap(notification, 'accept')} className="h-8 px-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-black"><Check size={14} className="inline mr-1"/>{lang === 'ar' ? 'موافقة' : 'Accept'}</button><button disabled={isActing} onClick={() => respondToSwap(notification, 'reject')} className="h-8 px-2.5 rounded-lg bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white text-xs font-black"><X size={14} className="inline mr-1"/>{lang === 'ar' ? 'رفض' : 'Reject'}</button></>}</div>
               </div>
-            </article>
-          );
+            </div>
+          </article>;
         })}
       </div>
     </div>
