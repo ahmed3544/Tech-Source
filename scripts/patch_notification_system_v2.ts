@@ -19,15 +19,23 @@ if (!code.includes("./server/device-sync-v2.js")) {
   );
 }
 
+if (!code.includes("./server/legacy-data-recovery.js")) {
+  code = code.replace(
+    "import { registerFcmRoutes } from \"./server/fcm.js\";",
+    "import { registerFcmRoutes } from \"./server/fcm.js\";\nimport { recoverMissingLegacyData } from \"./server/legacy-data-recovery.js\";"
+  );
+}
+
 code = code.replace(/\nregisterNotificationSystemV2\(app\);/g, '');
 code = code.replace(/\nregisterDeviceSyncV2\(app\);/g, '');
+code = code.replace(/\n\/\/ Legacy backup recovery middleware[\s\S]*?\n\}\);/g, '');
 
 const parserMarker = 'app.use(express.urlencoded({ extended: true, limit: "10mb" }));';
-const registrations = `${parserMarker}\nregisterNotificationSystemV2(app);\nregisterDeviceSyncV2(app);`;
+const registrations = `${parserMarker}\nregisterNotificationSystemV2(app);\n\n// Legacy backup recovery: restore only records missing from the database.\napp.use(async (req: any, _res: any, next: any) => {\n  if (process.env.SUPABASE_DB_URL && (req.path === '/api/data' || req.path === '/api/sync')) {\n    await recoverMissingLegacyData();\n  }\n  next();\n});\n\nregisterDeviceSyncV2(app);`;
 
 if (code.includes(parserMarker)) {
   code = code.replace(parserMarker, registrations);
 }
 
 fs.writeFileSync(serverPath, code);
-console.log('[notifications-v2] notification + device sync integration active after body parser');
+console.log('[notifications-v2] notification + safe legacy recovery + device sync integration active after body parser');
