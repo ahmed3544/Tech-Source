@@ -4,20 +4,99 @@ import * as schema from '../src/db/schema.js';
 
 const pick = (s:any,k:string[]) => { const o:any={}; for (const x of k) if (s?.[x]!==undefined) o[x]=s[x]; return o; };
 const ms = (v:any) => { const t=new Date(String(v||'')).getTime(); return Number.isFinite(t)?t:0; };
+const stamp = (v:any) => String(v || new Date().toISOString());
 
 async function upsert(table:any,id:string,values:any,existing:any){
   if(!existing) return db.insert(table).values(values as any);
   const incoming=ms(values.updatedAt||values.createdAt),current=ms(existing.updatedAt||existing.createdAt);
-  if(!incoming||!current||incoming>=current) return db.update(table).set(values as any).where(eq(table.id,id));
+  // An old client without a mutation timestamp must never overwrite the DB.
+  if(!incoming) return;
+  if(!current || incoming>=current) return db.update(table).set(values as any).where(eq(table.id,id));
 }
-async function upsertEmployee(e:any){if(!e?.id)return;const id=String(e.id),v=pick(e,['id','code','nameAr','nameEn','avatar','email','phone','department','jobTitleAr','jobTitleEn','shiftId','pin','role','joinedDate','status','annualLeaveBalance','casualLeaveBalance','regularLeaveBalance','sickLeaveBalance','isPhotoRemoved']),a=await db.select().from(schema.employees).where(eq(schema.employees.id,id));await upsert(schema.employees,id,v,a[0]);}
-async function upsertAttendance(r:any){if(!r?.employeeId||!r?.date)return;const employeeId=String(r.employeeId),date=String(r.date).slice(0,10),v=pick(r,['id','employeeId','date','checkIn','checkOut','breakStart','breakEnd','breaks','totalBreakSeconds','location','deviceInfo','lateMinutes','lateSeconds','earlyLeaveMinutes','workHours','overtimeHours','minusHours','status','leaveType','notes','verifiedByFace','isExcused','excusedBy','excusedReason','updatedAt','isExplicitCancelCheckOut']);v.employeeId=employeeId;v.date=date;const a=await db.select().from(schema.attendanceRecords).where(and(eq(schema.attendanceRecords.employeeId,employeeId),eq(schema.attendanceRecords.date,date)));if(!a[0])await db.insert(schema.attendanceRecords).values(v as any);else{const incoming=ms(v.updatedAt),current=ms((a[0] as any).updatedAt||(a[0] as any).createdAt);if(!incoming||!current||incoming>=current)await db.update(schema.attendanceRecords).set(v as any).where(eq(schema.attendanceRecords.id,(a[0] as any).id));}}
-async function upsertLeave(r:any){if(!r?.id||!r?.employeeId)return;const id=String(r.id),v=pick(r,['id','employeeId','type','startDate','endDate','reason','status','createdAt','hours','permissionSlot','attachmentUrl','attachmentName','reviewedBy','reviewNotes']),a=await db.select().from(schema.leaveRequests).where(eq(schema.leaveRequests.id,id));if(!a[0])await db.insert(schema.leaveRequests).values(v as any);else{const incoming=ms(v.createdAt),current=ms((a[0] as any).createdAt);if(!incoming||!current||incoming>=current)await db.update(schema.leaveRequests).set(v as any).where(eq(schema.leaveRequests.id,id));}}
-async function upsertOvertime(r:any){if(!r?.id||!r?.employeeId)return;const id=String(r.id),v=pick(r,['id','employeeId','date','type','durationSeconds','reason','status','reviewedBy','reviewNotes','createdAt','updatedAt']),a=await db.select().from(schema.overtimeRequests).where(eq(schema.overtimeRequests.id,id));await upsert(schema.overtimeRequests,id,v,a[0]);}
-async function upsertShift(r:any){if(!r?.id||!r?.name)return;const id=String(r.id),v=pick(r,['id','name','startTime','endTime','durationMinutes','breakMinutes','gracePeriodMinutes','overtimeEnabled','isOvernight','createdAt','updatedAt']),a=await db.select().from(schema.shifts).where(eq(schema.shifts.id,id));await upsert(schema.shifts,id,v,a[0]);}
-async function upsertAssignment(r:any){if(!r?.id||!r?.employeeId||!r?.scheduleDate)return;const id=String(r.id),v=pick(r,['id','employeeId','scheduleDate','shiftTemplateId','customStartTime','customEndTime','durationMinutes','status','createdAt','updatedAt','version']),a=await db.select().from(schema.employeeShiftAssignments).where(eq(schema.employeeShiftAssignments.id,id));await upsert(schema.employeeShiftAssignments,id,v,a[0]);}
-async function upsertNotification(r:any){if(!r?.id||!r?.recipientId)return;const id=String(r.id),v=pick(r,['id','recipientId','type','title','message','relatedEmployeeId','relatedLeaveId','relatedOvertimeId','relatedShiftSwapId','isRead','createdAt','updatedAt']),a=await db.select().from(schema.notifications).where(eq(schema.notifications.id,id));await upsert(schema.notifications,id,v,a[0]);}
-async function setting(k:string,v:any){const a=await db.select().from(schema.settings).where(eq(schema.settings.key,k));if(!a[0])await db.insert(schema.settings).values({key:k,value:v} as any);else await db.update(schema.settings).set({value:v} as any).where(eq(schema.settings.key,k));}
+
+async function upsertEmployee(e:any){
+  if(!e?.id)return;
+  const id=String(e.id),v=pick(e,['id','code','nameAr','nameEn','avatar','email','phone','department','jobTitleAr','jobTitleEn','shiftId','pin','role','joinedDate','status','annualLeaveBalance','casualLeaveBalance','regularLeaveBalance','sickLeaveBalance','isPhotoRemoved','updatedAt']);
+  v.updatedAt=stamp(v.updatedAt);
+  const a=await db.select().from(schema.employees).where(eq(schema.employees.id,id));
+  await upsert(schema.employees,id,v,a[0]);
+}
+
+async function upsertAttendance(r:any){
+  if(!r?.employeeId||!r?.date)return;
+  const employeeId=String(r.employeeId),date=String(r.date).slice(0,10);
+  const v=pick(r,['id','employeeId','date','checkIn','checkOut','breakStart','breakEnd','breaks','totalBreakSeconds','location','deviceInfo','lateMinutes','lateSeconds','earlyLeaveMinutes','workHours','overtimeHours','minusHours','status','leaveType','notes','verifiedByFace','isExcused','excusedBy','excusedReason','updatedAt','isExplicitCancelCheckOut']);
+  v.employeeId=employeeId; v.date=date;
+  const a=await db.select().from(schema.attendanceRecords).where(and(eq(schema.attendanceRecords.employeeId,employeeId),eq(schema.attendanceRecords.date,date)));
+  if(!a[0]) { v.updatedAt=stamp(v.updatedAt); await db.insert(schema.attendanceRecords).values(v as any); return; }
+  const incoming=ms(v.updatedAt),current=ms((a[0] as any).updatedAt||(a[0] as any).createdAt);
+  if(!incoming || (current && incoming<current)) return;
+  await db.update(schema.attendanceRecords).set(v as any).where(eq(schema.attendanceRecords.id,(a[0] as any).id));
+}
+
+async function upsertLeave(r:any){
+  if(!r?.id||!r?.employeeId)return;
+  const id=String(r.id),v=pick(r,['id','employeeId','type','startDate','endDate','reason','status','createdAt','updatedAt','hours','permissionSlot','attachmentUrl','attachmentName','reviewedBy','reviewNotes']);
+  v.updatedAt=stamp(v.updatedAt || v.createdAt);
+  const a=await db.select().from(schema.leaveRequests).where(eq(schema.leaveRequests.id,id));
+  if(!a[0]) { await db.insert(schema.leaveRequests).values(v as any); return; }
+  const incoming=ms(v.updatedAt),current=ms((a[0] as any).updatedAt||(a[0] as any).createdAt);
+  if(!incoming || (current && incoming<current)) return;
+  await db.update(schema.leaveRequests).set(v as any).where(eq(schema.leaveRequests.id,id));
+}
+
+async function upsertOvertime(r:any){if(!r?.id||!r?.employeeId)return;const id=String(r.id),v=pick(r,['id','employeeId','date','type','durationSeconds','reason','status','reviewedBy','reviewNotes','createdAt','updatedAt']),a=await db.select().from(schema.overtimeRequests).where(eq(schema.overtimeRequests.id,id));v.updatedAt=stamp(v.updatedAt||v.createdAt);await upsert(schema.overtimeRequests,id,v,a[0]);}
+async function upsertShift(r:any){if(!r?.id||!r?.name)return;const id=String(r.id),v=pick(r,['id','name','startTime','endTime','durationMinutes','breakMinutes','gracePeriodMinutes','overtimeEnabled','isOvernight','createdAt','updatedAt']),a=await db.select().from(schema.shifts).where(eq(schema.shifts.id,id));v.updatedAt=stamp(v.updatedAt||v.createdAt);await upsert(schema.shifts,id,v,a[0]);}
+async function upsertAssignment(r:any){if(!r?.id||!r?.employeeId||!r?.scheduleDate)return;const id=String(r.id),v=pick(r,['id','employeeId','scheduleDate','shiftTemplateId','customStartTime','customEndTime','durationMinutes','status','createdAt','updatedAt','version']),a=await db.select().from(schema.employeeShiftAssignments).where(eq(schema.employeeShiftAssignments.id,id));v.updatedAt=stamp(v.updatedAt||v.createdAt);await upsert(schema.employeeShiftAssignments,id,v,a[0]);}
+async function upsertNotification(r:any){if(!r?.id||!r?.recipientId)return;const id=String(r.id),v=pick(r,['id','recipientId','type','title','message','relatedEmployeeId','relatedLeaveId','relatedOvertimeId','relatedShiftSwapId','isRead','createdAt','updatedAt']),a=await db.select().from(schema.notifications).where(eq(schema.notifications.id,id));v.updatedAt=stamp(v.updatedAt||v.createdAt);await upsert(schema.notifications,id,v,a[0]);}
+
+async function setting(k:string,v:any,updatedAt?:any){
+  const a=await db.select().from(schema.settings).where(eq(schema.settings.key,k));
+  if(!a[0]) { await db.insert(schema.settings).values({key:k,value:v} as any); return; }
+  // Settings are shared collections. Keep a server-side timestamp beside each setting.
+  const stampKey=`__sync_updated_at:${k}`;
+  const ts=ms(updatedAt);
+  const t=await db.select().from(schema.settings).where(eq(schema.settings.key,stampKey));
+  const current=ms(t[0]?.value);
+  if(ts && current && ts<current) return;
+  await db.update(schema.settings).set({value:v} as any).where(eq(schema.settings.key,k));
+  const next=stamp(updatedAt);
+  if(!t[0]) await db.insert(schema.settings).values({key:stampKey,value:next} as any); else await db.update(schema.settings).set({value:next} as any).where(eq(schema.settings.key,stampKey));
+}
+
 async function del(t:any,ids:any){if(!Array.isArray(ids))return;for(const x of ids){const id=String(x||'').trim();if(id)await db.delete(t).where(eq(t.id,id));}}
-async function snapshot(){const [employees,attendanceRecords,leaveRequests,overtimeRequests,shifts,notifications,settings,employeeShiftAssignments]=await Promise.all([db.select().from(schema.employees),db.select().from(schema.attendanceRecords),db.select().from(schema.leaveRequests),db.select().from(schema.overtimeRequests),db.select().from(schema.shifts),db.select().from(schema.notifications),db.select().from(schema.settings),db.select().from(schema.employeeShiftAssignments)]);const m=new Map(settings.map((s:any)=>[s.key,s.value]));return{success:true,employees,attendanceRecords,leaveRequests,overtimeRequests,shifts,notifications,dailyShiftAssignments:Array.isArray(m.get('dailyShiftAssignments'))?m.get('dailyShiftAssignments'):[],shiftSwapRequests:Array.isArray(m.get('shiftSwapRequests'))?m.get('shiftSwapRequests'):[],companyNameAr:m.get('companyNameAr')??null,companyNameEn:m.get('companyNameEn')??null,urgentNotice:m.get('urgentNotice')??null,employeeShiftAssignments,lastUpdated:Date.now()};}
-export function registerDeviceSyncV2(app:any){app.use(async(req:any,res:any,next:any)=>{if(!process.env.SUPABASE_DB_URL)return next();if(req.method!=='GET'&&req.method!=='POST')return next();if(req.path!=='/api/data'&&req.path!=='/api/sync')return next();try{if(req.method==='GET'&&req.path==='/api/data')return res.json(await snapshot());const b=req.body||{};const has=['employees','attendanceRecords','leaveRequests','overtimeRequests','shifts','employeeShiftAssignments','notifications','dailyShiftAssignments','shiftSwapRequests','companyNameAr','companyNameEn','urgentNotice','deletedAttendanceIds','deletedEmployeeIds','deletedLeaveIds'].some(k=>b[k]!==undefined);if(!has)return res.json(await snapshot());for(const e of Array.isArray(b.employees)?b.employees:[])await upsertEmployee(e);for(const r of Array.isArray(b.attendanceRecords)?b.attendanceRecords:[])await upsertAttendance(r);for(const r of Array.isArray(b.leaveRequests)?b.leaveRequests:[])await upsertLeave(r);for(const r of Array.isArray(b.overtimeRequests)?b.overtimeRequests:[])await upsertOvertime(r);for(const s of Array.isArray(b.shifts)?b.shifts:[])await upsertShift(s);for(const a of Array.isArray(b.employeeShiftAssignments)?b.employeeShiftAssignments:[])await upsertAssignment(a);for(const n of Array.isArray(b.notifications)?b.notifications:[])await upsertNotification(n);if(Array.isArray(b.dailyShiftAssignments))await setting('dailyShiftAssignments',b.dailyShiftAssignments);if(Array.isArray(b.shiftSwapRequests))await setting('shiftSwapRequests',b.shiftSwapRequests);if(b.companyNameAr!==undefined)await setting('companyNameAr',b.companyNameAr);if(b.companyNameEn!==undefined)await setting('companyNameEn',b.companyNameEn);if(b.urgentNotice!==undefined)await setting('urgentNotice',b.urgentNotice);await del(schema.attendanceRecords,b.deletedAttendanceIds);await del(schema.employees,b.deletedEmployeeIds);await del(schema.leaveRequests,b.deletedLeaveIds);return res.json(await snapshot());}catch(e){console.error('[device-sync-v2]',e);return res.status(500).json({success:false,error:'Cross-device sync failed'});}});}
+
+async function snapshot(){
+  const [employees,attendanceRecords,leaveRequests,overtimeRequests,shifts,notifications,settings,employeeShiftAssignments]=await Promise.all([db.select().from(schema.employees),db.select().from(schema.attendanceRecords),db.select().from(schema.leaveRequests),db.select().from(schema.overtimeRequests),db.select().from(schema.shifts),db.select().from(schema.notifications),db.select().from(schema.settings),db.select().from(schema.employeeShiftAssignments)]);
+  const m=new Map(settings.filter((s:any)=>!String(s.key).startsWith('__sync_updated_at:')).map((s:any)=>[s.key,s.value]));
+  return{success:true,employees,attendanceRecords,leaveRequests,overtimeRequests,shifts,notifications,dailyShiftAssignments:Array.isArray(m.get('dailyShiftAssignments'))?m.get('dailyShiftAssignments'):[],shiftSwapRequests:Array.isArray(m.get('shiftSwapRequests'))?m.get('shiftSwapRequests'):[],companyNameAr:m.get('companyNameAr')??null,companyNameEn:m.get('companyNameEn')??null,urgentNotice:m.get('urgentNotice')??null,employeeShiftAssignments,lastUpdated:Date.now()};
+}
+
+export function registerDeviceSyncV2(app:any){
+  app.use(async(req:any,res:any,next:any)=>{
+    if(!process.env.SUPABASE_DB_URL)return next();
+    if(req.method!=='GET'&&req.method!=='POST')return next();
+    if(req.path!=='/api/data'&&req.path!=='/api/sync')return next();
+    try{
+      if(req.method==='GET'&&req.path==='/api/data')return res.json(await snapshot());
+      const b=req.body||{};
+      const has=['employees','attendanceRecords','leaveRequests','overtimeRequests','shifts','employeeShiftAssignments','notifications','dailyShiftAssignments','shiftSwapRequests','companyNameAr','companyNameEn','urgentNotice','deletedAttendanceIds','deletedEmployeeIds','deletedLeaveIds'].some(k=>b[k]!==undefined);
+      if(!has)return res.json(await snapshot());
+      const syncTime=stamp(b.lastUpdated);
+      for(const e of Array.isArray(b.employees)?b.employees:[])await upsertEmployee(e);
+      for(const r of Array.isArray(b.attendanceRecords)?b.attendanceRecords:[])await upsertAttendance(r);
+      for(const r of Array.isArray(b.leaveRequests)?b.leaveRequests:[])await upsertLeave(r);
+      for(const r of Array.isArray(b.overtimeRequests)?b.overtimeRequests:[])await upsertOvertime(r);
+      for(const s of Array.isArray(b.shifts)?b.shifts:[])await upsertShift(s);
+      for(const a of Array.isArray(b.employeeShiftAssignments)?b.employeeShiftAssignments:[])await upsertAssignment(a);
+      for(const n of Array.isArray(b.notifications)?b.notifications:[])await upsertNotification(n);
+      if(Array.isArray(b.dailyShiftAssignments))await setting('dailyShiftAssignments',b.dailyShiftAssignments,syncTime);
+      if(Array.isArray(b.shiftSwapRequests))await setting('shiftSwapRequests',b.shiftSwapRequests,syncTime);
+      if(b.companyNameAr!==undefined)await setting('companyNameAr',b.companyNameAr,syncTime);
+      if(b.companyNameEn!==undefined)await setting('companyNameEn',b.companyNameEn,syncTime);
+      if(b.urgentNotice!==undefined)await setting('urgentNotice',b.urgentNotice,syncTime);
+      await del(schema.attendanceRecords,b.deletedAttendanceIds);await del(schema.employees,b.deletedEmployeeIds);await del(schema.leaveRequests,b.deletedLeaveIds);
+      return res.json(await snapshot());
+    }catch(e){console.error('[device-sync-v2]',e);return res.status(500).json({success:false,error:'Cross-device sync failed'});}
+  });
+}
