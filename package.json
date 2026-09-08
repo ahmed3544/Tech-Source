@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
-    "prebuild": "tsx scripts/patch_leave_status.ts && tsx scripts/patch_off_day_logic.ts && node scripts/patch_kiosk_visuals.cjs && tsx scripts/patch_kiosk_status_icon.ts && tsx scripts/patch_fcm.ts && node scripts/patch_ui_i18n.cjs && node scripts/patch_light_mode_and_notifications.cjs && node scripts/patch_quick_actions_notifications.cjs && node scripts/patch_weekly_shift_timeline.cjs && node scripts/patch_shift_swap_visibility.cjs && node scripts/patch_dashboard_kpi_details.cjs",
+    "prebuild": "tsx scripts/patch_leave_status.ts && tsx scripts/patch_off_day_logic.ts && node scripts/patch_kiosk_visuals.cjs && tsx scripts/patch_kiosk_status_icon.ts && tsx scripts/patch_fcm.ts && node scripts/patch_ui_i18n.cjs && node scripts/patch_light_mode_and_notifications.cjs && node scripts/patch_quick_actions_notifications.cjs && node scripts/patch_weekly_shift_timeline.cjs && node scripts/patch_shift_swap_visibility.cjs && node scripts/patch_dashboard_kpi_details.cjs && tsx scripts/patch_notifications_consistency.ts",
     "build": "node scripts/generate_app_icons.cjs && vite build && esbuild server.ts --bundle --platform=node --format=esm --packages=external --sourcemap --outfile=dist/server.js",
     "start": "node dist/server.js",
     "preview": "vite preview",
@@ -22,7 +22,7 @@
     "@google/genai": "^2.4.0",
     "@tailwindcss/vite": "^4.1.14",
     "@vercel/kv": "^3.0.0",
-    "@vitejs/plugin-react": "^5.0.4",
+    "@vitejs/plugin-react": "^5.0.0",
     "dotenv": "^17.2.3",
     "drizzle-orm": "^0.45.2",
     "express": "^4.21.2",
@@ -34,7 +34,7 @@
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
     "recharts": "^3.10.1",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.0"
   },
   "devDependencies": {
     "@capacitor/cli": "^8.0.0",
@@ -42,7 +42,7 @@
     "@types/node": "^22.14.0",
     "@types/pg": "^8.23.1",
     "autoprefixer": "^10.4.21",
-    "@vitejs/plugin-react": "^5.0.4",
+    "@vitejs/plugin-react": "^5.0.0",
     "drizzle-kit": "^0.31.10",
     "sharp": "^0.35.3",
     "tsx": "^4.21.0",
