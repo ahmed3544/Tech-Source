@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
-    "prebuild": "tsx scripts/patch_leave_status.ts && tsx scripts/patch_off_day_logic.ts && node scripts/patch_kiosk_visuals.cjs && tsx scripts/patch_kiosk_status_icon.ts && tsx scripts/patch_fcm.ts && node scripts/patch_ui_i18n.cjs && node scripts/patch_light_mode_and_notifications.cjs && node scripts/patch_quick_actions_notifications.cjs && node scripts/patch_weekly_shift_timeline.cjs && node scripts/patch_shift_swap_visibility.cjs && node scripts/patch_dashboard_kpi_details.cjs && tsx scripts/patch_notifications_consistency.ts",
+    "prebuild": "tsx scripts/patch_leave_status.ts && tsx scripts/patch_off_day_logic.ts && node scripts/patch_kiosk_visuals.cjs && tsx scripts/patch_kiosk_status_icon.ts && tsx scripts/patch_fcm.ts && node scripts/patch_ui_i18n.cjs && node scripts/patch_light_mode_and_notifications.cjs && node scripts/patch_quick_actions_notifications.cjs && node scripts/patch_weekly_shift_timeline.cjs && node scripts/patch_shift_swap_visibility.cjs && node scripts/patch_dashboard_kpi_details.cjs && tsx scripts/patch_notifications_consistency.ts && tsx scripts/patch_notification_read_api.ts",
     "build": "node scripts/generate_app_icons.cjs && vite build && esbuild server.ts --bundle --platform=node --format=esm --packages=external --sourcemap --outfile=dist/server.js",
     "start": "node dist/server.js",
     "preview": "vite preview",
