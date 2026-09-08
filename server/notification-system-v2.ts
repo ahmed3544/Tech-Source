@@ -30,16 +30,7 @@ const clean = (value: unknown) => String(value ?? '').trim();
 const nowIso = () => new Date().toISOString();
 
 function stableId(input: Omit<NotificationRecord, 'id'> & { id?: string }) {
-  const basis = [
-    input.recipientId,
-    input.type,
-    input.relatedEmployeeId || '',
-    input.relatedLeaveId || '',
-    input.relatedOvertimeId || '',
-    input.relatedShiftSwapId || '',
-    input.title,
-    input.message,
-  ].join('|');
+  const basis = [input.recipientId, input.type, input.relatedEmployeeId || '', input.relatedLeaveId || '', input.relatedOvertimeId || '', input.relatedShiftSwapId || '', input.title, input.message].join('|');
   return `n2_${crypto.createHash('sha256').update(basis).digest('hex').slice(0, 40)}`;
 }
 
@@ -87,6 +78,7 @@ async function ensureReady() {
   if (!readyPromise) {
     readyPromise = (async () => {
       if (USE_DATABASE) {
+        await db.execute(sql`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS related_shift_swap_id text`);
         await db.execute(sql`
           CREATE TABLE IF NOT EXISTS notification_system_meta (
             key text PRIMARY KEY,
@@ -118,17 +110,11 @@ async function listForUser(userId: string): Promise<NotificationRecord[]> {
   await ensureReady();
   const id = clean(userId);
   if (!id) return [];
-
   if (USE_DATABASE) {
     const rows = await db.select().from(schema.notifications).where(eq(schema.notifications.recipientId, id));
-    return rows
-      .map((row: any) => ({ ...row, id: String(row.id), recipientId: String(row.recipientId) }))
-      .sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+    return rows.map((row: any) => ({ ...row, id: String(row.id), recipientId: String(row.recipientId) })).sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
   }
-
-  return readLocal()
-    .filter(item => item.recipientId === id)
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  return readLocal().filter(item => item.recipientId === id).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 
 async function saveOne(input: any): Promise<NotificationRecord | null> {
@@ -141,28 +127,22 @@ async function saveOne(input: any): Promise<NotificationRecord | null> {
     const index = items.findIndex(existing => existing.id === item.id);
     if (index >= 0) {
       const existing = items[index];
-      items[index] = existing.isRead && !item.isRead
-        ? { ...existing, updatedAt: nowIso() }
-        : { ...existing, ...item, isRead: existing.isRead || item.isRead };
-    } else {
-      items.push(item);
-    }
+      items[index] = existing.isRead && !item.isRead ? { ...existing, updatedAt: nowIso() } : { ...existing, ...item, isRead: existing.isRead || item.isRead };
+    } else items.push(item);
     writeLocal(items);
     return items.find(existing => existing.id === item.id) || item;
   }
 
   const existingRows = await db.select().from(schema.notifications).where(eq(schema.notifications.id, item.id));
   const existing: any = existingRows[0];
-
   if (existing) {
     const existingTime = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
     const incomingTime = new Date(item.updatedAt || item.createdAt || 0).getTime();
     if (existing.isRead && !item.isRead) return existing as NotificationRecord;
-    if (Number.isFinite(existingTime) && Number.isFinite(incomingTime) && incomingTime < existingTime) {
-      return existing as NotificationRecord;
-    }
+    if (Number.isFinite(existingTime) && Number.isFinite(incomingTime) && incomingTime < existingTime) return existing as NotificationRecord;
     const merged = { ...item, isRead: Boolean(existing.isRead || item.isRead), updatedAt: nowIso() };
-    await db.update(schema.notifications).set(merged as any).where(eq(schema.notifications.id, item.id));
+    const { id: _ignoredId, ...changes } = merged;
+    await db.update(schema.notifications).set(changes as any).where(eq(schema.notifications.id, item.id));
     return merged;
   }
 
@@ -175,7 +155,6 @@ async function markRead(id: string, recipientId: string) {
   const notificationId = clean(id);
   const userId = clean(recipientId);
   if (!notificationId || !userId) return false;
-
   if (!USE_DATABASE) {
     const items = readLocal();
     const index = items.findIndex(item => item.id === notificationId && item.recipientId === userId);
@@ -184,35 +163,25 @@ async function markRead(id: string, recipientId: string) {
     writeLocal(items);
     return true;
   }
-
-  const result = await db.update(schema.notifications)
-    .set({ isRead: true, updatedAt: nowIso() })
-    .where(and(eq(schema.notifications.id, notificationId), eq(schema.notifications.recipientId, userId)));
-  return Number((result as any)?.rowCount ?? 1) > 0;
+  await db.update(schema.notifications).set({ isRead: true, updatedAt: nowIso() }).where(and(eq(schema.notifications.id, notificationId), eq(schema.notifications.recipientId, userId)));
+  return true;
 }
 
 async function markAllRead(recipientId: string) {
   await ensureReady();
   const userId = clean(recipientId);
   if (!userId) return 0;
-
   if (!USE_DATABASE) {
     const items = readLocal();
     let count = 0;
     const updated = items.map(item => {
-      if (item.recipientId === userId && !item.isRead) {
-        count += 1;
-        return { ...item, isRead: true, updatedAt: nowIso() };
-      }
+      if (item.recipientId === userId && !item.isRead) { count += 1; return { ...item, isRead: true, updatedAt: nowIso() }; }
       return item;
     });
     writeLocal(updated);
     return count;
   }
-
-  const result = await db.update(schema.notifications)
-    .set({ isRead: true, updatedAt: nowIso() })
-    .where(and(eq(schema.notifications.recipientId, userId), eq(schema.notifications.isRead, false)));
+  const result = await db.update(schema.notifications).set({ isRead: true, updatedAt: nowIso() }).where(and(eq(schema.notifications.recipientId, userId), eq(schema.notifications.isRead, false)));
   return Number((result as any)?.rowCount ?? 0);
 }
 
@@ -221,7 +190,6 @@ function bodyOf(req: Request) {
 }
 
 export function registerNotificationSystemV2(app: Express) {
-  // These routes are intentionally registered before the legacy notification routes.
   app.get('/api/notifications', async (req, res) => {
     try {
       const notifications = await listForUser(clean(req.query.userId));
@@ -266,19 +234,13 @@ export function registerNotificationSystemV2(app: Express) {
     }
   });
 
-  // Convert the old snapshot-style sync into event ingestion. The rest of /api/sync
-  // continues to handle attendance/leaves/etc, but notification snapshots never
-  // overwrite the authoritative notification table anymore.
   app.use(async (req, _res, next) => {
     if (req.method !== 'POST' || !req.path.startsWith('/api/sync')) return next();
     const body = bodyOf(req);
     const incoming = Array.isArray(body.notifications) ? body.notifications : [];
     if (incoming.length) {
-      try {
-        await Promise.all(incoming.map(item => saveOne(item)));
-      } catch (error) {
-        console.error('[Notifications v2] sync ingestion failed', error);
-      }
+      try { await Promise.all(incoming.map(item => saveOne(item))); }
+      catch (error) { console.error('[Notifications v2] sync ingestion failed', error); }
     }
     delete body.notifications;
     next();
