@@ -22,12 +22,14 @@ const isDisplayableNotification = (notification: Notification | null | undefined
 const normalizeNotifications = (items: unknown, currentUserId?: string): Notification[] => {
   if (!Array.isArray(items) || !currentUserId) return [];
 
+  const userId = String(currentUserId).trim();
   const seen = new Set<string>();
   return items.filter((item): item is Notification => {
-    if (!isDisplayableNotification(item) || item.recipientId !== currentUserId || seen.has(item.id)) {
-      return false;
-    }
-    seen.add(item.id);
+    if (!isDisplayableNotification(item)) return false;
+    const id = String(item.id).trim();
+    const recipientId = String(item.recipientId).trim();
+    if (!id || !recipientId || recipientId !== userId || seen.has(id)) return false;
+    seen.add(id);
     return true;
   });
 };
@@ -50,11 +52,11 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
 
     const loadNotifications = async () => {
       try {
-        const response = await fetch(`/api/data?_=${Date.now()}`, {
+        const response = await fetch(`/api/notifications?userId=${encodeURIComponent(String(currentUserId).trim())}&_=${Date.now()}`, {
           cache: 'no-store',
           headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
         });
-        if (!response.ok) throw new Error(`Notification data request failed: ${response.status}`);
+        if (!response.ok) throw new Error(`Notification request failed: ${response.status}`);
         const data = await response.json();
         if (!cancelled) {
           setServerNotifications(normalizeNotifications(data?.notifications, currentUserId));
@@ -65,7 +67,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
     };
 
     void loadNotifications();
-    const interval = window.setInterval(() => { void loadNotifications(); }, 5000);
+    const interval = window.setInterval(() => { void loadNotifications(); }, 3000);
 
     return () => {
       cancelled = true;
@@ -89,7 +91,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
         title={lang === 'ar' ? 'فتح صفحة الإشعارات' : 'Open notifications'}
       >
         <Bell size={20} />
-        {userNotifications.length > 0 && unreadCount > 0 && (
+        {unreadCount > 0 && (
           <span className="absolute top-0 right-0 inline-flex items-center justify-center min-w-4 h-4 px-1 text-[10px] font-bold leading-none text-white bg-red-500 rounded-full">
             {unreadCount}
           </span>
