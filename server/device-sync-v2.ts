@@ -3,14 +3,27 @@ import { db } from '../src/db/index.js';
 import * as schema from '../src/db/schema.js';
 
 const pick = (s:any,k:string[]) => { const o:any={}; for (const x of k) if (s?.[x]!==undefined) o[x]=s[x]; return o; };
-const ms = (v:any) => { const t=new Date(String(v||'')).getTime(); return Number.isFinite(t)?t:0; };
-const stamp = (v:any) => String(v || new Date().toISOString());
+
+// Accept both ISO timestamps and Date.now() millisecond timestamps.
+const ms = (v:any) => {
+  if (typeof v === 'number' && Number.isFinite(v)) return v;
+  if (typeof v === 'string' && /^\d{10,}$/.test(v.trim())) {
+    const n = Number(v.trim());
+    return Number.isFinite(n) ? n : 0;
+  }
+  const t = new Date(String(v || '')).getTime();
+  return Number.isFinite(t) ? t : 0;
+};
+
+const stamp = (v:any) => {
+  const t = ms(v);
+  return t ? new Date(t).toISOString() : new Date().toISOString();
+};
 
 async function upsert(table:any,id:string,values:any,existing:any){
   if(!existing) return db.insert(table).values(values as any);
-  // Existing records are never allowed to be overwritten by a legacy/full-snapshot
-  // client that does not carry the record's own mutation timestamp.
   const incoming=ms(values.updatedAt),current=ms(existing.updatedAt||existing.createdAt);
+  // A full snapshot from an old device must never overwrite a newer DB record.
   if(!incoming) return;
   if(!current || incoming>=current) return db.update(table).set(values as any).where(eq(table.id,id));
 }
@@ -47,18 +60,49 @@ async function upsertShift(r:any){if(!r?.id||!r?.name)return;const id=String(r.i
 async function upsertAssignment(r:any){if(!r?.id||!r?.employeeId||!r?.scheduleDate)return;const id=String(r.id),v=pick(r,['id','employeeId','scheduleDate','shiftTemplateId','customStartTime','customEndTime','durationMinutes','status','createdAt','updatedAt','version']),a=await db.select().from(schema.employeeShiftAssignments).where(eq(schema.employeeShiftAssignments.id,id));if(!a[0]){v.updatedAt=stamp(v.updatedAt||v.createdAt);await db.insert(schema.employeeShiftAssignments).values(v as any);return;}await upsert(schema.employeeShiftAssignments,id,v,a[0]);}
 async function upsertNotification(r:any){if(!r?.id||!r?.recipientId)return;const id=String(r.id),v=pick(r,['id','recipientId','type','title','message','relatedEmployeeId','relatedLeaveId','relatedOvertimeId','relatedShiftSwapId','isRead','createdAt','updatedAt']),a=await db.select().from(schema.notifications).where(eq(schema.notifications.id,id));if(!a[0]){v.updatedAt=stamp(v.updatedAt||v.createdAt);await db.insert(schema.notifications).values(v as any);return;}await upsert(schema.notifications,id,v,a[0]);}
 
+// Shared settings are often sent as complete arrays by clients. Merge by item identity
+// instead of replacing the entire server collection, so an older device cannot erase
+// records created on another device. Each item still follows its own updatedAt.
+function collectionKey(x:any,index:number){
+  if(x?.id!=null) return `id:${String(x.id)}`;
+  if(x?.employeeId!=null && x?.date!=null) return `employee-date:${String(x.employeeId)}:${String(x.date)}`;
+  if(x?.employeeId!=null && x?.scheduleDate!=null) return `employee-schedule:${String(x.employeeId)}:${String(x.scheduleDate)}`;
+  return `index:${index}`;
+}
+
+function mergeCollection(existing:any, incoming:any){
+  const oldItems=Array.isArray(existing)?existing:[];
+  const newItems=Array.isArray(incoming)?incoming:[];
+  const map=new Map<string,any>();
+  oldItems.forEach((x:any,i:number)=>map.set(collectionKey(x,i),x));
+  newItems.forEach((x:any,i:number)=>{
+    const key=collectionKey(x,i),old=map.get(key);
+    if(!old){ map.set(key,x); return; }
+    const incomingTs=ms(x?.updatedAt||x?.createdAt),oldTs=ms(old?.updatedAt||old?.createdAt);
+    // Never let a stale device replace a newer shared item.
+    if(!incomingTs || !oldTs || incomingTs>=oldTs) map.set(key,x);
+  });
+  return Array.from(map.values());
+}
+
 async function setting(k:string,v:any,updatedAt?:any){
   const a=await db.select().from(schema.settings).where(eq(schema.settings.key,k));
+  const isCollection=k==='dailyShiftAssignments'||k==='shiftSwapRequests';
   if(!a[0]) { await db.insert(schema.settings).values({key:k,value:v} as any); return; }
   const stampKey=`__sync_updated_at:${k}`;
   const ts=ms(updatedAt);
+  if(isCollection){
+    const merged=mergeCollection(a[0].value,v);
+    await db.update(schema.settings).set({value:merged} as any).where(eq(schema.settings.key,k));
+    return;
+  }
+  if(!ts)return;
   const t=await db.select().from(schema.settings).where(eq(schema.settings.key,stampKey));
   const current=ms(t[0]?.value);
-  if(!ts) return;
-  if(current && ts<current) return;
+  if(current && ts<current)return;
   await db.update(schema.settings).set({value:v} as any).where(eq(schema.settings.key,k));
   const next=stamp(updatedAt);
-  if(!t[0]) await db.insert(schema.settings).values({key:stampKey,value:next} as any); else await db.update(schema.settings).set({value:next} as any).where(eq(schema.settings.key,stampKey));
+  if(!t[0])await db.insert(schema.settings).values({key:stampKey,value:next} as any);else await db.update(schema.settings).set({value:next} as any).where(eq(schema.settings.key,stampKey));
 }
 
 async function del(t:any,ids:any){if(!Array.isArray(ids))return;for(const x of ids){const id=String(x||'').trim();if(id)await db.delete(t).where(eq(t.id,id));}}
