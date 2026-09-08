@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Bell } from 'lucide-react';
 import { Notification, Language } from '../types';
 
@@ -11,15 +11,73 @@ interface NotificationCenterProps {
   onOpenPage?: () => void;
 }
 
+const isDisplayableNotification = (notification: Notification | null | undefined): notification is Notification => {
+  return Boolean(
+    notification?.id &&
+    notification?.recipientId &&
+    (String(notification.title || '').trim() || String(notification.message || '').trim())
+  );
+};
+
+const normalizeNotifications = (items: unknown, currentUserId?: string): Notification[] => {
+  if (!Array.isArray(items) || !currentUserId) return [];
+
+  const seen = new Set<string>();
+  return items.filter((item): item is Notification => {
+    if (!isDisplayableNotification(item) || item.recipientId !== currentUserId || seen.has(item.id)) {
+      return false;
+    }
+    seen.add(item.id);
+    return true;
+  });
+};
+
 export const NotificationCenter: React.FC<NotificationCenterProps> = ({
   notifications,
   currentUserId,
   lang,
   onOpenPage,
 }) => {
-  const userNotifications = currentUserId
-    ? notifications.filter(n => n.recipientId === currentUserId && n?.id && (String(n.title || '').trim() || String(n.message || '').trim()))
-    : [];
+  const [serverNotifications, setServerNotifications] = useState<Notification[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!currentUserId) {
+      setServerNotifications([]);
+      return () => { cancelled = true; };
+    }
+
+    const loadNotifications = async () => {
+      try {
+        const response = await fetch(`/api/data?_=${Date.now()}`, {
+          cache: 'no-store',
+          headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
+        });
+        if (!response.ok) throw new Error(`Notification data request failed: ${response.status}`);
+        const data = await response.json();
+        if (!cancelled) {
+          setServerNotifications(normalizeNotifications(data?.notifications, currentUserId));
+        }
+      } catch {
+        if (!cancelled) setServerNotifications(null);
+      }
+    };
+
+    void loadNotifications();
+    const interval = window.setInterval(() => { void loadNotifications(); }, 5000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [currentUserId]);
+
+  const userNotifications = useMemo(() => {
+    const source = serverNotifications ?? notifications;
+    return normalizeNotifications(source, currentUserId);
+  }, [serverNotifications, notifications, currentUserId]);
+
   const unreadCount = userNotifications.filter(n => !n.isRead).length;
 
   return (
@@ -31,7 +89,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
         title={lang === 'ar' ? 'فتح صفحة الإشعارات' : 'Open notifications'}
       >
         <Bell size={20} />
-        {unreadCount > 0 && (
+        {userNotifications.length > 0 && unreadCount > 0 && (
           <span className="absolute top-0 right-0 inline-flex items-center justify-center min-w-4 h-4 px-1 text-[10px] font-bold leading-none text-white bg-red-500 rounded-full">
             {unreadCount}
           </span>
