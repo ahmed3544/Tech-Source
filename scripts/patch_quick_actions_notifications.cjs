@@ -7,14 +7,12 @@ function patchFile(path, transform) {
   if (after !== before) fs.writeFileSync(path, after, 'utf8');
 }
 
-// Replace the four large dashboard action buttons with one compact dropdown.
 patchFile('src/components/DashboardOverview.tsx', (code) => {
   const start = code.indexOf('        {/* Quick Action Buttons */}');
   if (start === -1) return code;
   const endMarker = '        </div>\n      </div>\n\n      {/* Metric KPI Cards Row */}';
   const end = code.indexOf(endMarker, start);
   if (end === -1) return code;
-
   const replacement = `        {/* Quick Actions Dropdown */}
         <div className="relative shrink-0 w-full md:w-auto">
           <label htmlFor="dashboard-quick-actions" className="sr-only">
@@ -43,25 +41,17 @@ patchFile('src/components/DashboardOverview.tsx', (code) => {
             <option value="export">{lang === 'ar' ? 'تصدير اكسل' : 'Export Excel'}</option>
           </select>
         </div>
+      </div>
 `;
-
-  return code.slice(0, start) + replacement + code.slice(end + '        </div>\n      </div>\n'.length);
+  return code.slice(0, start) + replacement + code.slice(end + endMarker.indexOf('\n\n'));
 });
 
-// The badge must count only real notifications that can actually be rendered.
-// Do not count placeholder objects that contain only an id/type with no visible content.
-patchFile('src/components/NotificationCenter.tsx', (code) => {
-  code = code.replace(
-    /notifications\.filter\(n => n\.recipientId === currentUserId(?: && n\?\.id)?(?: && \(String\(n\.title \|\| ''\)\.trim\(\) \|\| String\(n\.message \|\| ''\)\.trim\(\) \|\| n\.type\))?\)/g,
-    "notifications.filter(n => n.recipientId === currentUserId && n?.id && (String(n.title || '').trim() || String(n.message || '').trim()))"
-  );
-  return code;
-});
+patchFile('src/components/NotificationCenter.tsx', (code) => code.replace(
+  /notifications\.filter\(n => n\.recipientId === currentUserId(?: && n\?\.id)?(?: && \(String\(n\.title \|\| ''\)\.trim\(\) \|\| String\(n\.message \|\| ''\)\.trim\(\) \|\| n\.type\))?\)/g,
+  "notifications.filter(n => n.recipientId === currentUserId && n?.id && (String(n.title || '').trim() || String(n.message || '').trim()))"
+));
 
-patchFile('src/components/NotificationsPage.tsx', (code) => {
-  code = code.replace(
-    /notifications\.filter\(n => n\.recipientId === currentUserId(?: && n\?\.id)?(?: && \(String\(n\.title \|\| ''\)\.trim\(\) \|\| String\(n\.message \|\| ''\)\.trim\(\) \|\| n\.type\))?\)/g,
-    "notifications.filter(n => n.recipientId === currentUserId && n?.id && (String(n.title || '').trim() || String(n.message || '').trim()))"
-  );
-  return code;
-});
+patchFile('src/components/NotificationsPage.tsx', (code) => code.replace(
+  /notifications\.filter\(n => n\.recipientId === currentUserId(?: && n\?\.id)?(?: && \(String\(n\.title \|\| ''\)\.trim\(\) \|\| String\(n\.message \|\| ''\)\.trim\(\) \|\| n\.type\))?\)/g,
+  "notifications.filter(n => n.recipientId === currentUserId && n?.id && (String(n.title || '').trim() || String(n.message || '').trim()))"
+));
