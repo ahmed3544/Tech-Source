@@ -3,7 +3,19 @@ import path from 'path';
 
 const root = process.cwd();
 const serverPath = path.join(root, 'server.ts');
+const notificationPath = path.join(root, 'server', 'notification-system-v2.ts');
 let code = fs.readFileSync(serverPath, 'utf8');
+
+if (fs.existsSync(notificationPath)) {
+  let notificationCode = fs.readFileSync(notificationPath, 'utf8');
+  // Never wipe the existing notification table during deployment. Existing rows are
+  // already compatible with V2 and the legacy backup recovery fills any missing rows.
+  notificationCode = notificationCode.replace(
+    "          await db.execute(sql`DELETE FROM notifications`);\n",
+    "          // Data-preserving migration: do not delete existing notifications.\n"
+  );
+  fs.writeFileSync(notificationPath, notificationCode);
+}
 
 if (!code.includes("./server/notification-system-v2.js")) {
   code = code.replace(
