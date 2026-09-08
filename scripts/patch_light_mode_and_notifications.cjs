@@ -32,16 +32,9 @@ patchFile('src/components/Header.tsx', (code) => {
   return code;
 });
 
-function hasNotificationContent(n) {
-  if (!n || !n.id) return false;
-  const title = typeof n.title === 'string' ? n.title.trim() : '';
-  const message = typeof n.message === 'string' ? n.message.trim() : '';
-  return Boolean(title || message || n.type);
-}
-
 patchFile('src/components/NotificationCenter.tsx', (code) => {
   const old = `  const userNotifications = currentUserId\n    ? notifications.filter(n => n.recipientId === currentUserId)\n    : [];\n  const unreadCount = userNotifications.filter(n => !n.isRead).length;`;
-  const replacement = `  const userNotifications = currentUserId\n    ? notifications.filter(n => n.recipientId === currentUserId && ${hasNotificationContent.toString()}(n))\n    : [];\n  const unreadCount = userNotifications.filter(n => !n.isRead).length;`;
+  const replacement = `  const userNotifications = currentUserId\n    ? notifications.filter(n => n.recipientId === currentUserId && n?.id && (String(n.title || '').trim() || String(n.message || '').trim() || n.type))\n    : [];\n  const unreadCount = userNotifications.filter(n => !n.isRead).length;`;
   if (code.includes(old)) code = code.replace(old, replacement);
   return code;
 });
