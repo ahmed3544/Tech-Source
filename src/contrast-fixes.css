@@ -1,114 +1,101 @@
-/* TECH SOURCE - accessibility contrast layer. Loaded last. */
+/* TECH SOURCE - final contrast layer. Loaded after all app styles. */
 
-/* Light surfaces */
-#root .bg-white,
-#root .bg-slate-50,
-#root .bg-gray-50,
-#root .bg-blue-50,
-#root .bg-indigo-50,
-#root .bg-emerald-50,
-#root .bg-green-50,
-#root .bg-teal-50,
-#root .bg-yellow-50,
-#root .bg-orange-50,
-#root .bg-red-50 { color: #0f172a; }
+/* Base text tokens for both themes */
+#root { color: #0f172a; }
+.dark #root { color: #f8fafc; }
 
-#root .bg-white .text-slate-400,
-#root .bg-white .text-slate-500,
-#root .bg-white .text-slate-600,
-#root .bg-white .text-gray-400,
-#root .bg-white .text-gray-500,
-#root .bg-white .text-gray-600,
-#root .bg-slate-50 .text-slate-400,
-#root .bg-slate-50 .text-slate-500,
-#root .bg-slate-50 .text-slate-600,
-#root .bg-gray-50 .text-gray-400,
-#root .bg-gray-50 .text-gray-500,
-#root .bg-gray-50 .text-gray-600 { color: #334155 !important; }
+/* LIGHT MODE: dark readable text on light surfaces */
+html:not(.dark) #root .bg-white,
+html:not(.dark) #root .bg-slate-50,
+html:not(.dark) #root .bg-gray-50,
+html:not(.dark) #root .bg-blue-50,
+html:not(.dark) #root .bg-indigo-50,
+html:not(.dark) #root .bg-emerald-50,
+html:not(.dark) #root .bg-green-50,
+html:not(.dark) #root .bg-teal-50,
+html:not(.dark) #root .bg-yellow-50,
+html:not(.dark) #root .bg-orange-50,
+html:not(.dark) #root .bg-red-50 { color: #0f172a !important; }
 
-/* Prevent white/very-light text from disappearing on light cards */
-#root .bg-white .text-white,
-#root .bg-slate-50 .text-white,
-#root .bg-gray-50 .text-white,
-#root .bg-blue-50 .text-white,
-#root .bg-indigo-50 .text-white,
-#root .bg-emerald-50 .text-white,
-#root .bg-green-50 .text-white,
-#root .bg-teal-50 .text-white,
-#root .bg-yellow-50 .text-white,
-#root .bg-orange-50 .text-white,
-#root .bg-red-50 .text-white { color: #0f172a !important; }
+html:not(.dark) #root .bg-white .text-white,
+html:not(.dark) #root .bg-slate-50 .text-white,
+html:not(.dark) #root .bg-gray-50 .text-white,
+html:not(.dark) #root .bg-blue-50 .text-white,
+html:not(.dark) #root .bg-indigo-50 .text-white,
+html:not(.dark) #root .bg-emerald-50 .text-white,
+html:not(.dark) #root .bg-green-50 .text-white,
+html:not(.dark) #root .bg-teal-50 .text-white,
+html:not(.dark) #root .bg-yellow-50 .text-white,
+html:not(.dark) #root .bg-orange-50 .text-white,
+html:not(.dark) #root .bg-red-50 .text-white { color: #0f172a !important; }
 
-/* Dark surfaces */
-#root .bg-slate-900,
-#root .bg-slate-800,
-#root .bg-slate-950,
-#root .bg-gray-900,
-#root .bg-gray-800,
-#root .bg-gray-950,
-#root .bg-blue-900,
-#root .bg-indigo-900,
-#root .bg-emerald-900,
-#root .bg-teal-900,
-#root .bg-\[\#0d2240\] { color: #f8fafc; }
+html:not(.dark) #root .text-slate-400,
+html:not(.dark) #root .text-gray-400 { color: #475569 !important; }
+html:not(.dark) #root .text-slate-500,
+html:not(.dark) #root .text-gray-500 { color: #334155 !important; }
+html:not(.dark) #root .text-slate-600,
+html:not(.dark) #root .text-gray-600 { color: #1e293b !important; }
 
-#root .bg-slate-900 .text-slate-300,
-#root .bg-slate-900 .text-slate-400,
-#root .bg-slate-900 .text-slate-500,
-#root .bg-slate-900 .text-slate-600,
-#root .bg-slate-800 .text-slate-300,
-#root .bg-slate-800 .text-slate-400,
-#root .bg-slate-800 .text-slate-500,
-#root .bg-slate-800 .text-slate-600,
-#root .bg-slate-950 .text-slate-300,
-#root .bg-slate-950 .text-slate-400,
-#root .bg-slate-950 .text-slate-500,
-#root .bg-slate-950 .text-slate-600,
-#root .bg-gray-900 .text-gray-300,
-#root .bg-gray-900 .text-gray-400,
-#root .bg-gray-900 .text-gray-500,
-#root .bg-gray-900 .text-gray-600,
-#root .bg-gray-800 .text-gray-300,
-#root .bg-gray-800 .text-gray-400,
-#root .bg-gray-800 .text-gray-500,
-#root .bg-gray-800 .text-gray-600,
-#root .bg-\[\#0d2240\] .text-slate-300,
-#root .bg-\[\#0d2240\] .text-slate-400,
-#root .bg-\[\#0d2240\] .text-slate-500,
-#root .bg-\[\#0d2240\] .text-slate-600 { color: #cbd5e1 !important; }
+/* DARK MODE: never leave dark text on dark cards */
+.dark #root .bg-slate-900,
+.dark #root .bg-slate-800,
+.dark #root .bg-slate-950,
+.dark #root .bg-gray-900,
+.dark #root .bg-gray-800,
+.dark #root .bg-gray-950,
+.dark #root .bg-blue-900,
+.dark #root .bg-indigo-900,
+.dark #root .bg-emerald-900,
+.dark #root .bg-teal-900,
+.dark #root .bg-\[\#0d2240\] { color: #f8fafc !important; }
 
-/* Dark cards must not contain dark text */
-#root .bg-slate-900 .text-slate-700,
-#root .bg-slate-900 .text-slate-800,
-#root .bg-slate-900 .text-slate-900,
-#root .bg-slate-900 .text-gray-700,
-#root .bg-slate-900 .text-gray-800,
-#root .bg-slate-900 .text-gray-900,
-#root .bg-slate-800 .text-slate-700,
-#root .bg-slate-800 .text-slate-800,
-#root .bg-slate-800 .text-slate-900,
-#root .bg-slate-950 .text-slate-700,
-#root .bg-slate-950 .text-slate-800,
-#root .bg-slate-950 .text-slate-900,
-#root .bg-\[\#0d2240\] .text-slate-700,
-#root .bg-\[\#0d2240\] .text-slate-800,
-#root .bg-\[\#0d2240\] .text-slate-900,
-#root .bg-gray-900 .text-gray-700,
-#root .bg-gray-900 .text-gray-800,
-#root .bg-gray-900 .text-gray-900,
-#root .bg-gray-800 .text-gray-700,
-#root .bg-gray-800 .text-gray-800,
-#root .bg-gray-800 .text-gray-900 { color: #f8fafc !important; }
+.dark #root .bg-slate-900 .text-slate-700,
+.dark #root .bg-slate-900 .text-slate-800,
+.dark #root .bg-slate-900 .text-slate-900,
+.dark #root .bg-slate-900 .text-gray-700,
+.dark #root .bg-slate-900 .text-gray-800,
+.dark #root .bg-slate-900 .text-gray-900,
+.dark #root .bg-slate-800 .text-slate-700,
+.dark #root .bg-slate-800 .text-slate-800,
+.dark #root .bg-slate-800 .text-slate-900,
+.dark #root .bg-slate-800 .text-gray-700,
+.dark #root .bg-slate-800 .text-gray-800,
+.dark #root .bg-slate-800 .text-gray-900,
+.dark #root .bg-slate-950 .text-slate-700,
+.dark #root .bg-slate-950 .text-slate-800,
+.dark #root .bg-slate-950 .text-slate-900,
+.dark #root .bg-gray-900 .text-gray-700,
+.dark #root .bg-gray-900 .text-gray-800,
+.dark #root .bg-gray-900 .text-gray-900,
+.dark #root .bg-gray-800 .text-gray-700,
+.dark #root .bg-gray-800 .text-gray-800,
+.dark #root .bg-gray-800 .text-gray-900 { color: #f8fafc !important; }
 
-/* Forms */
-#root input,
-#root select,
-#root textarea { color: #0f172a; background-color: #ffffff; }
-#root input::placeholder,
-#root textarea::placeholder { color: #64748b; opacity: 1; }
-#root option { color: #0f172a; background: #ffffff; }
+.dark #root .text-slate-300,
+.dark #root .text-slate-400,
+.dark #root .text-gray-300,
+.dark #root .text-gray-400 { color: #cbd5e1 !important; }
+.dark #root .text-slate-500,
+.dark #root .text-gray-500 { color: #e2e8f0 !important; }
+.dark #root .text-slate-600,
+.dark #root .text-gray-600 { color: #f1f5f9 !important; }
 
-/* Solid dark buttons */
+/* Forms: theme-aware instead of forcing white in dark mode */
+html:not(.dark) #root input,
+html:not(.dark) #root select,
+html:not(.dark) #root textarea { color: #0f172a !important; background-color: #ffffff !important; }
+html:not(.dark) #root input::placeholder,
+html:not(.dark) #root textarea::placeholder { color: #64748b !important; opacity: 1; }
+html:not(.dark) #root option { color: #0f172a; background: #ffffff; }
+
+.dark #root input,
+.dark #root select,
+.dark #root textarea { color: #f8fafc !important; background-color: #0f172a !important; border-color: #475569 !important; }
+.dark #root input::placeholder,
+.dark #root textarea::placeholder { color: #94a3b8 !important; opacity: 1; }
+.dark #root option { color: #f8fafc; background: #0f172a; }
+
+/* Solid action buttons keep white text */
 #root .bg-blue-600,
 #root .bg-blue-700,
 #root .bg-emerald-600,
@@ -120,17 +107,16 @@
 #root .bg-indigo-600,
 #root .bg-indigo-700,
 #root .bg-teal-600,
-#root .bg-teal-700 { color: #fff; }
-
+#root .bg-teal-700 { color: #fff !important; }
 #root .bg-blue-600 *, #root .bg-blue-700 *,
 #root .bg-emerald-600 *, #root .bg-emerald-700 *,
 #root .bg-green-600 *, #root .bg-green-700 *,
 #root .bg-red-600 *, #root .bg-red-700 *,
 #root .bg-indigo-600 *, #root .bg-indigo-700 *,
-#root .bg-teal-600 *, #root .bg-teal-700 * { color: inherit; }
+#root .bg-teal-600 *, #root .bg-teal-700 * { color: inherit !important; }
 
 /* Borders */
-#root .border-slate-200 { border-color: #cbd5e1; }
-#root .border-slate-300 { border-color: #94a3b8; }
-#root .border-slate-700 { border-color: #475569; }
-#root .border-slate-800 { border-color: #334155; }
+html:not(.dark) #root .border-slate-200 { border-color: #cbd5e1 !important; }
+html:not(.dark) #root .border-slate-300 { border-color: #94a3b8 !important; }
+.dark #root .border-slate-700 { border-color: #475569 !important; }
+.dark #root .border-slate-800 { border-color: #475569 !important; }
