@@ -3,7 +3,11 @@ import fs from 'fs';
 const path = 'src/App.tsx';
 let code = fs.readFileSync(path, 'utf8');
 
-const fetchMarker = `      const data =\n        await res.json();`;
+const fetchMarker = [
+  '      const data =',
+  '        await res.json();'
+].join('\n');
+
 const authoritativeMarker = '/* DEVICE_SYNC_AUTHORITATIVE_SNAPSHOT_V3 */';
 
 if (!code.includes(authoritativeMarker)) {
@@ -65,6 +69,36 @@ if (!code.includes(authoritativeMarker)) {
       }`;
 
   code = code.slice(0, at + fetchMarker.length) + insertion + code.slice(at + fetchMarker.length);
+}
+
+// Canonicalize employee shift ids on every authoritative response, even if the
+// V3 block was already injected into App.tsx by an earlier build.
+const employeeStateMarker = `        employeesRef.current = data.employees;
+          setEmployees(data.employees);
+          try { localStorage.setItem('attendance_employees', JSON.stringify(data.employees)); } catch {}
+          if (currentUser?.id) {
+            const canonicalUser = data.employees.find((e: Employee) => e?.id === currentUser.id);`;
+
+const employeeStateReplacement = `        const serverShifts = Array.isArray(data.shifts) ? data.shifts : [];
+          const shiftIds = new Set(serverShifts.map((s: Shift) => String(s?.id || '')));
+          const fallbackShiftId = String(serverShifts[0]?.id || '');
+          const canonicalEmployees = data.employees.map((employee: Employee) => {
+            const currentShiftId = String(employee?.shiftId || '');
+            return currentShiftId && shiftIds.has(currentShiftId)
+              ? employee
+              : fallbackShiftId
+                ? { ...employee, shiftId: fallbackShiftId }
+                : employee;
+          });
+
+          employeesRef.current = canonicalEmployees;
+          setEmployees(canonicalEmployees);
+          try { localStorage.setItem('attendance_employees', JSON.stringify(canonicalEmployees)); } catch {}
+          if (currentUser?.id) {
+            const canonicalUser = canonicalEmployees.find((e: Employee) => e?.id === currentUser.id);`;
+
+if (code.includes(employeeStateMarker) && !code.includes('const serverShifts = Array.isArray(data.shifts)')) {
+  code = code.replace(employeeStateMarker, employeeStateReplacement);
 }
 
 // Keep the authoritative snapshot as the single immediate state update after POST.
