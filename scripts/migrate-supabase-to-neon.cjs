@@ -18,24 +18,23 @@ const TABLES = [
   'notification_system_meta',
 ];
 
-function normalizeJsonValue(value) {
+function quoteIdent(identifier) {
+  return `"${identifier.replace(/"/g, '""')}"`;
+}
+
+function normalizeJsonText(value) {
   if (value == null) return null;
+  if (typeof value !== 'string') return JSON.stringify(value);
 
-  // pg normally returns json/jsonb as native JS objects, but depending on the
-  // source schema/driver a JSON value may arrive as a string. Never send a
-  // raw string such as "شركة..." to a jsonb parameter: PostgreSQL would try
-  // to parse it as JSON and fail. Preserve non-JSON source strings as valid
-  // JSON strings instead of losing the source data.
-  if (typeof value === 'string') {
-    try {
-      JSON.parse(value);
-      return value;
-    } catch {
-      return JSON.stringify(value);
-    }
+  // A source json/jsonb column is read below with ::text, so valid JSON is
+  // already represented as JSON text (including quoted JSON strings).
+  // For source text going into a JSON/JSONB target, encode it as a JSON string.
+  try {
+    JSON.parse(value);
+    return value;
+  } catch {
+    return JSON.stringify(value);
   }
-
-  return value;
 }
 
 async function main() {
@@ -100,9 +99,10 @@ async function main() {
       if (!targetColumns.length) continue;
 
       const sourceColumnsResult = await source.query(
-        `SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1`,
+        `SELECT column_name, data_type FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1 ORDER BY ordinal_position`,
         [table],
       );
+      const sourceTypes = new Map(sourceColumnsResult.rows.map((r) => [r.column_name, r.data_type]));
       const sourceColumns = new Set(sourceColumnsResult.rows.map((r) => r.column_name));
       const columns = targetColumns.filter((c) => sourceColumns.has(c));
       if (!columns.length) continue;
@@ -124,7 +124,20 @@ async function main() {
         .map((r) => r.column_name)
         .filter((c) => columns.includes(c));
 
-      const rows = (await source.query(`SELECT ${columns.map((c) => `"${c.replace(/"/g, '""')}"`).join(', ')} FROM public."${table.replace(/"/g, '""')}"`)).rows;
+      // Read JSON/JSONB columns as their canonical PostgreSQL JSON text.
+      // This avoids node-postgres guessing whether a string is plain text or
+      // already-serialized JSON, and lets the INSERT explicitly cast it.
+      const selectExpressions = columns.map((column) => {
+        const sourceType = sourceTypes.get(column);
+        if (sourceType === 'json' || sourceType === 'jsonb') {
+          return `${quoteIdent(column)}::text AS ${quoteIdent(column)}`;
+        }
+        return quoteIdent(column);
+      });
+
+      const rows = (await source.query(
+        `SELECT ${selectExpressions.join(', ')} FROM public.${quoteIdent(table)}`,
+      )).rows;
       console.log(`Migrating ${table}: ${rows.length} rows`);
 
       const batchSize = 50;
@@ -134,23 +147,34 @@ async function main() {
         const tuples = batch.map((row, rowIndex) => {
           const placeholders = columns.map((column, columnIndex) => {
             let value = row[column];
-            if (targetTypes.get(column) === 'json' || targetTypes.get(column) === 'jsonb') {
-              value = normalizeJsonValue(value);
+            const targetType = targetTypes.get(column);
+            const sourceType = sourceTypes.get(column);
+
+            if (targetType === 'json' || targetType === 'jsonb') {
+              if (sourceType === 'json' || sourceType === 'jsonb') {
+                value = normalizeJsonText(value);
+              } else {
+                value = normalizeJsonText(value);
+              }
             }
+
             values.push(value);
-            return `$${rowIndex * columns.length + columnIndex + 1}`;
+            const placeholder = `$${rowIndex * columns.length + columnIndex + 1}`;
+            if (targetType === 'json') return `${placeholder}::json`;
+            if (targetType === 'jsonb') return `${placeholder}::jsonb`;
+            return placeholder;
           });
           return `(${placeholders.join(', ')})`;
         });
 
-        const quotedColumns = columns.map((c) => `"${c.replace(/"/g, '""')}"`).join(', ');
-        let sql = `INSERT INTO public."${table.replace(/"/g, '""')}" (${quotedColumns}) VALUES ${tuples.join(', ')}`;
+        const quotedColumns = columns.map(quoteIdent).join(', ');
+        let sql = `INSERT INTO public.${quoteIdent(table)} (${quotedColumns}) VALUES ${tuples.join(', ')}`;
 
         if (primaryKeys.length) {
           const nonKeys = columns.filter((c) => !primaryKeys.includes(c));
-          const conflict = primaryKeys.map((c) => `"${c.replace(/"/g, '""')}"`).join(', ');
+          const conflict = primaryKeys.map(quoteIdent).join(', ');
           if (nonKeys.length) {
-            sql += ` ON CONFLICT (${conflict}) DO UPDATE SET ${nonKeys.map((c) => `"${c.replace(/"/g, '""')}" = EXCLUDED."${c.replace(/"/g, '""')}"`).join(', ')}`;
+            sql += ` ON CONFLICT (${conflict}) DO UPDATE SET ${nonKeys.map((c) => `${quoteIdent(c)} = EXCLUDED.${quoteIdent(c)}`).join(', ')}`;
           } else {
             sql += ` ON CONFLICT (${conflict}) DO NOTHING`;
           }
