@@ -1,9 +1,9 @@
 const fs = require('fs');
 let code = fs.readFileSync('server.ts', 'utf8');
 
-const supabaseDataCode = `
+const databaseDataCode = `
 app.get('/api/data', async (req, res) => {
-  if (process.env.SUPABASE_DB_URL) {
+  if (process.env.DATABASE_URL || process.env.SUPABASE_DB_URL) {
     try {
       const dbEmployees = await db.select().from(schema.employees);
       const dbAttendance = await db.select().from(schema.attendanceRecords);
@@ -30,15 +30,15 @@ app.get('/api/data', async (req, res) => {
         companyNameAr: settingsMap.companyNameAr ?? serverState.companyNameAr ?? null,
         companyNameEn: settingsMap.companyNameEn ?? serverState.companyNameEn ?? null,
         urgentNotice: settingsMap.urgentNotice ?? (serverState.urgentNotice !== undefined ? serverState.urgentNotice : null),
-        dailyShiftAssignments: settingsMap.dailyShiftAssignments ?? serverState.dailyShiftAssignments ?? {},
+        dailyShiftAssignments: settingsMap.dailyShiftAssignments ?? serverState.dailyShiftAssignments ?? [],
         lastUpdated: Date.now()
       });
     } catch (err) {
-      console.error("Supabase Data Fetch Error:", err);
+      console.error("Database Data Fetch Error:", err);
       return res.status(500).json({ success: false, error: "Database error" });
     }
   }
 `;
 
-code = code.replace("app.get('/api/data', (req, res) => {", supabaseDataCode);
+code = code.replace("app.get('/api/data', (req, res) => {", databaseDataCode);
 fs.writeFileSync('server.ts', code);
