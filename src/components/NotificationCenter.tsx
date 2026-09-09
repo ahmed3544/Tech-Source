@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Bell, Check, CheckCheck, ExternalLink } from 'lucide-react';
 import { Notification, Language } from '../types';
+import { NotificationsPage } from './NotificationsPage';
 
 interface NotificationCenterProps {
   notifications?: Notification[];
@@ -9,6 +10,8 @@ interface NotificationCenterProps {
   onMarkAsRead?: (notificationId: string) => void;
   onMarkAllAsRead?: () => void;
   onOpenPage?: () => void;
+  // Backward-compatible alias used by Header/App versions.
+  onOpenNotificationsPage?: () => void;
 }
 
 const normalize = (items: unknown, currentUserId?: string): Notification[] => {
@@ -40,8 +43,9 @@ const titleFor = (n: Notification, lang: Language) => {
   return n.type?.replace(/_/g, ' ') || 'New notification';
 };
 
-export const NotificationCenter: React.FC<NotificationCenterProps> = ({ currentUserId, lang, onMarkAsRead, onMarkAllAsRead, onOpenPage }) => {
+export const NotificationCenter: React.FC<NotificationCenterProps> = ({ currentUserId, lang, onMarkAsRead, onMarkAllAsRead, onOpenPage, onOpenNotificationsPage }) => {
   const [open, setOpen] = useState(false);
+  const [showPage, setShowPage] = useState(false);
   const [items, setItems] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
@@ -84,29 +88,43 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ currentU
 
   const openNotificationsPage = () => {
     setOpen(false);
-    if (onOpenPage) { onOpenPage(); return; }
-    window.dispatchEvent(new CustomEvent('tech-source-open-notifications'));
+    const callback = onOpenPage || onOpenNotificationsPage;
+    if (callback) { callback(); return; }
+    // Always provide a working page even when the parent has not wired navigation yet.
+    setShowPage(true);
   };
 
   const markRead = async (id: string) => {
     if (!currentUserId) return;
+    const previous = items;
     setItems(current => current.map(n => n.id === id ? { ...n, isRead: true, updatedAt: new Date().toISOString() } : n));
     try {
       const response = await fetch(`/api/notifications/${encodeURIComponent(id)}/mark-read`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: currentUserId }) });
       if (!response.ok) throw new Error(String(response.status));
       onMarkAsRead?.(id);
-    } catch { void load(true); }
+    } catch {
+      setItems(previous);
+      void load(true);
+    }
   };
 
   const markAll = async () => {
     if (!currentUserId || unreadCount === 0) return;
+    const previous = items;
     setItems(current => current.map(n => ({ ...n, isRead: true, updatedAt: new Date().toISOString() })));
     try {
       const response = await fetch('/api/notifications/mark-all-read', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: currentUserId }) });
       if (!response.ok) throw new Error(String(response.status));
       onMarkAllAsRead?.();
-    } catch { void load(true); }
+    } catch {
+      setItems(previous);
+      void load(true);
+    }
   };
+
+  if (showPage) {
+    return <NotificationsPage currentUserId={currentUserId} lang={lang} onMarkAsRead={onMarkAsRead} onMarkAllAsRead={onMarkAllAsRead} onBack={() => { setShowPage(false); void load(true); }} />;
+  }
 
   return (
     <div ref={ref} className="relative flex items-center shrink-0 z-[100]" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
