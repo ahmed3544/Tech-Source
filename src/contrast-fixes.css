@@ -1,7 +1,7 @@
 /* TECH SOURCE - Minimal, safe contrast rules. */
 :root { --text-light: #fff; --text-dark: #0f172a; }
 
-/* Keep the existing design/colors. Only fix unreadable text based on the surface. */
+/* Keep the existing design/colors. Set only the container's inherited text color. */
 .dark #root .bg-slate-900,
 .dark #root .bg-slate-800,
 .dark #root .bg-gray-900,
@@ -14,33 +14,30 @@
 .dark #root .bg-gray-50,
 .dark #root .bg-gray-100 { color: #0f172a !important; }
 
-.dark #root .bg-white *,
-.dark #root .bg-slate-50 *,
-.dark #root .bg-slate-100 *,
-.dark #root .bg-gray-50 *,
-.dark #root .bg-gray-100 * { color: #0f172a !important; }
-
-/* Light mode: readable dark text on light surfaces. */
+/* Light mode: readable default text on light surfaces. */
 html:not(.dark) #root .bg-white,
 html:not(.dark) #root .bg-slate-50,
 html:not(.dark) #root .bg-slate-100,
 html:not(.dark) #root .bg-gray-50,
 html:not(.dark) #root .bg-gray-100 { color: #0f172a !important; }
 
-/* Inputs always use readable text. */
-#root input, #root select, #root textarea { color: #0f172a !important; }
-.dark #root input, .dark #root select, .dark #root textarea { color: #fff !important; background-color: #0f172a !important; }
+/* Form fields: do not override explicit Tailwind text colors such as blue/emerald. */
+#root input,
+#root textarea { color: #0f172a; }
+.dark #root input,
+.dark #root textarea { color: #fff; background-color: #0f172a; }
 
-/* Preserve white text on colored action buttons. */
-#root .bg-blue-600, #root .bg-blue-700,
-#root .bg-emerald-600, #root .bg-emerald-700,
-#root .bg-green-600, #root .bg-green-700,
-#root .bg-red-600, #root .bg-red-700,
-#root .bg-indigo-600, #root .bg-indigo-700 { color: #fff !important; }
-#root .bg-blue-600 *, #root .bg-blue-700 *,
-#root .bg-emerald-600 *, #root .bg-emerald-700 *,
-#root .bg-green-600 *, #root .bg-green-700 *,
-#root .bg-red-600 *, #root .bg-red-700 *,
-#root .bg-indigo-600 *, #root .bg-indigo-700 * { color: #fff !important; }
+/* Preserve the intended color of action buttons without recoloring their children. */
+#root .bg-blue-600,
+#root .bg-blue-700,
+#root .bg-emerald-600,
+#root .bg-emerald-700,
+#root .bg-green-600,
+#root .bg-green-700,
+#root .bg-red-600,
+#root .bg-red-700,
+#root .bg-indigo-600,
+#root .bg-indigo-700 { color: #fff !important; }
 
+/* Never globally recolor SVG icons; their existing text-* classes remain authoritative. */
 #root svg { color: currentColor; }
