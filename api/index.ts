@@ -1,7 +1,7 @@
-import app from "../server";
+import app from "../server.js";
 
-// Vercel API entrypoint. Use an extensionless import so Vercel's
-// serverless bundler resolves and includes server.ts in the function bundle.
+// Vercel API entrypoint. Use the NodeNext-compatible .js specifier;
+// the TypeScript source is server.ts and Vercel's bundler resolves it correctly.
 export default function handler(req: any, res: any) {
   return app(req, res);
 }
