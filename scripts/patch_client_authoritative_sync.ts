@@ -4,10 +4,8 @@ const path = 'src/App.tsx';
 let code = fs.readFileSync(path, 'utf8');
 
 const fetchMarker = `      const data =\n        await res.json();`;
-const authoritativeMarker = '/* DEVICE_SYNC_AUTHORITATIVE_SNAPSHOT_V2 */';
+const authoritativeMarker = '/* DEVICE_SYNC_AUTHORITATIVE_SNAPSHOT_V3 */';
 
-// Build patches run sequentially and may change the surrounding comments/formatting.
-// Match only the stable fetch statement so the sync patch remains idempotent.
 if (!code.includes(authoritativeMarker)) {
   const at = code.indexOf(fetchMarker);
   if (at === -1) {
@@ -20,8 +18,9 @@ if (!code.includes(authoritativeMarker)) {
       ${authoritativeMarker}
       /*
        * The POST /api/sync response is the authoritative database snapshot.
-       * Apply it immediately so this device never waits for the next poll and
-       * never lets stale localStorage overwrite a newer server record.
+       * Apply it immediately, including the logged-in user's canonical employee
+       * row. This is important after migrating from legacy shift ids such as
+       * shift-1 to the real Neon shift id.
        */
       if (data?.success) {
         if (Array.isArray(data.attendanceRecords)) {
@@ -36,6 +35,13 @@ if (!code.includes(authoritativeMarker)) {
           employeesRef.current = data.employees;
           setEmployees(data.employees);
           try { localStorage.setItem('attendance_employees', JSON.stringify(data.employees)); } catch {}
+          if (currentUser?.id) {
+            const canonicalUser = data.employees.find((e: Employee) => e?.id === currentUser.id);
+            if (canonicalUser) {
+              setCurrentUser(canonicalUser);
+              try { localStorage.setItem('logged_in_user', JSON.stringify(canonicalUser)); } catch {}
+            }
+          }
         }
         if (Array.isArray(data.leaveRequests)) {
           const serverLeaves = applyPendingLeaveDecisions(data.leaveRequests);
@@ -61,16 +67,13 @@ if (!code.includes(authoritativeMarker)) {
   code = code.slice(0, at + fetchMarker.length) + insertion + code.slice(at + fetchMarker.length);
 }
 
-// The authoritative snapshot is already applied above; do not immediately issue
-// a second request from the same successful sync path. Polling remains the safety net.
+// Keep the authoritative snapshot as the single immediate state update after POST.
 code = code.replace(
   /\n\s*if \(\s*pullFromServerRef\.current\s*\)\s*\{\s*void pullFromServerRef\.current\(\);\s*\}/g,
   '\n      // Authoritative snapshot already applied; polling remains as a safety net.'
 );
 
-// Reduce background polling from 1.5s to 15s to prevent unnecessary egress.
-// Attendance actions still update immediately from the authoritative /api/sync response,
-// and a focus/visibility refresh remains the fast path when a user returns to the app.
+// Poll every 15 seconds; focus/visibility refresh remains the fast path.
 code = code.replace(
   /window\.setInterval\(\s*pullFromServer,\s*1500\s*\)/g,
   'window.setInterval(\n        pullFromServer,\n        15000\n      )'
