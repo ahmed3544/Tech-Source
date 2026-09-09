@@ -11,7 +11,11 @@ const ms = (v:any) => {
   const t=new Date(String(v||'')).getTime(); return Number.isFinite(t)?t:0;
 };
 const stamp = (v:any) => { const t=ms(v); return t?new Date(t).toISOString():new Date().toISOString(); };
-const newestStamp = (item:any,syncTime:any) => stamp(Math.max(ms(item?.updatedAt), ms(syncTime), Date.now()));
+const newestStamp = (item:any,syncTime:any) => {
+  const itemTime = ms(item?.updatedAt);
+  const syncMs = ms(syncTime);
+  return stamp(Math.max(itemTime, syncMs));
+};
 const apiPath = (req:any) => String(req.path || req.url || '').split('?')[0].replace(/\/+$/,'') || '/';
 const isDataPath = (req:any) => ['/api/data','/data'].includes(apiPath(req));
 const isSyncPath = (req:any) => ['/api/sync','/sync'].includes(apiPath(req));
