@@ -1,0 +1,112 @@
+/* Global accessibility contrast fixes. Keep these rules last so they win over component utility classes. */
+
+/* Light surfaces: force readable dark text when a light background is used. */
+#root .bg-white:not([class*="bg-slate-900"]) {
+  color: #0f172a;
+}
+#root .bg-white h1,
+#root .bg-white h2,
+#root .bg-white h3,
+#root .bg-white h4,
+#root .bg-white p,
+#root .bg-white span,
+#root .bg-white label,
+#root .bg-white td,
+#root .bg-white th {
+  color: #0f172a;
+}
+#root .bg-white .text-slate-500,
+#root .bg-white .text-slate-400,
+#root .bg-white .text-gray-500,
+#root .bg-white .text-gray-400 {
+  color: #475569;
+}
+
+/* Dark surfaces: prevent dark text from disappearing on navy/slate cards. */
+#root .bg-slate-900,
+#root .bg-slate-800,
+#root .bg-slate-950,
+#root .bg-\[\#0d2240\] {
+  color: #f8fafc;
+}
+#root .bg-slate-900 h1,
+#root .bg-slate-900 h2,
+#root .bg-slate-900 h3,
+#root .bg-slate-900 h4,
+#root .bg-slate-900 p,
+#root .bg-slate-900 span,
+#root .bg-slate-900 label,
+#root .bg-slate-800 h1,
+#root .bg-slate-800 h2,
+#root .bg-slate-800 h3,
+#root .bg-slate-800 h4,
+#root .bg-slate-800 p,
+#root .bg-slate-800 span,
+#root .bg-slate-800 label,
+#root .bg-slate-950 h1,
+#root .bg-slate-950 h2,
+#root .bg-slate-950 h3,
+#root .bg-slate-950 h4,
+#root .bg-slate-950 p,
+#root .bg-slate-950 span,
+#root .bg-slate-950 label,
+#root .bg-\[\#0d2240\] h1,
+#root .bg-\[\#0d2240\] h2,
+#root .bg-\[\#0d2240\] h3,
+#root .bg-\[\#0d2240\] h4,
+#root .bg-\[\#0d2240\] p,
+#root .bg-\[\#0d2240\] span,
+#root .bg-\[\#0d2240\] label {
+  color: #f8fafc;
+}
+
+/* Readable muted text on dark surfaces. */
+#root .bg-slate-900 .text-slate-400,
+#root .bg-slate-900 .text-slate-500,
+#root .bg-slate-800 .text-slate-400,
+#root .bg-slate-800 .text-slate-500,
+#root .bg-slate-950 .text-slate-400,
+#root .bg-slate-950 .text-slate-500,
+#root .bg-\[\#0d2240\] .text-slate-400,
+#root .bg-\[\#0d2240\] .text-slate-500 {
+  color: #cbd5e1 !important;
+}
+
+/* Inputs/selects must always have readable foreground/background pairing. */
+#root input,
+#root select,
+#root textarea {
+  color: #0f172a;
+  background-color: #ffffff;
+}
+#root input::placeholder,
+#root textarea::placeholder {
+  color: #64748b;
+  opacity: 1;
+}
+#root option {
+  color: #0f172a;
+  background: #ffffff;
+}
+
+/* Explicit white text remains white on dark controls. */
+#root .bg-blue-600,
+#root .bg-emerald-600,
+#root .bg-green-600,
+#root .bg-red-600,
+#root .bg-indigo-600,
+#root .bg-teal-600 {
+  color: #ffffff;
+}
+#root .bg-blue-600 *,
+#root .bg-emerald-600 *,
+#root .bg-green-600 *,
+#root .bg-red-600 *,
+#root .bg-indigo-600 *,
+#root .bg-teal-600 * {
+  color: inherit;
+}
+
+/* Keep borders visible where text and surface colors are close. */
+#root .border-slate-200 { border-color: #cbd5e1; }
+#root .border-slate-700 { border-color: #475569; }
