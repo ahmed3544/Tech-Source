@@ -1,28 +1,19 @@
 const fs = require('fs');
-
 const path = 'src/App.tsx';
-const marker = '/* TECH_SOURCE_NOTIFICATION_DIRECT_EMIT_V1 */';
+const marker = '/* TECH_SOURCE_NOTIFICATION_DIRECT_EMIT_V2 */';
 
-if (!fs.existsSync(path)) {
-  console.warn('[patch_notification_direct_emit] App.tsx not found; skipping safely.');
-  process.exit(0);
-}
-
+if (!fs.existsSync(path)) process.exit(0);
 let code = fs.readFileSync(path, 'utf8');
-if (code.includes(marker)) {
-  console.log('[patch_notification_direct_emit] already applied');
+if (code.includes(marker)) process.exit(0);
+
+const re = /(if\s*\(\s*overrides\?\.notifications\s*!==\s*undefined\s*\)\s*\{\s*payload\.notifications\s*=\s*overrides\.notifications;)(\s*\})/;
+if (!re.test(code)) {
+  console.warn('[patch_notification_direct_emit] pushSync notification block not found; skipping safely.');
   process.exit(0);
 }
 
-const anchor = `  if (overrides?.notifications !== undefined) {\n    payload.notifications =\n      overrides.notifications;\n  }`;
+const injected = `$1\n\n    ${marker}\n    // Notifications have their own authoritative API. Persist every emitted item directly.\n    try {\n      await Promise.all(\n        overrides.notifications.map(async (notification) => {\n          const response = await fetch('/api/notifications/emit', {\n            method: 'POST',\n            headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' },\n            body: JSON.stringify({ notification }),\n            cache: 'no-store'\n          });\n          if (!response.ok) throw new Error(\`notification emit failed: \${response.status}\`);\n        })\n      );\n    } catch (error) {\n      console.warn('[Notifications] direct emit failed; sync remains fallback', error);\n    }$2`;
 
-if (!code.includes(anchor)) {
-  console.warn('[patch_notification_direct_emit] pushSync notifications anchor not found; skipping safely.');
-  process.exit(0);
-}
-
-const replacement = `  if (overrides?.notifications !== undefined) {\n    payload.notifications =\n      overrides.notifications;\n\n    ${marker}\n    // Persist notification mutations directly through the notification API.\n    // /api/sync remains a secondary backup path. Stable notification IDs make\n    // this safe if the same item also arrives through the sync endpoint.\n    try {\n      await Promise.all(\n        overrides.notifications.map(async (notification) => {\n          const response = await fetch('/api/notifications/emit', {\n            method: 'POST',\n            headers: {\n              'Content-Type': 'application/json',\n              'Cache-Control': 'no-cache',\n              'Pragma': 'no-cache'\n            },\n            body: JSON.stringify({ notification }),\n            cache: 'no-store'\n          });\n\n          if (!response.ok) {\n            throw new Error(\`Notification emit failed: \${response.status}\`);\n          }\n        })\n      );\n    } catch (error) {\n      // Do not block the main mutation: /api/sync will retry persistence.\n      console.warn('[Notifications] direct emit failed; falling back to sync', error);\n    }\n  }`;
-
-code = code.replace(anchor, replacement);
+code = code.replace(re, injected);
 fs.writeFileSync(path, code, 'utf8');
 console.log('[patch_notification_direct_emit] applied');
