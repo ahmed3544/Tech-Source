@@ -1,4 +1,5 @@
 /* TECH SOURCE - Global background-aware contrast system. Loaded last. */
+/* DEPLOY_TRIGGER_2026_09_09 */
 :root {
   --bg-color: #ffffff;
   --text-color: #000000;
@@ -19,9 +20,7 @@
 }
 
 /* Base document. */
-html, body, #root {
-  color: var(--text-color) !important;
-}
+html, body, #root { color: var(--text-color) !important; }
 html:not(.dark), html:not(.dark) body { background: #fff !important; }
 .dark, .dark body { background: var(--dark-bg) !important; }
 
@@ -54,9 +53,7 @@ html:not(.dark) #root [role="button"] { color: var(--text-on-light) !important; 
 .dark #root [class*="bg-emerald-900"], .dark #root [class*="bg-teal-900"],
 .dark #root [class*="bg-amber-900"], .dark #root [class*="bg-red-900"],
 .dark #root [class*="bg-violet-900"], .dark #root [class*="bg-[#0b132b"],
-.dark #root [class*="bg-[#0d2240"], .dark #root footer {
-  color: var(--text-on-dark) !important;
-}
+.dark #root [class*="bg-[#0d2240"], .dark #root footer { color: var(--text-on-dark) !important; }
 
 .dark #root [class*="bg-slate-900"] *, .dark #root [class*="bg-slate-800"] *,
 .dark #root [class*="bg-slate-950"] *, .dark #root [class*="bg-gray-900"] *,
@@ -65,108 +62,70 @@ html:not(.dark) #root [role="button"] { color: var(--text-on-light) !important; 
 .dark #root [class*="bg-emerald-900"] *, .dark #root [class*="bg-teal-900"] *,
 .dark #root [class*="bg-amber-900"] *, .dark #root [class*="bg-red-900"] *,
 .dark #root [class*="bg-violet-900"] *, .dark #root [class*="bg-[#0b132b"] *,
-.dark #root [class*="bg-[#0d2240"] *, .dark #root footer * {
-  color: var(--text-on-dark) !important;
-}
+.dark #root [class*="bg-[#0d2240"] *, .dark #root footer * { color: var(--text-on-dark) !important; }
 
-/* Light cards/surfaces inside Dark Mode must stay dark-text, even when the parent theme is dark. */
+/* Light cards/surfaces inside Dark Mode must stay dark-text. */
 .dark #root [class*="bg-white"], .dark #root [class*="bg-slate-50"],
 .dark #root [class*="bg-slate-100"], .dark #root [class*="bg-gray-50"],
 .dark #root [class*="bg-gray-100"], .dark #root [class*="bg-blue-50"],
 .dark #root [class*="bg-indigo-50"], .dark #root [class*="bg-emerald-50"],
 .dark #root [class*="bg-green-50"], .dark #root [class*="bg-teal-50"],
 .dark #root [class*="bg-yellow-50"], .dark #root [class*="bg-orange-50"],
-.dark #root [class*="bg-red-50"], .dark #root [class*="bg-violet-50"] {
-  color: var(--text-on-light) !important;
-}
+.dark #root [class*="bg-red-50"], .dark #root [class*="bg-violet-50"] { color: var(--text-on-light) !important; }
 .dark #root [class*="bg-white"] *, .dark #root [class*="bg-slate-50"] *,
 .dark #root [class*="bg-slate-100"] *, .dark #root [class*="bg-gray-50"] *,
 .dark #root [class*="bg-gray-100"] *, .dark #root [class*="bg-blue-50"] *,
 .dark #root [class*="bg-indigo-50"] *, .dark #root [class*="bg-emerald-50"] *,
 .dark #root [class*="bg-green-50"] *, .dark #root [class*="bg-teal-50"] *,
 .dark #root [class*="bg-yellow-50"] *, .dark #root [class*="bg-orange-50"] *,
-.dark #root [class*="bg-red-50"] *, .dark #root [class*="bg-violet-50"] * {
-  color: var(--text-on-light) !important;
-}
+.dark #root [class*="bg-red-50"] *, .dark #root [class*="bg-violet-50"] * { color: var(--text-on-light) !important; }
 
 /* Light Mode surfaces. */
-html:not(.dark) #root [class*="bg-white"],
-html:not(.dark) #root [class*="bg-slate-50"],
-html:not(.dark) #root [class*="bg-slate-100"],
-html:not(.dark) #root [class*="bg-gray-50"],
-html:not(.dark) #root [class*="bg-gray-100"],
-html:not(.dark) #root [class*="bg-blue-50"],
-html:not(.dark) #root [class*="bg-indigo-50"],
-html:not(.dark) #root [class*="bg-emerald-50"],
-html:not(.dark) #root [class*="bg-green-50"],
-html:not(.dark) #root [class*="bg-teal-50"],
-html:not(.dark) #root [class*="bg-yellow-50"],
-html:not(.dark) #root [class*="bg-orange-50"],
-html:not(.dark) #root [class*="bg-red-50"],
-html:not(.dark) #root [class*="bg-violet-50"] { color: var(--text-on-light) !important; }
+html:not(.dark) #root [class*="bg-white"], html:not(.dark) #root [class*="bg-slate-50"],
+html:not(.dark) #root [class*="bg-slate-100"], html:not(.dark) #root [class*="bg-gray-50"],
+html:not(.dark) #root [class*="bg-gray-100"], html:not(.dark) #root [class*="bg-blue-50"],
+html:not(.dark) #root [class*="bg-indigo-50"], html:not(.dark) #root [class*="bg-emerald-50"],
+html:not(.dark) #root [class*="bg-green-50"], html:not(.dark) #root [class*="bg-teal-50"],
+html:not(.dark) #root [class*="bg-yellow-50"], html:not(.dark) #root [class*="bg-orange-50"],
+html:not(.dark) #root [class*="bg-red-50"], html:not(.dark) #root [class*="bg-violet-50"] { color: var(--text-on-light) !important; }
 
-html:not(.dark) #root [class*="bg-white"] *,
-html:not(.dark) #root [class*="bg-slate-50"] *,
-html:not(.dark) #root [class*="bg-slate-100"] *,
-html:not(.dark) #root [class*="bg-gray-50"] *,
+html:not(.dark) #root [class*="bg-white"] *, html:not(.dark) #root [class*="bg-slate-50"] *,
+html:not(.dark) #root [class*="bg-slate-100"] *, html:not(.dark) #root [class*="bg-gray-50"] *,
 html:not(.dark) #root [class*="bg-gray-100"] * { color: var(--text-on-light) !important; }
 
 /* Explicit Tailwind text colors cannot defeat the theme/surface rules. */
-html:not(.dark) #root [class*="text-white"],
-html:not(.dark) #root [class*="text-slate-300"],
-html:not(.dark) #root [class*="text-slate-400"],
-html:not(.dark) #root [class*="text-slate-500"],
-html:not(.dark) #root [class*="text-gray-300"],
-html:not(.dark) #root [class*="text-gray-400"],
+html:not(.dark) #root [class*="text-white"], html:not(.dark) #root [class*="text-slate-300"],
+html:not(.dark) #root [class*="text-slate-400"], html:not(.dark) #root [class*="text-slate-500"],
+html:not(.dark) #root [class*="text-gray-300"], html:not(.dark) #root [class*="text-gray-400"],
 html:not(.dark) #root [class*="text-gray-500"] { color: var(--text-on-light) !important; }
 
-.dark #root [class*="text-black"],
-.dark #root [class*="text-slate-700"], .dark #root [class*="text-slate-800"],
-.dark #root [class*="text-slate-900"], .dark #root [class*="text-gray-700"],
-.dark #root [class*="text-gray-800"], .dark #root [class*="text-gray-900"] {
-  color: var(--text-on-dark) !important;
-}
+.dark #root [class*="text-black"], .dark #root [class*="text-slate-700"],
+.dark #root [class*="text-slate-800"], .dark #root [class*="text-slate-900"],
+.dark #root [class*="text-gray-700"], .dark #root [class*="text-gray-800"],
+.dark #root [class*="text-gray-900"] { color: var(--text-on-dark) !important; }
 
 /* Forms follow the surface directly underneath them. */
-html:not(.dark) #root input, html:not(.dark) #root select,
-html:not(.dark) #root textarea { color: var(--text-on-light) !important; background: #fff !important; }
-.dark #root input, .dark #root select, .dark #root textarea {
-  color: var(--text-on-dark) !important; background: #0f172a !important;
-}
+html:not(.dark) #root input, html:not(.dark) #root select, html:not(.dark) #root textarea { color: var(--text-on-light) !important; background: #fff !important; }
+.dark #root input, .dark #root select, .dark #root textarea { color: var(--text-on-dark) !important; background: #0f172a !important; }
 html:not(.dark) #root input::placeholder, html:not(.dark) #root textarea::placeholder { color: #000 !important; opacity: .65; }
 .dark #root input::placeholder, .dark #root textarea::placeholder { color: #fff !important; opacity: .72; }
 
 /* Solid action colors intentionally use white foreground. */
-#root .bg-blue-600, #root .bg-blue-700,
-#root .bg-emerald-600, #root .bg-emerald-700,
-#root .bg-green-600, #root .bg-green-700,
-#root .bg-red-600, #root .bg-red-700,
-#root .bg-indigo-600, #root .bg-indigo-700,
-#root .bg-teal-600, #root .bg-teal-700,
+#root .bg-blue-600, #root .bg-blue-700, #root .bg-emerald-600, #root .bg-emerald-700,
+#root .bg-green-600, #root .bg-green-700, #root .bg-red-600, #root .bg-red-700,
+#root .bg-indigo-600, #root .bg-indigo-700, #root .bg-teal-600, #root .bg-teal-700,
 #root .bg-purple-600, #root .bg-purple-700 { color: #fff !important; }
-#root .bg-blue-600 *, #root .bg-blue-700 *,
-#root .bg-emerald-600 *, #root .bg-emerald-700 *,
-#root .bg-green-600 *, #root .bg-green-700 *,
-#root .bg-red-600 *, #root .bg-red-700 *,
-#root .bg-indigo-600 *, #root .bg-indigo-700 *,
-#root .bg-teal-600 *, #root .bg-teal-700 *,
+#root .bg-blue-600 *, #root .bg-blue-700 *, #root .bg-emerald-600 *, #root .bg-emerald-700 *,
+#root .bg-green-600 *, #root .bg-green-700 *, #root .bg-red-600 *, #root .bg-red-700 *,
+#root .bg-indigo-600 *, #root .bg-indigo-700 *, #root .bg-teal-600 *, #root .bg-teal-700 *,
 #root .bg-purple-600 *, #root .bg-purple-700 * { color: #fff !important; }
 
-/* Icons inherit the readable foreground. */
 #root svg { color: currentColor; }
-
-/* Hover/focus never revert to an unreadable foreground. */
 html:not(.dark) #root button:hover, html:not(.dark) #root a:hover,
-html:not(.dark) #root [role="button"]:hover,
-html:not(.dark) #root button:focus, html:not(.dark) #root a:focus,
-html:not(.dark) #root [role="button"]:focus { color: var(--text-on-light) !important; }
-.dark #root button:hover, .dark #root a:hover,
-.dark #root [role="button"]:hover, .dark #root button:focus,
-.dark #root a:focus, .dark #root [role="button"]:focus { color: var(--text-on-dark) !important; }
+html:not(.dark) #root [role="button"]:hover, html:not(.dark) #root button:focus,
+html:not(.dark) #root a:focus, html:not(.dark) #root [role="button"]:focus { color: var(--text-on-light) !important; }
+.dark #root button:hover, .dark #root a:hover, .dark #root [role="button"]:hover,
+.dark #root button:focus, .dark #root a:focus, .dark #root [role="button"]:focus { color: var(--text-on-dark) !important; }
 
-#root input:focus, #root select:focus, #root textarea:focus,
-#root button:focus-visible, #root a:focus-visible {
-  outline: 2px solid currentColor !important;
-  outline-offset: 2px;
-}
+#root input:focus, #root select:focus, #root textarea:focus, #root button:focus-visible, #root a:focus-visible { outline: 2px solid currentColor !important; outline-offset: 2px; }
 #root input, #root select, #root textarea { border-color: var(--border-color) !important; }
