@@ -1,3 +1,7 @@
-import app from "../dist/server.js";
+import app from "../server.ts";
 
-export default app;
+// Vercel's /api entrypoint must use the same Express application and
+// database connection as the rest of the backend.
+export default function handler(req: any, res: any) {
+  return app(req, res);
+}
