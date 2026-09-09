@@ -6,10 +6,10 @@ import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../src/db/index.js';
 import * as schema from '../src/db/schema.js';
 
-type NotificationRecord = { id: string; recipientId: string; type: string; title: string; message: string; relatedEmployeeId?: string; relatedLeaveId?: string; relatedOvertimeId?: string; relatedShiftSwapId?: string; isRead: boolean; createdAt: string; updatedAt: string; };
+type NotificationRecord = { id: string; recipientId: string; type: string; title: string; message: string; relatedEmployeeId?: string; relatedLeaveId?: string; relatedOvertimeId?: string; relatedShiftSwapId?: string; link?: string; targetUrl?: string; isRead: boolean; createdAt: string; updatedAt: string; };
 const USE_DATABASE = Boolean(process.env.DATABASE_URL || process.env.SUPABASE_DB_URL);
 const LOCAL_FILE = path.join(process.cwd(), 'notifications_v2.json');
-const VERSION = '3';
+const VERSION = '4';
 let readyPromise: Promise<void> | null = null;
 const clean = (value: unknown) => String(value ?? '').trim();
 const nowIso = () => new Date().toISOString();
@@ -18,6 +18,24 @@ function stableId(input: Omit<NotificationRecord, 'id'> & { id?: string }) {
   if (clean(input.id)) return clean(input.id);
   const basis = [input.recipientId, input.type, input.relatedEmployeeId || '', input.relatedLeaveId || '', input.relatedOvertimeId || '', input.relatedShiftSwapId || '', input.title, input.message].join('|');
   return `n2_${crypto.createHash('sha256').update(basis).digest('hex').slice(0, 40)}`;
+}
+
+function targetFor(raw: any): string | undefined {
+  const explicit = clean(raw?.link || raw?.targetUrl);
+  if (explicit) return explicit;
+  const type = clean(raw?.type);
+  if (clean(raw?.relatedLeaveId)) return `/leaves?leaveId=${encodeURIComponent(clean(raw.relatedLeaveId))}`;
+  if (clean(raw?.relatedOvertimeId)) return `/overtime?overtimeId=${encodeURIComponent(clean(raw.relatedOvertimeId))}`;
+  if (clean(raw?.relatedShiftSwapId)) return `/schedule?shiftSwapId=${encodeURIComponent(clean(raw.relatedShiftSwapId))}`;
+  if (type.startsWith('leave_')) return '/leaves';
+  if (type.startsWith('overtime_')) return '/leaves';
+  if (type.startsWith('shift_')) return '/schedule';
+  return '/notifications';
+}
+
+function withTarget(item: NotificationRecord): NotificationRecord {
+  const link = targetFor(item);
+  return link ? { ...item, link, targetUrl: link } : item;
 }
 
 function normalize(raw: any): NotificationRecord | null {
@@ -31,7 +49,7 @@ function normalize(raw: any): NotificationRecord | null {
     relatedOvertimeId: clean(raw?.relatedOvertimeId) || undefined, relatedShiftSwapId: clean(raw?.relatedShiftSwapId) || undefined,
     isRead: Boolean(raw?.isRead), createdAt, updatedAt,
   };
-  return { id: stableId(item), ...item };
+  return withTarget({ id: stableId(item), ...item });
 }
 
 function readLocal(): NotificationRecord[] { try { if (!fs.existsSync(LOCAL_FILE)) return []; const parsed = JSON.parse(fs.readFileSync(LOCAL_FILE, 'utf8')); return Array.isArray(parsed) ? parsed : []; } catch { return []; } }
@@ -52,9 +70,9 @@ async function listForUser(userId: string): Promise<NotificationRecord[]> {
   await ensureReady(); const id = clean(userId); if (!id) return [];
   if (USE_DATABASE) {
     const rows = await db.select().from(schema.notifications).where(eq(schema.notifications.recipientId, id));
-    return rows.map((row: any) => ({ ...row, id: String(row.id), recipientId: String(row.recipientId) })).sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+    return rows.map((row: any) => withTarget({ ...row, id: String(row.id), recipientId: String(row.recipientId) })).sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
   }
-  return readLocal().filter(item => item.recipientId === id).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  return readLocal().filter(item => item.recipientId === id).map(withTarget).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 
 async function saveOne(input: any): Promise<NotificationRecord | null> {
@@ -62,17 +80,18 @@ async function saveOne(input: any): Promise<NotificationRecord | null> {
   if (!USE_DATABASE) {
     const items = readLocal(); const index = items.findIndex(existing => existing.id === item.id);
     if (index >= 0) { const existing = items[index]; items[index] = existing.isRead && !item.isRead ? { ...existing, updatedAt: nowIso() } : { ...existing, ...item, isRead: existing.isRead || item.isRead }; }
-    else items.push(item); writeLocal(items); return items.find(existing => existing.id === item.id) || item;
+    else items.push(item); writeLocal(items); return withTarget(items.find(existing => existing.id === item.id) || item);
   }
   const existingRows = await db.select().from(schema.notifications).where(eq(schema.notifications.id, item.id)); const existing: any = existingRows[0];
   if (existing) {
     const existingTime = new Date(existing.updatedAt || existing.createdAt || 0).getTime(); const incomingTime = new Date(item.updatedAt || item.createdAt || 0).getTime();
-    if (existing.isRead && !item.isRead) return existing as NotificationRecord;
-    if (Number.isFinite(existingTime) && Number.isFinite(incomingTime) && incomingTime < existingTime) return existing as NotificationRecord;
-    const merged = { ...item, isRead: Boolean(existing.isRead || item.isRead), updatedAt: nowIso() }; const { id: _ignoredId, ...changes } = merged;
-    await db.update(schema.notifications).set(changes as any).where(eq(schema.notifications.id, item.id)); return merged;
+    if (existing.isRead && !item.isRead) return withTarget(existing as NotificationRecord);
+    if (Number.isFinite(existingTime) && Number.isFinite(incomingTime) && incomingTime < existingTime) return withTarget(existing as NotificationRecord);
+    const merged = { ...item, isRead: Boolean(existing.isRead || item.isRead), updatedAt: nowIso() }; const { id: _ignoredId, link: _link, targetUrl: _targetUrl, ...changes } = merged;
+    await db.update(schema.notifications).set(changes as any).where(eq(schema.notifications.id, item.id)); return withTarget(merged);
   }
-  await db.insert(schema.notifications).values(item as any); return item;
+  const { link: _link, targetUrl: _targetUrl, ...dbItem } = item;
+  await db.insert(schema.notifications).values(dbItem as any); return item;
 }
 
 async function markRead(id: string, recipientId: string) {
@@ -89,10 +108,10 @@ async function markAllRead(recipientId: string) {
 function bodyOf(req: Request) { return req.body && typeof req.body === 'object' ? req.body : {}; }
 
 export function registerNotificationSystemV2(app: Express) {
-  app.get('/api/notifications', async (req, res) => { try { const notifications = await listForUser(clean(req.query.userId)); res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate'); res.json({ success: true, notifications }); } catch (error) { console.error('[Notifications v2] GET failed', error); res.status(500).json({ success: false, notifications: [], error: 'notifications_unavailable' }); } });
-  app.put('/api/notifications/mark-all-read', async (req, res) => { try { const userId = clean(bodyOf(req).userId || req.query.userId); res.json({ success: true, count: await markAllRead(userId) }); } catch (error) { console.error('[Notifications v2] mark-all-read failed', error); res.status(500).json({ success: false, count: 0 }); } });
-  app.put('/api/notifications/:id/mark-read', async (req, res) => { try { const userId = clean(bodyOf(req).userId || req.query.userId); res.json({ success: true, updated: await markRead(req.params.id, userId) }); } catch (error) { console.error('[Notifications v2] mark-read failed', error); res.status(500).json({ success: false, updated: false }); } });
-  app.post('/api/notifications/emit', async (req, res) => { try { const notification = await saveOne(bodyOf(req).notification || bodyOf(req)); if (!notification) return res.status(400).json({ success: false, error: 'invalid_notification' }); res.json({ success: true, notification }); } catch (error) { console.error('[Notifications v2] emit failed', error); res.status(500).json({ success: false }); } });
+  app.get('/api/notifications', async (req, res) => { try { const notifications = await listForUser(clean(req.query.userId)); res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate'); res.setHeader('Pragma', 'no-cache'); res.json({ success: true, notifications }); } catch (error) { console.error('[Notifications v2] GET failed', error); res.status(500).json({ success: false, notifications: [], error: 'notifications_unavailable' }); } });
+  app.put('/api/notifications/mark-all-read', async (req, res) => { try { const userId = clean(bodyOf(req).userId || req.query.userId); const count = await markAllRead(userId); const notifications = await listForUser(userId); res.setHeader('Cache-Control', 'no-store'); res.json({ success: true, count, notifications }); } catch (error) { console.error('[Notifications v2] mark-all-read failed', error); res.status(500).json({ success: false, count: 0 }); } });
+  app.put('/api/notifications/:id/mark-read', async (req, res) => { try { const userId = clean(bodyOf(req).userId || req.query.userId); const updated = await markRead(req.params.id, userId); const notifications = await listForUser(userId); res.setHeader('Cache-Control', 'no-store'); res.json({ success: updated, updated, notifications }); } catch (error) { console.error('[Notifications v2] mark-read failed', error); res.status(500).json({ success: false, updated: false }); } });
+  app.post('/api/notifications/emit', async (req, res) => { try { const notification = await saveOne(bodyOf(req).notification || bodyOf(req)); if (!notification) return res.status(400).json({ success: false, error: 'invalid_notification' }); res.setHeader('Cache-Control', 'no-store'); res.json({ success: true, notification }); } catch (error) { console.error('[Notifications v2] emit failed', error); res.status(500).json({ success: false }); } });
   app.use(async (req, _res, next) => { if (req.method !== 'POST' || !req.path.startsWith('/api/sync')) return next(); const body = bodyOf(req); const incoming = Array.isArray(body.notifications) ? body.notifications : []; if (incoming.length) { try { await Promise.all(incoming.map(item => saveOne(item))); } catch (error) { console.error('[Notifications v2] sync ingestion failed', error); } } delete body.notifications; next(); });
   void ensureReady().catch(error => console.error('[Notifications v2] startup failed', error));
 }
