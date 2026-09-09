@@ -3,60 +3,17 @@ import path from 'path';
 
 const appPath = path.join(process.cwd(), 'src/App.tsx');
 let code = fs.readFileSync(appPath, 'utf8');
+const marker = '/* TECH_SOURCE_NOTIFICATION_READ_API_V2 */';
+if (!code.includes(marker)) {
+  const single = /  const handleMarkNotificationAsRead = \([\s\S]*?\n  \};\n\n  const handleMarkAllNotificationsAsRead = \(\) => \{/;
+  if (single.test(code)) {
+    code = code.replace(single, `  const handleMarkNotificationAsRead = (notificationId: string) => {\n    const userId = currentUser?.id;\n    const optimistic = notificationsRef.current.map(n =>\n      n.id === notificationId ? { ...n, isRead: true, updatedAt: new Date().toISOString() } : n\n    );\n    notificationsRef.current = optimistic;\n    setNotifications(optimistic);\n    try { localStorage.setItem('notifications', JSON.stringify(optimistic)); } catch {}\n\n    ${marker}\n    void fetch('/api/notifications/' + encodeURIComponent(notificationId) + '/mark-read', {\n      method: 'PUT',\n      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },\n      body: JSON.stringify({ userId }),\n      cache: 'no-store'\n    }).then(async response => {\n      if (!response.ok) throw new Error('mark-read failed');\n      const data = await response.json();\n      if (Array.isArray(data.notifications)) {\n        notificationsRef.current = data.notifications;\n        setNotifications(data.notifications);\n        try { localStorage.setItem('notifications', JSON.stringify(data.notifications)); } catch {}\n      }\n    }).catch(() => {\n      // Never re-upload the optimistic unread array; re-read the server instead.\n      void fetch('/api/notifications?userId=' + encodeURIComponent(String(userId || '')) + '&_=' + Date.now(), { cache: 'no-store' })\n        .then(r => r.ok ? r.json() : null)\n        .then(data => { if (Array.isArray(data?.notifications)) { notificationsRef.current = data.notifications; setNotifications(data.notifications); } })\n        .catch(() => {});\n    });\n  };\n\n  const handleMarkAllNotificationsAsRead = () => {`);
+  }
 
-if (!code.includes('/api/notifications/') && code.includes('const handleMarkNotificationAsRead')) {
-  code = code.replace(
-    /  const handleMarkNotificationAsRead = \([\s\S]*?\n  \};\n\n  const handleMarkAllNotificationsAsRead = \(\) => \{/,
-    `  const handleMarkNotificationAsRead = (notificationId: string) => {
-    const updated = notificationsRef.current.map(n =>
-      n.id === notificationId
-        ? { ...n, isRead: true, updatedAt: new Date().toISOString() }
-        : n
-    );
-
-    notificationsRef.current = updated;
-    setNotifications(updated);
-    localStorage.setItem('notifications', JSON.stringify(updated));
-
-    void fetch('/api/notifications/' + encodeURIComponent(notificationId) + '/mark-read', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
-      cache: 'no-store',
-    }).catch(() => {
-      void pushSync({ notifications: updated });
-    });
-  };
-
-  const handleMarkAllNotificationsAsRead = () => {`
-  );
+  const all = /  const handleMarkAllNotificationsAsRead = \(\) => \{[\s\S]*?\n  \};/;
+  if (all.test(code)) {
+    code = code.replace(all, `  const handleMarkAllNotificationsAsRead = () => {\n    const userId = currentUser?.id;\n    const optimistic = notificationsRef.current.map(n =>\n      userId && String(n.recipientId).trim() === String(userId).trim()\n        ? { ...n, isRead: true, updatedAt: new Date().toISOString() }\n        : n\n    );\n    notificationsRef.current = optimistic;\n    setNotifications(optimistic);\n    try { localStorage.setItem('notifications', JSON.stringify(optimistic)); } catch {}\n\n    void fetch('/api/notifications/mark-all-read', {\n      method: 'PUT',\n      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },\n      body: JSON.stringify({ userId }),\n      cache: 'no-store'\n    }).then(async response => {\n      if (!response.ok) throw new Error('mark-all-read failed');\n      const data = await response.json();\n      if (Array.isArray(data.notifications)) {\n        notificationsRef.current = data.notifications;\n        setNotifications(data.notifications);\n        try { localStorage.setItem('notifications', JSON.stringify(data.notifications)); } catch {}\n      }\n    }).catch(() => {\n      void fetch('/api/notifications?userId=' + encodeURIComponent(String(userId || '')) + '&_=' + Date.now(), { cache: 'no-store' })\n        .then(r => r.ok ? r.json() : null)\n        .then(data => { if (Array.isArray(data?.notifications)) { notificationsRef.current = data.notifications; setNotifications(data.notifications); } })\n        .catch(() => {});\n    });\n  };`);
+  }
 }
-
-if (!code.includes('/api/notifications/mark-all-read')) {
-  code = code.replace(
-    /  const handleMarkAllNotificationsAsRead = \(\) => \{[\s\S]*?\n  \};/,
-    `  const handleMarkAllNotificationsAsRead = () => {
-    const userId = currentUser?.id;
-    const updated = notificationsRef.current.map(n =>
-      userId && String(n.recipientId).trim() === String(userId).trim()
-        ? { ...n, isRead: true, updatedAt: new Date().toISOString() }
-        : n
-    );
-
-    notificationsRef.current = updated;
-    setNotifications(updated);
-    localStorage.setItem('notifications', JSON.stringify(updated));
-
-    void fetch('/api/notifications/mark-all-read', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
-      body: JSON.stringify({ userId }),
-      cache: 'no-store',
-    }).catch(() => {
-      void pushSync({ notifications: updated });
-    });
-  };`
-  );
-}
-
 fs.writeFileSync(appPath, code, 'utf8');
-console.log('Patched notification read actions to use dedicated server endpoints');
+console.log('[patch_notification_read_api] applied');
