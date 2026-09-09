@@ -1,7 +1,8 @@
-import app from "../server.js";
+import app from "../dist/server.js";
 
-// Vercel API catch-all entrypoint. Use the NodeNext-compatible .js specifier;
-// the TypeScript source is server.ts and Vercel's bundler resolves it correctly.
+// Vercel runtime entrypoint: load the exact bundled Node server produced by
+// `npm run build`. This avoids Node ESM resolving ../server.js as the
+// `/var/task/server` directory when the TypeScript source is deployed.
 export default function handler(req: any, res: any) {
   return app(req, res);
 }
