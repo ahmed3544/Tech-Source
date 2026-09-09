@@ -12,7 +12,7 @@ type NotificationRecord = {
   isRead: boolean; createdAt: string; updatedAt: string;
 };
 
-const USE_DATABASE = Boolean(process.env.SUPABASE_DB_URL);
+const USE_DATABASE = Boolean(process.env.DATABASE_URL || process.env.SUPABASE_DB_URL);
 const LOCAL_FILE = path.join(process.cwd(), 'notifications_v2.json');
 const VERSION = '2';
 let readyPromise: Promise<void> | null = null;
@@ -64,7 +64,7 @@ async function ensureReady() {
         const rows = await db.execute(sql`SELECT value FROM notification_system_meta WHERE key = 'version' LIMIT 1`);
         const current = (rows.rows?.[0] as any)?.value;
         if (current !== VERSION) {
-          await db.execute(sql`DELETE FROM notifications`);
+          // Data-preserving migration: existing notifications are retained.
           await db.execute(sql`INSERT INTO notification_system_meta (key, value) VALUES ('version', ${VERSION}) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`);
         }
       } else if (!fs.existsSync(LOCAL_FILE)) writeLocal([]);
