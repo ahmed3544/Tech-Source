@@ -3,20 +3,27 @@ const fs = require('fs');
 function patch(path) {
   let code = fs.readFileSync(path, 'utf8');
 
-  // Do not let the parent App immediately re-sync an old local notification
-  // snapshot after the authoritative DB mark-read request succeeds.
+  // The database/API is authoritative for read state. Do not call the App
+  // callback after a successful mark-read because that callback can push an
+  // older local snapshot back to the server and resurrect the unread state.
   code = code.replace(/\n\s*onMarkAsRead\?\.\(id\);/g, '');
   code = code.replace(/\n\s*onMarkAllAsRead\?\.\(\);/g, '');
 
-  // If the dedicated notification endpoint is unavailable, use /api/data as
-  // a read-only fallback. This prevents the notifications page from becoming
-  // blank while the rest of the app is still connected to the database.
-  const old = `      const data = await response.json();\n      setItems(normalize(data?.notifications, currentUserId));`;
-  const replacement = `      const data = await response.json();\n      setItems(normalize(data?.notifications, currentUserId));`;
-  // Keep the successful path unchanged; the catch block below gets the fallback.
-
-  // Replace each load catch with a one-shot /api/data fallback.
-  code = code.replace(/    \} catch \{\n(\s*)setItems\(\[\]\);\n(\s*)\} finally/g, `    } catch {\n$1      try {\n$1        const fallback = await fetch(\`/api/data?_=${Date.now()}\`, { cache: 'no-store', headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' } });\n$1        if (!fallback.ok) throw new Error(String(fallback.status));\n$1        const fallbackData = await fallback.json();\n$1        setItems(normalize(fallbackData?.notifications, currentUserId));\n$1      } catch {\n$1        if (!silent) setItems([]);\n$1      }\n$2    } finally`);
+  // Dedicated notification GET can fail independently from /api/data. Keep
+  // the notification UI alive by falling back to the same server snapshot.
+  const loadStart = code.indexOf('const load = async (silent = false) => {');
+  const loadEnd = code.indexOf('\n  useEffect(() =>', loadStart);
+  if (loadStart >= 0 && loadEnd > loadStart) {
+    let block = code.slice(loadStart, loadEnd);
+    const catchStart = block.indexOf('    } catch {');
+    const finallyStart = block.indexOf('    } finally', catchStart);
+    if (catchStart >= 0 && finallyStart > catchStart) {
+      const errorReset = path.includes('NotificationCenter') ? '        setError(false);\n' : '';
+      const fallback = `    } catch {\n      try {\n        const fallback = await fetch(\`/api/data?_=${Date.now()}\`, { cache: 'no-store', headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' } });\n        if (!fallback.ok) throw new Error(String(fallback.status));\n        const fallbackData = await fallback.json();\n        setItems(normalize(fallbackData?.notifications, currentUserId));\n${errorReset}      } catch {\n        if (!silent) setItems([]);\n      }\n`;
+      block = block.slice(0, catchStart) + fallback + block.slice(finallyStart);
+      code = code.slice(0, loadStart) + block + code.slice(loadEnd);
+    }
+  }
 
   fs.writeFileSync(path, code);
   console.log('[fix-notifications-final] patched', path);
