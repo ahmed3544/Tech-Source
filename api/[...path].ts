@@ -1,7 +1,8 @@
-import app from "../dist/server.js";
+import app from "../server.ts";
 
-// Vercel Node.js Functions expect a request handler. The bundled Express
-// application is built to dist/server.js by the project build command.
+// Keep the API backed by the same Express application used locally.
+// Importing server.ts directly makes the Vercel Function self-contained;
+// it no longer depends on dist/server.js being present in the function bundle.
 export default function handler(req: any, res: any) {
   return app(req, res);
 }
