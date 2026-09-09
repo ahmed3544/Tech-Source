@@ -18,16 +18,32 @@ if (!code.includes(recoveryImport)) {
   else code = `${recoveryImport}\n${code}`;
 }
 
+// Remove previous registrations/recovery blocks so the patch stays idempotent.
 code = code.replace(/\nregisterDeviceSyncV2\(app\);/g, '');
-code = code.replace(/\n\/\/ Legacy backup recovery middleware[\s\S]*?\nregisterDeviceSyncV2\(app\);/g, '');
+code = code.replace(/\n\/\/ Legacy backup recovery:[\s\S]*?\n\}\);\n/g, '\n');
 
-const parserMarker = 'app.use(express.urlencoded({ extended: true, limit: "10mb" }));';
-if (code.includes(parserMarker)) {
-  const recovery = `${parserMarker}\n\n// Legacy backup recovery: only restores records that are missing from the DB.\napp.use(async (req: any, _res: any, next: any) => {\n  if ((process.env.DATABASE_URL || process.env.SUPABASE_DB_URL) && (req.path === '/api/data' || req.path === '/api/sync')) {\n    await recoverMissingLegacyData();\n  }\n  next();\n});\n\n// Direct cross-device synchronization middleware.\nregisterDeviceSyncV2(app);`;
-  code = code.replace(parserMarker, recovery);
+// Find an existing Express body-parser middleware in any formatting, or add
+// standard JSON + urlencoded parsers immediately after app creation if none exists.
+const parserRegex = /app\.use\(express\.(?:json|urlencoded)\([\s\S]*?\)\);/g;
+const parserMatches = [...code.matchAll(parserRegex)];
+
+let insertAt = -1;
+if (parserMatches.length) {
+  const last = parserMatches[parserMatches.length - 1];
+  insertAt = (last.index ?? 0) + last[0].length;
 } else {
-  throw new Error('[device-sync-direct] body parser marker not found in server.ts');
+  const appMarker = 'const app = express();';
+  const appIndex = code.indexOf(appMarker);
+  if (appIndex < 0) throw new Error('[device-sync-direct] Express app marker not found in server.ts');
+  insertAt = appIndex + appMarker.length;
+  const parsers = `\napp.use(express.json({ limit: "10mb" }));\napp.use(express.urlencoded({ extended: true, limit: "10mb" }));`;
+  code = code.slice(0, insertAt) + parsers + code.slice(insertAt);
+  insertAt += parsers.length;
 }
+
+const registration = `\n\n// Legacy backup recovery: only restores records that are missing from the DB.\napp.use(async (req: any, _res: any, next: any) => {\n  if ((process.env.DATABASE_URL || process.env.SUPABASE_DB_URL) && (req.path === '/api/data' || req.path === '/api/sync')) {\n    await recoverMissingLegacyData();\n  }\n  next();\n});\n\n// Direct cross-device synchronization middleware.\nregisterDeviceSyncV2(app);`;
+
+code = code.slice(0, insertAt) + registration + code.slice(insertAt);
 
 fs.writeFileSync(serverPath, code);
 console.log('[device-sync-direct] cross-device synchronization + safe legacy recovery active after body parser');
