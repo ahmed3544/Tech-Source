@@ -15,12 +15,29 @@
 
 #root .bg-white .text-slate-400,
 #root .bg-white .text-slate-500,
+#root .bg-white .text-slate-600,
 #root .bg-white .text-gray-400,
 #root .bg-white .text-gray-500,
+#root .bg-white .text-gray-600,
 #root .bg-slate-50 .text-slate-400,
 #root .bg-slate-50 .text-slate-500,
+#root .bg-slate-50 .text-slate-600,
 #root .bg-gray-50 .text-gray-400,
-#root .bg-gray-50 .text-gray-500 { color: #475569 !important; }
+#root .bg-gray-50 .text-gray-500,
+#root .bg-gray-50 .text-gray-600 { color: #334155 !important; }
+
+/* Prevent white/very-light text from disappearing on light cards */
+#root .bg-white .text-white,
+#root .bg-slate-50 .text-white,
+#root .bg-gray-50 .text-white,
+#root .bg-blue-50 .text-white,
+#root .bg-indigo-50 .text-white,
+#root .bg-emerald-50 .text-white,
+#root .bg-green-50 .text-white,
+#root .bg-teal-50 .text-white,
+#root .bg-yellow-50 .text-white,
+#root .bg-orange-50 .text-white,
+#root .bg-red-50 .text-white { color: #0f172a !important; }
 
 /* Dark surfaces */
 #root .bg-slate-900,
@@ -38,36 +55,52 @@
 #root .bg-slate-900 .text-slate-300,
 #root .bg-slate-900 .text-slate-400,
 #root .bg-slate-900 .text-slate-500,
+#root .bg-slate-900 .text-slate-600,
 #root .bg-slate-800 .text-slate-300,
 #root .bg-slate-800 .text-slate-400,
 #root .bg-slate-800 .text-slate-500,
+#root .bg-slate-800 .text-slate-600,
 #root .bg-slate-950 .text-slate-300,
 #root .bg-slate-950 .text-slate-400,
 #root .bg-slate-950 .text-slate-500,
+#root .bg-slate-950 .text-slate-600,
 #root .bg-gray-900 .text-gray-300,
 #root .bg-gray-900 .text-gray-400,
 #root .bg-gray-900 .text-gray-500,
+#root .bg-gray-900 .text-gray-600,
 #root .bg-gray-800 .text-gray-300,
 #root .bg-gray-800 .text-gray-400,
 #root .bg-gray-800 .text-gray-500,
+#root .bg-gray-800 .text-gray-600,
 #root .bg-\[\#0d2240\] .text-slate-300,
 #root .bg-\[\#0d2240\] .text-slate-400,
-#root .bg-\[\#0d2240\] .text-slate-500 { color: #cbd5e1 !important; }
+#root .bg-\[\#0d2240\] .text-slate-500,
+#root .bg-\[\#0d2240\] .text-slate-600 { color: #cbd5e1 !important; }
 
+/* Dark cards must not contain dark text */
 #root .bg-slate-900 .text-slate-700,
 #root .bg-slate-900 .text-slate-800,
+#root .bg-slate-900 .text-slate-900,
+#root .bg-slate-900 .text-gray-700,
+#root .bg-slate-900 .text-gray-800,
+#root .bg-slate-900 .text-gray-900,
 #root .bg-slate-800 .text-slate-700,
 #root .bg-slate-800 .text-slate-800,
+#root .bg-slate-800 .text-slate-900,
 #root .bg-slate-950 .text-slate-700,
 #root .bg-slate-950 .text-slate-800,
+#root .bg-slate-950 .text-slate-900,
 #root .bg-\[\#0d2240\] .text-slate-700,
 #root .bg-\[\#0d2240\] .text-slate-800,
+#root .bg-\[\#0d2240\] .text-slate-900,
 #root .bg-gray-900 .text-gray-700,
 #root .bg-gray-900 .text-gray-800,
+#root .bg-gray-900 .text-gray-900,
 #root .bg-gray-800 .text-gray-700,
-#root .bg-gray-800 .text-gray-800 { color: #f8fafc !important; }
+#root .bg-gray-800 .text-gray-800,
+#root .bg-gray-800 .text-gray-900 { color: #f8fafc !important; }
 
-/* Form controls */
+/* Forms */
 #root input,
 #root select,
 #root textarea { color: #0f172a; background-color: #ffffff; }
