@@ -1,7 +1,7 @@
-import app from "../server.ts";
+import app from "../server";
 
-// Vercel's /api entrypoint must use the same Express application and
-// database connection as the rest of the backend.
+// Vercel API entrypoint. Use an extensionless import so Vercel's
+// serverless bundler resolves and includes server.ts in the function bundle.
 export default function handler(req: any, res: any) {
   return app(req, res);
 }
