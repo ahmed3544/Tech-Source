@@ -5,6 +5,8 @@ import * as schema from '../src/db/schema.js';
 import { getApps, cert, initializeApp } from 'firebase-admin/app';
 import { getMessaging } from 'firebase-admin/messaging';
 
+const hasDatabase = () => Boolean(process.env.DATABASE_URL || process.env.SUPABASE_DB_URL);
+
 function adminMessaging() {
   if (!process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
     console.warn('[FCM] FIREBASE_SERVICE_ACCOUNT_JSON is missing');
@@ -22,7 +24,7 @@ function adminMessaging() {
 }
 
 async function readTokens() {
-  if (!process.env.SUPABASE_DB_URL) return [];
+  if (!hasDatabase()) return [];
   try {
     const rows = await db.select().from(schema.settings).where(sql`key = 'fcm_tokens'`).limit(1);
     const value: any = rows[0]?.value;
@@ -42,8 +44,8 @@ async function tokensFor(employeeId: string) {
 }
 
 async function saveToken(employeeId: string, token: string, platform: string) {
-  if (!process.env.SUPABASE_DB_URL) {
-    console.warn('[FCM] token not saved: SUPABASE_DB_URL is missing');
+  if (!hasDatabase()) {
+    console.warn('[FCM] token not saved: database is unavailable');
     return false;
   }
   const current = await readTokens();
@@ -97,7 +99,7 @@ export async function sendPushToEmployee(
     }
   });
 
-  if (invalidTokens.size && process.env.SUPABASE_DB_URL) {
+  if (invalidTokens.size && hasDatabase()) {
     const current = await readTokens();
     const cleaned = current.filter((x: any) => !invalidTokens.has(String(x?.token || '')));
     try {
