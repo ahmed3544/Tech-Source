@@ -1,43 +1,73 @@
-/* TECH SOURCE - Minimal, safe contrast rules. */
+/* TECH SOURCE - Surface-aware contrast without recoloring explicit UI accents. */
 :root { --text-light: #fff; --text-dark: #0f172a; }
 
-/* Keep the existing design/colors. Set only the container's inherited text color. */
+/* Dark surfaces */
 .dark #root .bg-slate-900,
 .dark #root .bg-slate-800,
 .dark #root .bg-gray-900,
 .dark #root .bg-gray-800,
 .dark #root footer { color: #fff !important; }
 
+/* Light surfaces: set only the container's inherited/default color.
+   Do NOT force descendants, so explicit blue/green/etc. classes stay intact. */
 .dark #root .bg-white,
 .dark #root .bg-slate-50,
 .dark #root .bg-slate-100,
 .dark #root .bg-gray-50,
-.dark #root .bg-gray-100 { color: #0f172a !important; }
-
-/* Light mode: readable default text on light surfaces. */
+.dark #root .bg-gray-100,
 html:not(.dark) #root .bg-white,
 html:not(.dark) #root .bg-slate-50,
 html:not(.dark) #root .bg-slate-100,
 html:not(.dark) #root .bg-gray-50,
 html:not(.dark) #root .bg-gray-100 { color: #0f172a !important; }
 
-/* Form fields: do not override explicit Tailwind text colors such as blue/emerald. */
-#root input,
-#root textarea { color: #0f172a; }
+/* Inputs/selects: readable by default, but dark cards keep light controls. */
+#root input, #root select, #root textarea {
+  max-width: 100%;
+  min-width: 0;
+  font-size: 0.75rem;
+  line-height: 1.25rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#root input, #root select, #root textarea { color: #0f172a !important; }
 .dark #root input,
-.dark #root textarea { color: #fff; background-color: #0f172a; }
+.dark #root select,
+.dark #root textarea { color: #fff !important; background-color: #0f172a !important; }
 
-/* Preserve the intended color of action buttons without recoloring their children. */
-#root .bg-blue-600,
-#root .bg-blue-700,
-#root .bg-emerald-600,
-#root .bg-emerald-700,
-#root .bg-green-600,
-#root .bg-green-700,
-#root .bg-red-600,
-#root .bg-red-700,
-#root .bg-indigo-600,
-#root .bg-indigo-700 { color: #fff !important; }
+/* Login modal is intentionally dark in both themes, so credentials are always white. */
+#root .bg-slate-900 input,
+#root .bg-slate-900 select,
+#root .bg-slate-900 textarea {
+  color: #fff !important;
+  background-color: #020617 !important;
+  caret-color: #fff;
+}
+#root .bg-slate-900 input::placeholder,
+#root .bg-slate-900 textarea::placeholder { color: #64748b !important; }
 
-/* Never globally recolor SVG icons; their existing text-* classes remain authoritative. */
+/* Keep explicit action-button colors and white button labels. */
+#root .bg-blue-600, #root .bg-blue-700,
+#root .bg-emerald-600, #root .bg-emerald-700,
+#root .bg-green-600, #root .bg-green-700,
+#root .bg-red-600, #root .bg-red-700,
+#root .bg-indigo-600, #root .bg-indigo-700 { color: #fff !important; }
+
+/* Logo: never inherit text filters or become black in dark mode. */
+.dark #root .tech-source-logo img {
+  filter: none !important;
+  opacity: 1 !important;
+}
+.dark #root .tech-source-logo > div {
+  background-color: #fff !important;
+}
+
+/* Prevent labels/buttons from overflowing their boxes. */
+#root button, #root label, #root option {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+#root button { line-height: 1.25; }
+#root select { white-space: nowrap; }
+
 #root svg { color: currentColor; }
