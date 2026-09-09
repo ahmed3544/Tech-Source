@@ -18,6 +18,26 @@ const TABLES = [
   'notification_system_meta',
 ];
 
+function normalizeJsonValue(value) {
+  if (value == null) return null;
+
+  // pg normally returns json/jsonb as native JS objects, but depending on the
+  // source schema/driver a JSON value may arrive as a string. Never send a
+  // raw string such as "شركة..." to a jsonb parameter: PostgreSQL would try
+  // to parse it as JSON and fail. Preserve non-JSON source strings as valid
+  // JSON strings instead of losing the source data.
+  if (typeof value === 'string') {
+    try {
+      JSON.parse(value);
+      return value;
+    } catch {
+      return JSON.stringify(value);
+    }
+  }
+
+  return value;
+}
+
 async function main() {
   if (!SOURCE_URL || !TARGET_URL) {
     console.log('Supabase→Neon migration skipped: DATABASE_URL or SUPABASE_DB_URL is missing.');
@@ -72,10 +92,11 @@ async function main() {
       }
 
       const targetColumnsResult = await target.query(
-        `SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1 ORDER BY ordinal_position`,
+        `SELECT column_name, data_type FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1 ORDER BY ordinal_position`,
         [table],
       );
       const targetColumns = targetColumnsResult.rows.map((r) => r.column_name);
+      const targetTypes = new Map(targetColumnsResult.rows.map((r) => [r.column_name, r.data_type]));
       if (!targetColumns.length) continue;
 
       const sourceColumnsResult = await source.query(
@@ -112,7 +133,11 @@ async function main() {
         const values = [];
         const tuples = batch.map((row, rowIndex) => {
           const placeholders = columns.map((column, columnIndex) => {
-            values.push(row[column]);
+            let value = row[column];
+            if (targetTypes.get(column) === 'json' || targetTypes.get(column) === 'jsonb') {
+              value = normalizeJsonValue(value);
+            }
+            values.push(value);
             return `$${rowIndex * columns.length + columnIndex + 1}`;
           });
           return `(${placeholders.join(', ')})`;
