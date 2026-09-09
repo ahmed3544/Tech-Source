@@ -26,11 +26,6 @@ function normalizeAction(value: any) {
   return x;
 }
 
-function stamp(value: any) {
-  const t = new Date(value || '').getTime();
-  return Number.isFinite(t) && t > 0 ? new Date(t).toISOString() : new Date().toISOString();
-}
-
 export function registerAttendanceRealtime(app: any) {
   app.post('/api/punch', async (req: any, res: any, next: any) => {
     try {
@@ -49,18 +44,25 @@ export function registerAttendanceRealtime(app: any) {
       const existing: any = rows[0];
       const bodyRecord: any = req.body?.record || {};
       const nowIso = new Date().toISOString();
-      const next: any = { ...(existing || {}), ...bodyRecord, id: existing?.id || bodyRecord.id || `${employeeId}-${clock.date}`, employeeId, date: clock.date, updatedAt: nowIso };
+      const updatedRecord: any = {
+        ...(existing || {}),
+        ...bodyRecord,
+        id: existing?.id || bodyRecord.id || `${employeeId}-${clock.date}`,
+        employeeId,
+        date: clock.date,
+        updatedAt: nowIso
+      };
 
-      if (action === 'check_in') next.checkIn = clock.time;
-      if (action === 'check_out') next.checkOut = clock.time;
-      if (action === 'break_start') next.breakStart = clock.time;
-      if (action === 'break_end' || action === 'force_break_end') next.breakEnd = clock.time;
+      if (action === 'check_in') updatedRecord.checkIn = clock.time;
+      if (action === 'check_out') updatedRecord.checkOut = clock.time;
+      if (action === 'break_start') updatedRecord.breakStart = clock.time;
+      if (action === 'break_end' || action === 'force_break_end') updatedRecord.breakEnd = clock.time;
 
-      if (!existing) await db.insert(schema.attendanceRecords).values(next as any);
-      else await db.update(schema.attendanceRecords).set(next as any).where(eq(schema.attendanceRecords.id, existing.id));
+      if (!existing) await db.insert(schema.attendanceRecords).values(updatedRecord as any);
+      else await db.update(schema.attendanceRecords).set(updatedRecord as any).where(eq(schema.attendanceRecords.id, existing.id));
 
       const attendanceRecords = await db.select().from(schema.attendanceRecords);
-      return res.json({ success: true, record: next, attendanceRecords, lastUpdated: Date.now() });
+      return res.json({ success: true, record: updatedRecord, attendanceRecords, lastUpdated: Date.now() });
     } catch (error) {
       console.error('[attendance-realtime]', error);
       return res.status(500).json({ success: false, error: 'Attendance update failed' });
