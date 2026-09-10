@@ -12,12 +12,20 @@ if (!app.includes(marker)) {
     app = app.slice(0, at) + insert + app.slice(at + oldStamp.length);
   }
 
-  // Never immediately pull after a successful mutation. The sync response is the
-  // authoritative result; the 1.5s poll will reconcile the next server snapshot.
-  app = app.replace(/\n\s*\/\*\s*\n?\*?\s*IMPORTANT:\s*\n?\*?\s*اعمل Pull فوري بعد نجاح الـ Sync\.[\s\S]*?void pullFromServerRef\.current\(\);\s*\}/g,
-    '\n      // Keep the mutation response authoritative; polling will reconcile later.');
-  app = app.replace(/\n\s*\/\*\s*\n?\*?\s*Pull نهائي بعد انتهاء الـ Sync\.[\s\S]*?void pullFromServerRef\.current\(\);\s*\}/g,
-    '\n      // Do not pull here; avoid replacing a just-completed mutation.');
+  // Remove only the successful-sync immediate pull block, preserving the
+  // surrounding try/catch/finally structure.
+  app = app.replace(
+    /\n\s*\/\*\s*\n?\*?\s*IMPORTANT:\s*\n?\*?\s*اعمل Pull فوري بعد نجاح الـ Sync\.[\s\S]*?if\s*\(\s*pullFromServerRef\.current\s*\)\s*\{\s*void pullFromServerRef\.current\(\);\s*\}/g,
+    '\n      // Keep the mutation response authoritative; polling will reconcile later.'
+  );
+
+  // Remove the entire final-pull else-if block, including its opening and
+  // closing braces. This is intentionally broader than the old regex because
+  // removing only its body leaves an unbalanced else-if and breaks TypeScript.
+  app = app.replace(
+    /\n\s*\}\s*else\s+if\s*\(\s*pullFromServerRef\.current\s*\)\s*\{\s*\/\*\s*\n?\*?\s*Pull نهائي بعد انتهاء الـ Sync\.[\s\S]*?void pullFromServerRef\.current\(\);\s*\}\s*/g,
+    '\n'
+  );
 
   // Do not lose deletion tombstones when several mutations are queued together.
   app = app.replace(
@@ -33,17 +41,9 @@ let server = fs.readFileSync(serverPath, 'utf8');
 const sm = '/* SYNC_STALE_WRITE_GUARD_SERVER_V4 */';
 
 if (!server.includes(sm)) {
-  // Missing updatedAt is never a fresh update for an existing row.
   server = server.replace(
     "const newestStamp = (item:any,syncTime:any) => { const itemTime=ms(item?.updatedAt); return itemTime?stamp(itemTime):stamp(syncTime); };",
     "const newestStamp = (item:any,syncTime:any) => { const itemTime=ms(item?.updatedAt); return itemTime?stamp(itemTime):''; };"
-  );
-
-  // Employee records now have an updatedAt column and must follow the same
-  // last-write-wins rule as the other synchronized collections.
-  server = server.replace(
-    "if(!e?.id)return;const id=String(e.id),v=pick(e,['id','code','nameAr','nameEn','avatar','email','phone','department','jobTitleAr','jobTitleEn','shiftId','pin','role','joinedDate','status','annualLeaveBalance','casualLeaveBalance','regularLeaveBalance','sickLeaveBalance','isPhotoRemoved','updatedAt']);",
-    "if(!e?.id)return;const id=String(e.id),v=pick(e,['id','code','nameAr','nameEn','avatar','email','phone','department','jobTitleAr','jobTitleEn','shiftId','pin','role','joinedDate','status','annualLeaveBalance','casualLeaveBalance','regularLeaveBalance','sickLeaveBalance','isPhotoRemoved','updatedAt']);"
   );
 
   // Attendance is uniquely identified by employee + date. Protect that identity
@@ -65,7 +65,6 @@ if (!server.includes(sm)) {
     "if(!incoming)return;if(current&&incoming<current)return;await db.update(schema.attendanceRecords).set(v as any)"
   );
 
-  // Deleting an attendance row also stores employee/date as a tombstone.
   server = server.replace(
     "for(const id of clean)await db.delete(t).where(eq(t.id,id));}",
     "for(const id of clean){ if(t===schema.attendanceRecords){ const rows=await db.select().from(t).where(eq(t.id,id)); const row=rows[0]; if(row?.employeeId&&row?.date) await addTombstones('attendance',[id,String(row.employeeId)+':'+String(row.date).slice(0,10)]); } await db.delete(t).where(eq(t.id,id)); }}"
