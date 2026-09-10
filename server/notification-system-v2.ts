@@ -9,7 +9,7 @@ import * as schema from '../src/db/schema.js';
 type NotificationRecord = { id: string; recipientId: string; type: string; title: string; message: string; relatedEmployeeId?: string; relatedLeaveId?: string; relatedOvertimeId?: string; relatedShiftSwapId?: string; link?: string; targetUrl?: string; isRead: boolean; createdAt: string; updatedAt: string; };
 const USE_DATABASE = Boolean(process.env.DATABASE_URL || process.env.SUPABASE_DB_URL);
 const LOCAL_FILE = path.join(process.cwd(), 'notifications_v2.json');
-const VERSION = '5';
+const VERSION = '6';
 let readyPromise: Promise<void> | null = null;
 const clean = (value: unknown) => String(value ?? '').trim();
 const nowIso = () => new Date().toISOString();
@@ -49,6 +49,9 @@ function withTarget(item: NotificationRecord): NotificationRecord {
 function normalize(raw: any): NotificationRecord | null {
   const recipientId = clean(raw?.recipientId); const type = clean(raw?.type);
   if (!recipientId || !type) return null;
+  // A rejected-leave notification is only valid when it is tied to a real leave request.
+  // This permanently blocks the old/orphan "تم رفض الإجازة" notifications from returning.
+  if (type === 'leave_rejected' && !clean(raw?.relatedLeaveId)) return null;
   const createdAt = clean(raw?.createdAt) || nowIso(); const updatedAt = clean(raw?.updatedAt) || createdAt;
   const item: Omit<NotificationRecord, 'id'> & { id?: string } = {
     id: clean(raw?.id) || undefined, recipientId, type,
@@ -66,10 +69,7 @@ function mergeDuplicates(items: NotificationRecord[]): NotificationRecord[] {
     const item = withTarget(raw);
     const key = semanticKey(item);
     const old = map.get(key);
-    if (!old) {
-      map.set(key, item);
-      continue;
-    }
+    if (!old) { map.set(key, item); continue; }
     const oldTime = new Date(old.updatedAt || old.createdAt || 0).getTime();
     const newTime = new Date(item.updatedAt || item.createdAt || 0).getTime();
     const newer = newTime >= oldTime ? item : old;
@@ -91,6 +91,8 @@ async function ensureReady() {
       await db.execute(sql`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS related_shift_swap_id text`);
       await db.execute(sql`CREATE TABLE IF NOT EXISTS notification_system_meta (key text PRIMARY KEY, value text NOT NULL)`);
       await db.execute(sql`INSERT INTO notification_system_meta (key, value) VALUES ('version', ${VERSION}) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`);
+      // Remove any legacy/orphan rejected-leave notifications once and for all.
+      await db.execute(sql`DELETE FROM notifications n WHERE n.type = 'leave_rejected' AND (n.related_leave_id IS NULL OR NOT EXISTS (SELECT 1 FROM leave_requests l WHERE l.id = n.related_leave_id AND LOWER(COALESCE(l.status,'')) = 'rejected')`);
     } else if (!fs.existsSync(LOCAL_FILE)) writeLocal([]);
   })().catch(error => { readyPromise = null; throw error; });
   return readyPromise;
@@ -100,14 +102,18 @@ async function listForUser(userId: string): Promise<NotificationRecord[]> {
   await ensureReady(); const id = clean(userId); if (!id) return [];
   if (USE_DATABASE) {
     const rows = await db.select().from(schema.notifications).where(eq(schema.notifications.recipientId, id));
-    const leaveRows = await db.select({ id: schema.leaveRequests.id }).from(schema.leaveRequests);
+    const leaveRows = await db.select({ id: schema.leaveRequests.id, status: schema.leaveRequests.status }).from(schema.leaveRequests);
+    const validRejectedLeaveIds = new Set(leaveRows.filter((row: any) => String(row.status || '').toLowerCase() === 'rejected').map((row: any) => String(row.id)));
     const validLeaveIds = new Set(leaveRows.map((row: any) => String(row.id)));
     const normalized = rows
       .map((row: any) => withTarget({ ...row, id: String(row.id), recipientId: String(row.recipientId) }))
-      .filter((item) => !(item.type.startsWith('leave_') && item.relatedLeaveId && !validLeaveIds.has(String(item.relatedLeaveId))));
+      .filter((item) => {
+        if (item.type === 'leave_rejected') return Boolean(item.relatedLeaveId && validRejectedLeaveIds.has(String(item.relatedLeaveId)));
+        return !(item.type.startsWith('leave_') && item.relatedLeaveId && !validLeaveIds.has(String(item.relatedLeaveId)));
+      });
     return mergeDuplicates(normalized);
   }
-  return mergeDuplicates(readLocal().filter(item => item.recipientId === id));
+  return mergeDuplicates(readLocal().filter(item => item.recipientId === id).map(normalize).filter(Boolean) as NotificationRecord[]);
 }
 
 async function saveOne(input: any): Promise<NotificationRecord | null> {
@@ -119,19 +125,15 @@ async function saveOne(input: any): Promise<NotificationRecord | null> {
     if (index >= 0) {
       const existing = items[index];
       items[index] = { ...existing, ...item, id: existing.id, isRead: Boolean(existing.isRead || item.isRead), updatedAt: nowIso() };
-    } else {
-      items.push(item);
-    }
+    } else items.push(item);
     writeLocal(mergeDuplicates(items));
     return withTarget(items.find(existing => semanticKey(existing) === key) || item);
   }
-
   const key = semanticKey(item);
   const allRows = await db.select().from(schema.notifications).where(eq(schema.notifications.recipientId, item.recipientId));
   const existingById: any = allRows.find((row: any) => String(row.id) === item.id);
   const existingByKey: any = allRows.find((row: any) => semanticKey(row) === key);
   const existing: any = existingById || existingByKey;
-
   if (existing) {
     const existingTime = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
     const incomingTime = new Date(item.updatedAt || item.createdAt || 0).getTime();
@@ -142,7 +144,6 @@ async function saveOne(input: any): Promise<NotificationRecord | null> {
     await db.update(schema.notifications).set(changes as any).where(eq(schema.notifications.id, String(existing.id)));
     return withTarget(merged);
   }
-
   const { link: _link, targetUrl: _targetUrl, ...dbItem } = item;
   await db.insert(schema.notifications).values(dbItem as any);
   return item;
@@ -152,17 +153,12 @@ async function markRead(id: string, recipientId: string) {
   await ensureReady(); const notificationId = clean(id); const userId = clean(recipientId); if (!notificationId || !userId) return false;
   if (!USE_DATABASE) {
     const items = readLocal(); const target = items.find(item => item.id === notificationId && item.recipientId === userId); if (!target) return false;
-    const key = semanticKey(target);
-    const updated = items.map(item => semanticKey(item) === key ? { ...item, isRead: true, updatedAt: nowIso() } : item);
-    writeLocal(updated); return true;
+    const key = semanticKey(target); const updated = items.map(item => semanticKey(item) === key ? { ...item, isRead: true, updatedAt: nowIso() } : item); writeLocal(updated); return true;
   }
   const rows = await db.select().from(schema.notifications).where(eq(schema.notifications.recipientId, userId));
-  const target: any = rows.find((row: any) => String(row.id) === notificationId);
-  if (!target) return false;
-  const key = semanticKey(target);
-  const matches = rows.filter((row: any) => semanticKey(row) === key);
-  await Promise.all(matches.map((row: any) => db.update(schema.notifications).set({ isRead: true, updatedAt: nowIso() }).where(eq(schema.notifications.id, String(row.id)))));
-  return true;
+  const target: any = rows.find((row: any) => String(row.id) === notificationId); if (!target) return false;
+  const key = semanticKey(target); const matches = rows.filter((row: any) => semanticKey(row) === key);
+  await Promise.all(matches.map((row: any) => db.update(schema.notifications).set({ isRead: true, updatedAt: nowIso() }).where(eq(schema.notifications.id, String(row.id))))); return true;
 }
 
 async function markAllRead(recipientId: string) {
