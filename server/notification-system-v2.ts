@@ -9,7 +9,7 @@ import * as schema from '../src/db/schema.js';
 type NotificationRecord = { id: string; recipientId: string; type: string; title: string; message: string; relatedEmployeeId?: string; relatedLeaveId?: string; relatedOvertimeId?: string; relatedShiftSwapId?: string; link?: string; targetUrl?: string; isRead: boolean; createdAt: string; updatedAt: string; };
 const USE_DATABASE = Boolean(process.env.DATABASE_URL || process.env.SUPABASE_DB_URL);
 const LOCAL_FILE = path.join(process.cwd(), 'notifications_v2.json');
-const VERSION = '4';
+const VERSION = '5';
 let readyPromise: Promise<void> | null = null;
 const clean = (value: unknown) => String(value ?? '').trim();
 const nowIso = () => new Date().toISOString();
@@ -18,6 +18,14 @@ function stableId(input: Omit<NotificationRecord, 'id'> & { id?: string }) {
   if (clean(input.id)) return clean(input.id);
   const basis = [input.recipientId, input.type, input.relatedEmployeeId || '', input.relatedLeaveId || '', input.relatedOvertimeId || '', input.relatedShiftSwapId || '', input.title, input.message].join('|');
   return `n2_${crypto.createHash('sha256').update(basis).digest('hex').slice(0, 40)}`;
+}
+
+function semanticKey(raw: any): string {
+  const recipientId = clean(raw?.recipientId);
+  const type = clean(raw?.type);
+  const relatedId = clean(raw?.relatedLeaveId) || clean(raw?.relatedOvertimeId) || clean(raw?.relatedShiftSwapId);
+  if (relatedId) return `${recipientId}|${type}|${relatedId}`;
+  return `${recipientId}|${type}|${clean(raw?.title)}|${clean(raw?.message)}`;
 }
 
 function targetFor(raw: any): string | undefined {
@@ -52,6 +60,28 @@ function normalize(raw: any): NotificationRecord | null {
   return withTarget({ id: stableId(item), ...item });
 }
 
+function mergeDuplicates(items: NotificationRecord[]): NotificationRecord[] {
+  const map = new Map<string, NotificationRecord>();
+  for (const raw of items) {
+    const item = withTarget(raw);
+    const key = semanticKey(item);
+    const old = map.get(key);
+    if (!old) {
+      map.set(key, item);
+      continue;
+    }
+    const oldTime = new Date(old.updatedAt || old.createdAt || 0).getTime();
+    const newTime = new Date(item.updatedAt || item.createdAt || 0).getTime();
+    const newer = newTime >= oldTime ? item : old;
+    map.set(key, {
+      ...newer,
+      isRead: Boolean(old.isRead || item.isRead),
+      createdAt: new Date(old.createdAt || item.createdAt || 0).getTime() <= new Date(item.createdAt || old.createdAt || 0).getTime() ? old.createdAt : item.createdAt,
+    });
+  }
+  return Array.from(map.values()).sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+}
+
 function readLocal(): NotificationRecord[] { try { if (!fs.existsSync(LOCAL_FILE)) return []; const parsed = JSON.parse(fs.readFileSync(LOCAL_FILE, 'utf8')); return Array.isArray(parsed) ? parsed : []; } catch { return []; } }
 function writeLocal(items: NotificationRecord[]) { try { fs.writeFileSync(LOCAL_FILE, JSON.stringify(items, null, 2)); } catch (error) { console.warn('[Notifications v2] local persistence failed', error); } }
 
@@ -70,34 +100,69 @@ async function listForUser(userId: string): Promise<NotificationRecord[]> {
   await ensureReady(); const id = clean(userId); if (!id) return [];
   if (USE_DATABASE) {
     const rows = await db.select().from(schema.notifications).where(eq(schema.notifications.recipientId, id));
-    return rows.map((row: any) => withTarget({ ...row, id: String(row.id), recipientId: String(row.recipientId) })).sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+    const leaveRows = await db.select({ id: schema.leaveRequests.id }).from(schema.leaveRequests);
+    const validLeaveIds = new Set(leaveRows.map((row: any) => String(row.id)));
+    const normalized = rows
+      .map((row: any) => withTarget({ ...row, id: String(row.id), recipientId: String(row.recipientId) }))
+      .filter((item) => !(item.type.startsWith('leave_') && item.relatedLeaveId && !validLeaveIds.has(String(item.relatedLeaveId))));
+    return mergeDuplicates(normalized);
   }
-  return readLocal().filter(item => item.recipientId === id).map(withTarget).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  return mergeDuplicates(readLocal().filter(item => item.recipientId === id));
 }
 
 async function saveOne(input: any): Promise<NotificationRecord | null> {
   const item = normalize(input); if (!item) return null; await ensureReady();
   if (!USE_DATABASE) {
-    const items = readLocal(); const index = items.findIndex(existing => existing.id === item.id);
-    if (index >= 0) { const existing = items[index]; items[index] = existing.isRead && !item.isRead ? { ...existing, updatedAt: nowIso() } : { ...existing, ...item, isRead: existing.isRead || item.isRead }; }
-    else items.push(item); writeLocal(items); return withTarget(items.find(existing => existing.id === item.id) || item);
+    const items = readLocal();
+    const key = semanticKey(item);
+    const index = items.findIndex(existing => semanticKey(existing) === key || existing.id === item.id);
+    if (index >= 0) {
+      const existing = items[index];
+      items[index] = { ...existing, ...item, id: existing.id, isRead: Boolean(existing.isRead || item.isRead), updatedAt: nowIso() };
+    } else {
+      items.push(item);
+    }
+    writeLocal(mergeDuplicates(items));
+    return withTarget(items.find(existing => semanticKey(existing) === key) || item);
   }
-  const existingRows = await db.select().from(schema.notifications).where(eq(schema.notifications.id, item.id)); const existing: any = existingRows[0];
+
+  const key = semanticKey(item);
+  const allRows = await db.select().from(schema.notifications).where(eq(schema.notifications.recipientId, item.recipientId));
+  const existingById: any = allRows.find((row: any) => String(row.id) === item.id);
+  const existingByKey: any = allRows.find((row: any) => semanticKey(row) === key);
+  const existing: any = existingById || existingByKey;
+
   if (existing) {
-    const existingTime = new Date(existing.updatedAt || existing.createdAt || 0).getTime(); const incomingTime = new Date(item.updatedAt || item.createdAt || 0).getTime();
-    if (existing.isRead && !item.isRead) return withTarget(existing as NotificationRecord);
-    if (Number.isFinite(existingTime) && Number.isFinite(incomingTime) && incomingTime < existingTime) return withTarget(existing as NotificationRecord);
-    const merged = { ...item, isRead: Boolean(existing.isRead || item.isRead), updatedAt: nowIso() }; const { id: _ignoredId, link: _link, targetUrl: _targetUrl, ...changes } = merged;
-    await db.update(schema.notifications).set(changes as any).where(eq(schema.notifications.id, item.id)); return withTarget(merged);
+    const existingTime = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
+    const incomingTime = new Date(item.updatedAt || item.createdAt || 0).getTime();
+    if (existing.isRead && !item.isRead) return withTarget({ ...existing, id: String(existing.id), recipientId: String(existing.recipientId) });
+    if (Number.isFinite(existingTime) && Number.isFinite(incomingTime) && incomingTime < existingTime) return withTarget({ ...existing, id: String(existing.id), recipientId: String(existing.recipientId) });
+    const merged = { ...item, id: String(existing.id), isRead: Boolean(existing.isRead || item.isRead), updatedAt: nowIso() };
+    const { id: _ignoredId, link: _link, targetUrl: _targetUrl, ...changes } = merged;
+    await db.update(schema.notifications).set(changes as any).where(eq(schema.notifications.id, String(existing.id)));
+    return withTarget(merged);
   }
+
   const { link: _link, targetUrl: _targetUrl, ...dbItem } = item;
-  await db.insert(schema.notifications).values(dbItem as any); return item;
+  await db.insert(schema.notifications).values(dbItem as any);
+  return item;
 }
 
 async function markRead(id: string, recipientId: string) {
   await ensureReady(); const notificationId = clean(id); const userId = clean(recipientId); if (!notificationId || !userId) return false;
-  if (!USE_DATABASE) { const items = readLocal(); const index = items.findIndex(item => item.id === notificationId && item.recipientId === userId); if (index < 0) return false; items[index] = { ...items[index], isRead: true, updatedAt: nowIso() }; writeLocal(items); return true; }
-  const result = await db.update(schema.notifications).set({ isRead: true, updatedAt: nowIso() }).where(and(eq(schema.notifications.id, notificationId), eq(schema.notifications.recipientId, userId))); return Number((result as any)?.rowCount ?? 0) > 0;
+  if (!USE_DATABASE) {
+    const items = readLocal(); const target = items.find(item => item.id === notificationId && item.recipientId === userId); if (!target) return false;
+    const key = semanticKey(target);
+    const updated = items.map(item => semanticKey(item) === key ? { ...item, isRead: true, updatedAt: nowIso() } : item);
+    writeLocal(updated); return true;
+  }
+  const rows = await db.select().from(schema.notifications).where(eq(schema.notifications.recipientId, userId));
+  const target: any = rows.find((row: any) => String(row.id) === notificationId);
+  if (!target) return false;
+  const key = semanticKey(target);
+  const matches = rows.filter((row: any) => semanticKey(row) === key);
+  await Promise.all(matches.map((row: any) => db.update(schema.notifications).set({ isRead: true, updatedAt: nowIso() }).where(eq(schema.notifications.id, String(row.id)))));
+  return true;
 }
 
 async function markAllRead(recipientId: string) {
