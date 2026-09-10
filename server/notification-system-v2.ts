@@ -91,8 +91,8 @@ async function ensureReady() {
       await db.execute(sql`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS related_shift_swap_id text`);
       await db.execute(sql`CREATE TABLE IF NOT EXISTS notification_system_meta (key text PRIMARY KEY, value text NOT NULL)`);
       await db.execute(sql`INSERT INTO notification_system_meta (key, value) VALUES ('version', ${VERSION}) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`);
-      // Remove any legacy/orphan rejected-leave notifications once and for all.
-      await db.execute(sql`DELETE FROM notifications n WHERE n.type = 'leave_rejected' AND (n.related_leave_id IS NULL OR NOT EXISTS (SELECT 1 FROM leave_requests l WHERE l.id = n.related_leave_id AND LOWER(COALESCE(l.status,'')) = 'rejected')`);
+      // Remove legacy/orphan rejected-leave notifications once and for all.
+      await db.execute(sql`DELETE FROM notifications n WHERE (n.type = 'leave_rejected' AND (n.related_leave_id IS NULL OR NOT EXISTS (SELECT 1 FROM leave_requests l WHERE l.id = n.related_leave_id AND LOWER(COALESCE(l.status,'')) = 'rejected')))`);
     } else if (!fs.existsSync(LOCAL_FILE)) writeLocal([]);
   })().catch(error => { readyPromise = null; throw error; });
   return readyPromise;
@@ -113,14 +113,13 @@ async function listForUser(userId: string): Promise<NotificationRecord[]> {
       });
     return mergeDuplicates(normalized);
   }
-  return mergeDuplicates(readLocal().filter(item => item.recipientId === id).map(normalize).filter(Boolean) as NotificationRecord[]);
+  return mergeDuplicates(readLocal().filter(item => item.recipientId === id).map(item => normalize(item)).filter((item): item is NotificationRecord => Boolean(item)));
 }
 
 async function saveOne(input: any): Promise<NotificationRecord | null> {
   const item = normalize(input); if (!item) return null; await ensureReady();
   if (!USE_DATABASE) {
-    const items = readLocal();
-    const key = semanticKey(item);
+    const items = readLocal(); const key = semanticKey(item);
     const index = items.findIndex(existing => semanticKey(existing) === key || existing.id === item.id);
     if (index >= 0) {
       const existing = items[index];
