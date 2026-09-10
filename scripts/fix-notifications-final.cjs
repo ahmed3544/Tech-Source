@@ -7,8 +7,18 @@ function patch(path) {
   code = code.replace(/\n\s*onMarkAsRead\?\.\(id\);/g, '');
   code = code.replace(/\n\s*onMarkAllAsRead\?\.\(\);/g, '');
 
-  // Remove any legacy /api/data notification fallback. The generic data endpoint
-  // intentionally does not contain notifications anymore.
+  // Replace the compact NotificationsPage loader wholesale so future builds can
+  // never reintroduce the old /api/data notification fallback.
+  if (path.endsWith('NotificationsPage.tsx')) {
+    const start = code.indexOf('const load=async(silent=false)=>{');
+    const end = code.indexOf('useEffect(()=>', start);
+    if (start >= 0 && end > start) {
+      const cleanLoader = `const load=async(silent=false)=>{if(!currentUserId){setItems([]);setLoading(false);return;}if(!silent)setLoading(true);setError(false);try{const r=await fetch(\`/api/notifications?userId=\${encodeURIComponent(String(currentUserId).trim())}&_=\${Date.now()}\`,{cache:'no-store',headers:{'Cache-Control':'no-cache','Pragma':'no-cache'}});if(!r.ok)throw new Error(String(r.status));const d=await r.json();if(!d?.success||!Array.isArray(d.notifications))throw new Error('notifications_failed');setItems(normalize(d.notifications,currentUserId));}catch{setError(true);}finally{if(!silent)setLoading(false);}};\n `;
+      code = code.slice(0, start) + cleanLoader + code.slice(end);
+    }
+  }
+
+  // Remove any legacy /api/data notification fallback from expanded loaders.
   const loadStart = code.indexOf('const load = async (silent = false) => {');
   const loadEnd = code.indexOf('\n  useEffect(() =>', loadStart);
   if (loadStart >= 0 && loadEnd > loadStart) {
@@ -19,8 +29,6 @@ function patch(path) {
   }
 
   // Shift-swap actions must not send notifications through generic /api/sync.
-  // Persist the request through sync, then persist read/new notifications through
-  // the dedicated notification API.
   code = code.replace(
     "body:JSON.stringify({shiftSwapRequests:nextRequests,notifications:next,lastUpdated:Date.now()})",
     "body:JSON.stringify({shiftSwapRequests:nextRequests,lastUpdated:Date.now()})"
