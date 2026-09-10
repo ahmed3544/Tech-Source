@@ -12,22 +12,18 @@ if (!app.includes(marker)) {
     app = app.slice(0, at) + insert + app.slice(at + oldStamp.length);
   }
 
-  // Remove only the successful-sync immediate pull block, preserving the
-  // surrounding try/catch/finally structure.
   app = app.replace(
     /\n\s*\/\*\s*\n?\*?\s*IMPORTANT:\s*\n?\*?\s*اعمل Pull فوري بعد نجاح الـ Sync\.[\s\S]*?if\s*\(\s*pullFromServerRef\.current\s*\)\s*\{\s*void pullFromServerRef\.current\(\);\s*\}/g,
     '\n      // Keep the mutation response authoritative; polling will reconcile later.'
   );
 
-  // Remove the entire final-pull else-if block, including its opening and
-  // closing braces. This is intentionally broader than the old regex because
-  // removing only its body leaves an unbalanced else-if and breaks TypeScript.
+  // Remove the whole else-if final-pull branch, but keep the closing brace of
+  // the preceding `if (queued)` block. This preserves try/catch/finally syntax.
   app = app.replace(
-    /\n\s*\}\s*else\s+if\s*\(\s*pullFromServerRef\.current\s*\)\s*\{\s*\/\*\s*\n?\*?\s*Pull نهائي بعد انتهاء الـ Sync\.[\s\S]*?void pullFromServerRef\.current\(\);\s*\}\s*/g,
+    /\n\s*else\s+if\s*\(\s*pullFromServerRef\.current\s*\)\s*\{\s*\/\*\s*\n?\*?\s*Pull نهائي بعد انتهاء الـ Sync\.[\s\S]*?void pullFromServerRef\.current\(\);\s*\}/g,
     '\n'
   );
 
-  // Do not lose deletion tombstones when several mutations are queued together.
   app = app.replace(
     /syncQueuedPayloadRef\.current = \{\n\s*\.\.\.\(syncQueuedPayloadRef\.current \|\| \{\}\),\n\s*\.\.\.payload,\n\s*lastUpdated: now\n\s*\};/,
     `const previousQueued = syncQueuedPayloadRef.current || {};\n    syncQueuedPayloadRef.current = {\n      ...previousQueued,\n      ...payload,\n      deletedAttendanceIds: Array.from(new Set([...(previousQueued.deletedAttendanceIds || []), ...(payload.deletedAttendanceIds || [])])),\n      deletedEmployeeIds: Array.from(new Set([...(previousQueued.deletedEmployeeIds || []), ...(payload.deletedEmployeeIds || [])])),\n      deletedLeaveIds: Array.from(new Set([...(previousQueued.deletedLeaveIds || []), ...(payload.deletedLeaveIds || [])])),\n      lastUpdated: now\n    };`
@@ -46,8 +42,6 @@ if (!server.includes(sm)) {
     "const newestStamp = (item:any,syncTime:any) => { const itemTime=ms(item?.updatedAt); return itemTime?stamp(itemTime):''; };"
   );
 
-  // Attendance is uniquely identified by employee + date. Protect that identity
-  // as well as the record id from stale devices after deletion.
   server = server.replace(
     "if(v.id&&tombs.has(String(v.id)))return;v.employeeId=employeeId;date=date;",
     "if((v.id&&tombs.has(String(v.id)))||tombs.has(employeeId+':'+date))return;v.employeeId=employeeId;date=date;"
