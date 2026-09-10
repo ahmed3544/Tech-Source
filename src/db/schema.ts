@@ -30,6 +30,7 @@ export const employees = pgTable('employees', {
   regularLeaveBalance: real('regular_leave_balance'),
   sickLeaveBalance: real('sick_leave_balance'),
   isPhotoRemoved: boolean('is_photo_removed'),
+  updatedAt: text('updated_at'),
 });
 
 export const attendanceRecords = pgTable('attendance_records', {
