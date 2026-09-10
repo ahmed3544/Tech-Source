@@ -72,6 +72,7 @@ export const leaveRequests = pgTable('leave_requests', {
   reason: text('reason'),
   status: text('status'),
   createdAt: text('created_at'),
+  updatedAt: text('updated_at'),
   hours: integer('hours'),
   permissionSlot: text('permission_slot'),
   attachmentUrl: text('attachment_url'),
