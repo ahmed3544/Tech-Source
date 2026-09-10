@@ -7,6 +7,9 @@ let code = fs.readFileSync(path, 'utf8');
 const renderMarker = '/* TECH_SOURCE_NOTIFICATIONS_RENDER_V2 */';
 const navMarker = '/* TECH_SOURCE_NOTIFICATIONS_NAV_V2 */';
 
+// Keep the navigation marker if needed, but never leave the render marker in App.tsx.
+code = code.replace(/\s*\/\* TECH_SOURCE_NOTIFICATIONS_RENDER_V2 \*\/\s*/g, '\n');
+
 // Ensure the Header can open the full notifications page.
 if (!code.includes(navMarker)) {
   const headerStart = code.indexOf('<Header');
@@ -27,18 +30,17 @@ if (!code.includes(navMarker)) {
     }
   }
   code = code.replace(/\n/, '\n' + navMarker + '\n');
-  fs.writeFileSync(path, code, 'utf8');
 }
 
 // Render NotificationsPage when the notifications tab is active.
-if (!code.includes(renderMarker)) {
+// The render block is still inserted, but its marker comment is intentionally omitted.
+if (!code.includes("{activeTab === 'notifications' && (")) {
   const anchor = /([ \t]*)\{activeTab ===\s*'portal' && \(/;
   const match = code.match(anchor);
 
   if (match && match.index !== undefined) {
     const indent = match[1];
     const block =
-      indent + renderMarker + '\n' +
       indent + "{activeTab === 'notifications' && (\n" +
       indent + '  <NotificationsPage\n' +
       indent + '    currentUserId={currentUser?.id}\n' +
@@ -48,9 +50,10 @@ if (!code.includes(renderMarker)) {
       indent + ')}\n\n';
 
     code = code.slice(0, match.index) + block + code.slice(match.index);
-    fs.writeFileSync(path, code, 'utf8');
-    console.log('[patch_notifications_navigation] fixed and applied');
-  } else {
-    console.log('[patch_notifications_navigation] portal render anchor not found; skipped safely');
   }
 }
+
+// Final safety pass: the requested marker must never remain in the generated source.
+code = code.replace(/\s*\/\* TECH_SOURCE_NOTIFICATIONS_RENDER_V2 \*\/\s*/g, '\n');
+fs.writeFileSync(path, code, 'utf8');
+console.log('[patch_notifications_navigation] render marker removed');
