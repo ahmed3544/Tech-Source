@@ -102,5 +102,35 @@ if (!code.includes(notificationConsistencyMarker)) {
   }
 }
 
+/* SERVER SYNC HARDENING V2
+ * The old snapshot returned Date.now(), even when the POST /api/sync failed.
+ * That made a failed sync look newer than the local mutation and caused the
+ * next poll to overwrite the user's change. Also, deleted attendance rows had
+ * no tombstone, so a stale device could recreate them on its next full-array sync.
+ */
+const serverPath = 'server/device-sync-v2.ts';
+if (fs.existsSync(serverPath)) {
+  let server = fs.readFileSync(serverPath, 'utf8');
+  const serverMarker = '/* SERVER_SYNC_HARDENING_V2 */';
+  if (!server.includes(serverMarker)) {
+    const oldAttendance = `async function upsertAttendance(r:any,syncTime:any){if(!r?.employeeId||!r?.date)return;const employeeId=String(r.employeeId),date=String(r.date).slice(0,10),v=pick(r,['id','employeeId','date','checkIn','checkOut','breakStart','breakEnd','breaks','totalBreakSeconds','location','deviceInfo','lateMinutes','lateSeconds','earlyLeaveMinutes','workHours','overtimeHours','minusHours','status','leaveType','notes','verifiedByFace','isExcused','excusedBy','excusedReason','updatedAt','isExplicitCancelCheckOut']);v.employeeId=employeeId;v.date=date;v.updatedAt=newestStamp(r,syncTime);const a=await db.select().from(schema.attendanceRecords).where(and(eq(schema.attendanceRecords.employeeId,employeeId),eq(schema.attendanceRecords.date,date)));if(!a[0]){await db.insert(schema.attendanceRecords).values(v as any);return;}const incoming=ms(v.updatedAt),current=ms((a[0] as any).updatedAt||(a[0] as any).createdAt);if(current&&incoming<current)return;await db.update(schema.attendanceRecords).set(v as any).where(eq(schema.attendanceRecords.id,(a[0] as any).id));}`;
+    const newAttendance = `async function upsertAttendance(r:any,syncTime:any){if(!r?.employeeId||!r?.date)return;const employeeId=String(r.employeeId),date=String(r.date).slice(0,10),v=pick(r,['id','employeeId','date','checkIn','checkOut','breakStart','breakEnd','breaks','totalBreakSeconds','location','deviceInfo','lateMinutes','lateSeconds','earlyLeaveMinutes','workHours','overtimeHours','minusHours','status','leaveType','notes','verifiedByFace','isExcused','excusedBy','excusedReason','updatedAt','isExplicitCancelCheckOut']);v.employeeId=employeeId;v.date=date;v.updatedAt=newestStamp(r,syncTime);const tomb=await db.select().from(schema.settings).where(eq(schema.settings.key,'__deleted_attendance:'+String(v.id||employeeId+':'+date)));const deletedAt=ms(tomb[0]?.value);const incoming=ms(v.updatedAt);if(deletedAt&&incoming<=deletedAt)return;const a=await db.select().from(schema.attendanceRecords).where(and(eq(schema.attendanceRecords.employeeId,employeeId),eq(schema.attendanceRecords.date,date)));if(!a[0]){await db.insert(schema.attendanceRecords).values(v as any);return;}const current=ms((a[0] as any).updatedAt||(a[0] as any).createdAt);if(current&&incoming<current)return;await db.update(schema.attendanceRecords).set(v as any).where(eq(schema.attendanceRecords.id,(a[0] as any).id));}`;
+    if (server.includes(oldAttendance)) server = server.replace(oldAttendance, newAttendance);
+
+    const oldDel = `async function del(t:any,ids:any){if(!Array.isArray(ids))return;for(const x of ids){const id=String(x||'').trim();if(id)await db.delete(t).where(eq(t.id,id));}}`;
+    const newDel = `async function del(t:any,ids:any){if(!Array.isArray(ids))return;for(const x of ids){const id=String(x||'').trim();if(!id)continue;await db.delete(t).where(eq(t.id,id));if(t===schema.attendanceRecords){await db.insert(schema.settings).values({key:'__deleted_attendance:'+id,value:new Date().toISOString()} as any).onConflictDoUpdate({target:schema.settings.key,set:{value:new Date().toISOString()} as any});}}}`;
+    if (server.includes(oldDel)) server = server.replace(oldDel, newDel);
+
+    const oldSnapshot = `employeeShiftAssignments,lastUpdated:Date.now()}`;
+    const newSnapshot = `employeeShiftAssignments,lastUpdated:Math.max(0,...[...employees,...attendanceRecords,...leaveRequests,...overtimeRequests,...shifts,...notifications,...employeeShiftAssignments,...settings].map((x:any)=>ms(x?.updatedAt||x?.createdAt||x?.value)).filter((x:number)=>Number.isFinite(x)&&x>0))}`;
+    if (server.includes(oldSnapshot)) server = server.replace(oldSnapshot, newSnapshot);
+
+    server = server.replace(/^(import React[\s\S]*?)/, '$1');
+    server = server + `\n${serverMarker}\n`;
+    fs.writeFileSync(serverPath, server, 'utf8');
+    console.log('[patch_client_authoritative_sync] server sync hardening applied');
+  }
+}
+
 fs.writeFileSync(path, code);
 console.log('[patch_client_authoritative_sync] applied');
