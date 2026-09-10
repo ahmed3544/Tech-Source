@@ -12,6 +12,21 @@ if (fs.existsSync(notificationPath)) {
     "          await db.execute(sql`DELETE FROM notifications`);\n",
     "          // Data-preserving migration: do not delete existing notifications.\n"
   );
+
+  // Notifications are authoritative through their dedicated API. Never ingest
+  // notification arrays from the generic device-sync endpoint.
+  notificationCode = notificationCode.replace(
+    /\n\s*app\.use\(async \(req, _res, next\) => \{ if \(req\.method !== 'POST' \|\| !req\.path\.startsWith\('\/api\/sync'\)\) return next\(\);[\s\S]*?delete body\.notifications; next\(\); \}\);/,
+    '\n'
+  );
+
+  // Return unreadCount from the authoritative notification query so the badge
+  // is never calculated from localStorage or a stale client array.
+  notificationCode = notificationCode.replace(
+    "app.get('/api/notifications', async (req, res) => { try { const notifications = await listForUser(clean(req.query.userId)); res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate'); res.setHeader('Pragma', 'no-cache'); res.json({ success: true, notifications }); } catch (error) { console.error('[Notifications v2] GET failed', error); res.status(500).json({ success: false, notifications: [], error: 'notifications_unavailable' }); } });",
+    "app.get('/api/notifications', async (req, res) => { try { const userId = clean(req.query.userId); const notifications = await listForUser(userId); const unreadCount = notifications.filter((item) => !item.isRead).length; res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate'); res.setHeader('Pragma', 'no-cache'); res.json({ success: true, notifications, unreadCount }); } catch (error) { console.error('[Notifications v2] GET failed', error); res.status(500).json({ success: false, notifications: [], unreadCount: 0, error: 'notifications_unavailable' }); } });"
+  );
+
   fs.writeFileSync(notificationPath, notificationCode);
 }
 
@@ -36,4 +51,4 @@ else if (!code.includes('registerAttendanceRealtime(app);')) {
 }
 
 fs.writeFileSync(serverPath, code);
-console.log('[notifications-v2] notification + safe legacy recovery + device sync + authoritative attendance active');
+console.log('[notifications-v2] notification API isolated from generic sync; authoritative unreadCount active');
