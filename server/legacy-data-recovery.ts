@@ -67,7 +67,6 @@ export async function recoverMissingLegacyData() {
         overtime: await insertMissing(schema.overtimeRequests, data.overtimeRequests),
         shifts: await insertMissing(schema.shifts, data.shifts),
         assignments: await insertMissing(schema.employeeShiftAssignments, data.employeeShiftAssignments),
-        notifications: await insertMissing(schema.notifications, data.notifications),
         settings: await recoverSettings(data),
       };
       if (Array.isArray(data.attendanceRecords)) {
