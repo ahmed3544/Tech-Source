@@ -80,13 +80,44 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
         if (storedAssignments && !suppliedAssignments && !cancelled) {
           try { setAssignments(JSON.parse(storedAssignments)); } catch {}
         }
+        if (!cancelled && !suppliedEmployees?.length) {
+          try {
+            const storedEmployees = localStorage.getItem('attendance_employees');
+            if (storedEmployees) {
+              const parsedEmployees = JSON.parse(storedEmployees);
+              if (Array.isArray(parsedEmployees) && parsedEmployees.length) {
+                setEmployees(parsedEmployees);
+                if (!suppliedUser && storedUser) {
+                  const parsedUser = JSON.parse(storedUser) as Employee;
+                  const canonicalUser = parsedEmployees.find((item: Employee) => item.id === parsedUser.id);
+                  if (canonicalUser) {
+                    setCurrentUser(canonicalUser);
+                    setSelectedEmployeeId(canonicalUser.id);
+                  }
+                }
+              }
+            }
+          } catch {}
+        }
         if ((!suppliedEmployees?.length || !suppliedShifts?.length) && !cancelled) {
           setLoading(true);
-          const response = await fetch('/api/data');
+          const response = await fetch('/api/data', { cache: 'no-store' });
           if (response.ok) {
             const data = await response.json();
             if (!cancelled) {
-              if (Array.isArray(data.employees)) setEmployees(data.employees);
+              if (Array.isArray(data.employees) && data.employees.length) {
+                setEmployees(data.employees);
+                if (storedUser && !suppliedUser) {
+                  try {
+                    const parsedUser = JSON.parse(storedUser) as Employee;
+                    const canonicalUser = data.employees.find((item: Employee) => item.id === parsedUser.id);
+                    if (canonicalUser) {
+                      setCurrentUser(canonicalUser);
+                      setSelectedEmployeeId(canonicalUser.id);
+                    }
+                  } catch {}
+                }
+              }
               if (Array.isArray(data.shifts)) setShifts(data.shifts);
               if (Array.isArray(data.dailyShiftAssignments)) setAssignments(data.dailyShiftAssignments);
             }
@@ -114,14 +145,15 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
     return employees;
   }, [employees, isLeader, currentUser]);
 
-  const employee = visibleEmployees.find(e => e.id === selectedEmployeeId) || visibleEmployees[0];
+  const selectableEmployees = isLeader && visibleEmployees.length === 0 ? employees : visibleEmployees;
+  const employee = selectableEmployees.find(e => e.id === selectedEmployeeId) || selectableEmployees[0];
 
   useEffect(() => {
     if (employee && !visibleEmployees.some(e => e.id === selectedEmployeeId)) {
       setSelectedEmployeeId(employee.id);
     }
-    setSelectedEmployeeIds(prev => prev.filter(id => visibleEmployees.some(e => e.id === id)));
-  }, [employee, selectedEmployeeId, visibleEmployees]);
+    setSelectedEmployeeIds(prev => prev.filter(id => selectableEmployees.some(e => e.id === id)));
+  }, [employee, selectedEmployeeId, selectableEmployees]);
 
   const days = useMemo(() => Array.from({ length: 7 }, (_, index) => {
     const date = addDays(weekStart, index);
@@ -265,16 +297,16 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
           {loading && <div className="text-xs text-slate-500">{lang === 'ar' ? 'جاري تحميل الجدول...' : 'Loading schedule...'}</div>}
 
           {isLeader && <>
-            <label className="text-xs font-black text-slate-700 block max-w-xl"><span className="flex items-center gap-1.5 mb-1.5"><Users className="w-3.5 h-3.5" />{lang === 'ar' ? 'موظف الجدول الأساسي' : 'Schedule Template Employee'}</span><select value={employee?.id || ''} onChange={e => { setSelectedEmployeeId(e.target.value); setDraft({}); setSavedAt(null); }} className="w-full min-h-11 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-bold text-slate-900">{visibleEmployees.map(e => <option key={e.id} value={e.id}>{e.code} - {lang === 'ar' ? e.nameAr : e.nameEn}</option>)}</select></label>
+            <label className="text-xs font-black text-slate-700 block max-w-xl"><span className="flex items-center gap-1.5 mb-1.5"><Users className="w-3.5 h-3.5" />{lang === 'ar' ? 'موظف الجدول الأساسي' : 'Schedule Template Employee'}</span><select value={employee?.id || ''} onChange={e => { setSelectedEmployeeId(e.target.value); setDraft({}); setSavedAt(null); }} className="w-full min-h-11 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-bold text-slate-900">{selectableEmployees.map(e => <option key={e.id} value={e.id}>{e.code} - {lang === 'ar' ? e.nameAr : e.nameEn}</option>)}</select></label>
 
             <div className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-3 sm:p-4 space-y-3">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                 <div><div className="text-xs font-black text-slate-900">{lang === 'ar' ? 'تطبيق الجدول على عدة موظفين' : 'Apply Schedule to Multiple Employees'}</div><p className="text-[10px] text-slate-500 mt-1">{lang === 'ar' ? 'حدد الموظفين ليتم نسخ نفس الأسبوع، بما فيه أيام الـ Off Day وكل شفت مع بريكاته الخاصة.' : 'Copy the same week to selected employees, including Off Days and each shift with its own breaks.'}</p></div>
-                <div className="flex gap-2"><button type="button" onClick={() => setSelectedEmployeeIds(visibleEmployees.map(e => e.id))} className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-[10px] font-black">{lang === 'ar' ? 'تحديد الكل' : 'Select All'}</button><button type="button" onClick={() => setSelectedEmployeeIds([])} className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-[10px] font-black">{lang === 'ar' ? 'مسح' : 'Clear'}</button></div>
+                <div className="flex gap-2"><button type="button" onClick={() => setSelectedEmployeeIds(selectableEmployees.map(e => e.id))} className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-[10px] font-black">{lang === 'ar' ? 'تحديد الكل' : 'Select All'}</button><button type="button" onClick={() => setSelectedEmployeeIds([])} className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-[10px] font-black">{lang === 'ar' ? 'مسح' : 'Clear'}</button></div>
               </div>
               <div className="text-[10px] font-bold text-emerald-700">{lang === 'ar' ? `المحدد: ${selectedEmployeeIds.length}` : `Selected: ${selectedEmployeeIds.length}`}</div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-48 overflow-y-auto">
-                {visibleEmployees.map(e => <label key={e.id} className="flex items-center gap-2 rounded-xl bg-white border border-slate-200 px-3 py-2 cursor-pointer"><input type="checkbox" checked={selectedEmployeeIds.includes(e.id)} onChange={event => setSelectedEmployeeIds(prev => event.target.checked ? [...new Set([...prev, e.id])] : prev.filter(id => id !== e.id))} className="h-4 w-4 rounded border-slate-300 text-emerald-600" /><span className="text-xs font-bold text-slate-800 truncate">{e.code} - {lang === 'ar' ? e.nameAr : e.nameEn}</span></label>)}
+                {selectableEmployees.map(e => <label key={e.id} className="flex items-center gap-2 rounded-xl bg-white border border-slate-200 px-3 py-2 cursor-pointer"><input type="checkbox" checked={selectedEmployeeIds.includes(e.id)} onChange={event => setSelectedEmployeeIds(prev => event.target.checked ? [...new Set([...prev, e.id])] : prev.filter(id => id !== e.id))} className="h-4 w-4 rounded border-slate-300 text-emerald-600" /><span className="text-xs font-bold text-slate-800 truncate">{e.code} - {lang === 'ar' ? e.nameAr : e.nameEn}</span></label>)}
               </div>
               <button type="button" disabled={!selectedEmployeeIds.length || bulkSaving} onClick={applyScheduleToSelectedEmployees} className="w-full min-h-11 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-black">{bulkSaving ? (lang === 'ar' ? 'جاري التطبيق...' : 'Applying...') : (lang === 'ar' ? `تطبيق الجدول على ${selectedEmployeeIds.length} موظف` : `Apply Schedule to ${selectedEmployeeIds.length} Selected Employees`)}</button>
             </div>
