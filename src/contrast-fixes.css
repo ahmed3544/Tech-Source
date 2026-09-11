@@ -53,13 +53,21 @@ html:not(.dark) #root .bg-gray-100 { color: #0f172a !important; }
 #root .bg-red-600, #root .bg-red-700,
 #root .bg-indigo-600, #root .bg-indigo-700 { color: #fff !important; }
 
-/* Logo: never inherit text filters or become black in dark mode. */
+/* Logo: preserve the normal logo on white cards, but force it white on dark/login surfaces. */
 .dark #root .tech-source-logo img {
-  filter: none !important;
+  filter: brightness(0) invert(1) !important;
   opacity: 1 !important;
 }
 .dark #root .tech-source-logo > div {
-  background-color: #fff !important;
+  background-color: #0b1730 !important;
+  border-color: rgba(255,255,255,.12) !important;
+}
+
+/* Splash/login logo: explicit white treatment, independent of dark-mode selector order. */
+#app-loading .app-loading-logo,
+#root .tech-source-login-logo {
+  filter: brightness(0) invert(1) !important;
+  opacity: 1 !important;
 }
 
 /* Prevent labels/buttons from overflowing their boxes. */
