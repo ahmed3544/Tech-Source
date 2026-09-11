@@ -75,26 +75,29 @@ html:not(.dark) #root .bg-gray-100 { color: #0f172a !important; }
   position: relative !important;
 }
 #root header .absolute.w-56 {
-  width: min(14rem, calc(100vw - 2rem), calc(100% - 1rem)) !important;
+  /* Do NOT calculate width from the avatar parent: the parent is intentionally tiny. */
+  width: min(14rem, calc(100vw - 2rem)) !important;
   min-width: 0 !important;
   max-width: calc(100vw - 2rem) !important;
   right: 0 !important;
   left: auto !important;
   direction: rtl;
-  white-space: nowrap;
   box-sizing: border-box;
 }
 #root header .absolute.w-56 > button {
   width: 100% !important;
   min-width: 0;
+  min-height: 2.5rem;
   display: flex !important;
   flex-direction: row !important;
   align-items: center !important;
   justify-content: flex-start !important;
   gap: 0.5rem;
+  padding-inline: 0.75rem !important;
   text-align: right !important;
   white-space: nowrap !important;
-  overflow: hidden;
+  overflow: visible !important;
+  box-sizing: border-box;
 }
 #root header .absolute.w-56 > button > svg {
   flex: 0 0 auto;
