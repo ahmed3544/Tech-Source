@@ -13,7 +13,8 @@ async function insertNotification(recipientId:string, type:string, title:string,
   const relatedId = clean(relatedLeaveId || relatedOvertimeId || relatedShiftSwapId);
   const id = hashId(recipientId, type, relatedId || `${title}|${message}`);
   const now = new Date().toISOString();
-  await db.insert(schema.notifications).values({ id, recipientId, type, title, message, relatedEmployeeId: relatedEmployeeId || null, relatedLeaveId: relatedLeaveId || null, relatedOvertimeId: relatedOvertimeId || null, relatedShiftSwapId: relatedShiftSwapId || null, isRead: false, createdAt: now, updatedAt: now } as any).onConflictDoNothing({ target: schema.notifications.id });
+  const inserted = await db.insert(schema.notifications).values({ id, recipientId, type, title, message, relatedEmployeeId: relatedEmployeeId || null, relatedLeaveId: relatedLeaveId || null, relatedOvertimeId: relatedOvertimeId || null, relatedShiftSwapId: relatedShiftSwapId || null, isRead: false, createdAt: now, updatedAt: now } as any).onConflictDoNothing({ target: schema.notifications.id }).returning({ id: schema.notifications.id });
+  if (!inserted.length) return;
   try { await sendPushToEmployee(recipientId, title, message, { type, relatedId }); } catch (e) { console.warn('[FCM] request notification push failed', e); }
 }
 
