@@ -12,3 +12,39 @@ if (!css.includes(marker)) {
 } else {
   console.log('[remove-explanatory-text] already applied');
 }
+
+// Keep the Leaves month filter strictly text-only.
+const leavePath = path.join(process.cwd(), 'src/components/LeaveManager.tsx');
+let leaveSource = fs.readFileSync(leavePath, 'utf8');
+const leaveUpdated = leaveSource.replace(
+  "{lang === 'ar' ? 'جميع الشهور 📅' : 'All Months'}",
+  "{lang === 'ar' ? 'جميع الشهور' : 'All Months'}"
+);
+if (leaveUpdated !== leaveSource) {
+  fs.writeFileSync(leavePath, leaveUpdated, 'utf8');
+  console.log('[remove-explanatory-text] removed calendar emoji from Leaves month filter');
+} else {
+  console.log('[remove-explanatory-text] Leaves month filter already text-only');
+}
+
+// Improve contrast for the main splash/login logo on the dark shell.
+// This targets only the main App logo, not the white-backed reusable logo component.
+const appPath = path.join(process.cwd(), 'src/App.tsx');
+let appSource = fs.readFileSync(appPath, 'utf8');
+const logoMarker = 'alt="Tech Source GDS"';
+const logoIndex = appSource.indexOf(logoMarker);
+if (logoIndex >= 0) {
+  const before = appSource.slice(0, logoIndex);
+  const after = appSource.slice(logoIndex);
+  const classMatch = after.match(/className="([\s\S]*?)"/);
+  if (classMatch && !classMatch[1].includes('brightness-0') && !classMatch[1].includes('invert')) {
+    const nextClass = classMatch[1].replace(/\s+/g, ' ').trim() + ' brightness-0 invert';
+    appSource = before + after.replace(classMatch[0], `className="${nextClass}"`);
+    fs.writeFileSync(appPath, appSource, 'utf8');
+    console.log('[remove-explanatory-text] brightened main Tech Source logo for dark splash/login');
+  } else {
+    console.log('[remove-explanatory-text] main Tech Source logo contrast already applied');
+  }
+} else {
+  console.log('[remove-explanatory-text] main Tech Source logo marker not found');
+}
