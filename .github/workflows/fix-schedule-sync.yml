@@ -5,10 +5,11 @@ on:
 
 jobs:
   patch:
+    if: ${{ !contains(github.event.head_commit.message, 'fix: expose schedule sync updates to other devices') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Patch server sync timestamps
+      - name: Patch schedule collection timestamps
         run: |
           python3 - <<'PY'
           from pathlib import Path
