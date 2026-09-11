@@ -233,8 +233,24 @@ export const EmployeePortal: React.FC<EmployeePortalProps> = ({
     l => l.employeeId === emp?.id && l.status === 'approved' && l.type !== 'permission' && todayStr >= l.startDate && todayStr <= l.endDate
   );
 
-  const isWeekendToday = isWeekend(todayStr);
-  const isOnLeaveToday = Boolean(empLeaveToday || todayRecord?.status === 'on_leave' || isWeekendToday);
+  const todayAssignment = emp
+    ? dailyShiftAssignments.find(item => item.employeeId === emp.id && item.date === todayStr)
+    : undefined;
+  const dayOfWeek = new Date(`${todayStr}T00:00:00`).getDay();
+  const hasExplicitSchedule = Boolean(todayAssignment);
+  const isExplicitOffDay = Boolean(todayAssignment?.isOffDay);
+  const isExplicitWorkday = Boolean(todayAssignment?.shiftId);
+  const isShiftWorkday = Array.isArray(todayShift?.workDays)
+    ? todayShift.workDays.includes(dayOfWeek)
+    : !isWeekend(todayStr);
+  const isScheduledOffToday = hasExplicitSchedule
+    ? isExplicitOffDay && !isExplicitWorkday
+    : !isShiftWorkday;
+  const isOnLeaveToday = Boolean(
+    empLeaveToday ||
+    todayRecord?.status === 'on_leave' ||
+    isScheduledOffToday
+  );
 
   const empPermissionToday = leaveRequests.find(
     l => l.employeeId === emp?.id && l.status === 'approved' && l.type === 'permission' && todayStr >= l.startDate && todayStr <= l.endDate
