@@ -1,6 +1,7 @@
 name: Fix schedule sync freshness
 on:
-  workflow_dispatch:
+  push:
+    branches: [main]
 
 jobs:
   patch:
@@ -19,11 +20,9 @@ jobs:
               raise SystemExit('collection setting block not found')
           s = s.replace(old, new, 1)
           old2 = "const all=[...employees,...attendanceRecords,...leaveRequests,...overtimeRequests,...shifts,...employeeShiftAssignments];const lastUpdated=Math.max(0,...all.map((x:any)=>ms(x?.updatedAt||x?.createdAt)));"
-          new2 = "const all=[...employees,...attendanceRecords,...leaveRequests,...overtimeRequests,...shifts,...employeeShiftAssignments];const settingUpdated=await db.select().from(schema.settings).where((row:any)=>row.key.startsWith('__sync_updated_at:'));const lastUpdated=Math.max(0,...all.map((x:any)=>ms(x?.updatedAt||x?.createdAt)),...settingUpdated.map((x:any)=>ms(x?.value)));"
+          new2 = "const all=[...employees,...attendanceRecords,...leaveRequests,...overtimeRequests,...shifts,...employeeShiftAssignments];const syncSettingTimes=settings.filter((s:any)=>String(s.key).startsWith('__sync_updated_at:')).map((s:any)=>ms(s.value));const lastUpdated=Math.max(0,...all.map((x:any)=>ms(x?.updatedAt||x?.createdAt)),...syncSettingTimes);"
           if old2 not in s:
-              # Drizzle query cannot use startsWith predicate directly; use the settings already loaded instead.
-              old2 = "const all=[...employees,...attendanceRecords,...leaveRequests,...overtimeRequests,...shifts,...employeeShiftAssignments];const lastUpdated=Math.max(0,...all.map((x:any)=>ms(x?.updatedAt||x?.createdAt)));"
-              new2 = "const all=[...employees,...attendanceRecords,...leaveRequests,...overtimeRequests,...shifts,...employeeShiftAssignments];const syncSettingTimes=settings.filter((s:any)=>String(s.key).startsWith('__sync_updated_at:')).map((s:any)=>ms(s.value));const lastUpdated=Math.max(0,...all.map((x:any)=>ms(x?.updatedAt||x?.createdAt)),...syncSettingTimes);"
+              raise SystemExit('snapshot lastUpdated block not found')
           s = s.replace(old2, new2, 1)
           p.write_text(s)
           PY
