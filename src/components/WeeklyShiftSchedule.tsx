@@ -134,11 +134,19 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
   const getValue = (date: string) => {
     const assignment = assignmentFor(employee?.id || '', date);
     if (assignment?.isOffDay) return OFF_DAY_SHIFT_ID;
-    return draft[date] ?? assignment?.shiftId ?? '';
+    if (draft[date] !== undefined) return draft[date];
+    if (assignment?.shiftId) return assignment.shiftId;
+    const baseShift = employee?.shiftId ? shifts.find(s => s.id === employee.shiftId) : undefined;
+    const dayOfWeek = new Date(`${date}T00:00:00`).getDay();
+    if (baseShift && Array.isArray(baseShift.workDays) && baseShift.workDays.includes(dayOfWeek)) return baseShift.id;
+    return baseShift ? OFF_DAY_SHIFT_ID : '';
   };
   const shiftFor = (employeeId: string, date: string) => {
     const assignment = assignmentFor(employeeId, date);
-    return assignment?.shiftId ? shifts.find(s => s.id === assignment.shiftId) : undefined;
+    if (assignment?.isOffDay) return undefined;
+    if (assignment?.shiftId) return shifts.find(s => s.id === assignment.shiftId);
+    const baseEmployee = employees.find(e => e.id === employeeId);
+    return baseEmployee?.shiftId ? shifts.find(s => s.id === baseEmployee.shiftId) : undefined;
   };
 
   const persistAssignments = async (next: DailyShiftAssignment[]) => {
@@ -157,8 +165,12 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
     for (const day of days) {
       const draftValue = employeeId === sourceEmployeeId && Object.prototype.hasOwnProperty.call(draft, day.key) ? draft[day.key] : undefined;
       const source = assignmentFor(sourceEmployeeId, day.key);
-      const isOffDay = draftValue !== undefined ? draftValue === OFF_DAY_SHIFT_ID : Boolean(source?.isOffDay);
-      const shiftId = isOffDay ? '' : (draftValue !== undefined ? draftValue : source?.shiftId || '');
+      const sourceEmployee = employees.find(e => e.id === sourceEmployeeId);
+      const sourceBaseShift = sourceEmployee?.shiftId ? shifts.find(s => s.id === sourceEmployee.shiftId) : undefined;
+      const dayOfWeek = day.date.getDay();
+      const baseShiftWorks = Boolean(sourceBaseShift && Array.isArray(sourceBaseShift.workDays) && sourceBaseShift.workDays.includes(dayOfWeek));
+      const isOffDay = draftValue !== undefined ? draftValue === OFF_DAY_SHIFT_ID : source ? Boolean(source.isOffDay) : !baseShiftWorks;
+      const shiftId = isOffDay ? '' : (draftValue !== undefined ? draftValue : source?.shiftId || sourceBaseShift?.id || '');
       const index = next.findIndex(a => a.employeeId === employeeId && a.date === day.key);
       if (!shiftId && !isOffDay) {
         if (index >= 0) next.splice(index, 1);
