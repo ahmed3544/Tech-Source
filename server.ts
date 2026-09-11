@@ -9,6 +9,7 @@ import { db } from "./src/db/index.js";
 import * as schema from "./src/db/schema.js";
 import { registerFcmRoutes } from "./server/fcm.js";
 import { registerNotificationSystemV2 } from "./server/notification-system-v2.js";
+import { registerRequestNotificationTriggers } from "./server/request-notification-triggers.js";
 import { registerDeviceSyncV2 } from "./server/device-sync-v2.js";
 import { recoverMissingLegacyData } from "./server/legacy-data-recovery.js";
 
@@ -41,6 +42,10 @@ async function dbSnapshot(){const [employees,attendanceRecords,leaveRequests,ove
 // always exports the same Express app, even when prebuild patch scripts are skipped.
 registerNotificationSystemV2(app);
 app.use(async (req:any,res:any,next:any)=>{if((process.env.DATABASE_URL||process.env.SUPABASE_DB_URL)&&(req.path==='/api/data'||req.path==='/api/sync')){try{await recoverMissingLegacyData();}catch(e){console.error('[legacy-recovery]',e);}}next();});
+// Generate notifications from the actual request state written by /api/sync.
+// This keeps notifications tied to leave/overtime actions even if the frontend
+// sends a sync payload without explicitly constructing a notification object.
+registerRequestNotificationTriggers(app);
 registerDeviceSyncV2(app);
 
 export default app;
