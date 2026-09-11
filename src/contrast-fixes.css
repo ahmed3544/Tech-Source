@@ -75,8 +75,8 @@ html:not(.dark) #root .bg-gray-100 { color: #0f172a !important; }
   position: relative !important;
 }
 #root header .absolute.w-56 {
-  width: 14rem !important;
-  min-width: 14rem !important;
+  width: min(14rem, calc(100vw - 2rem), calc(100% - 1rem)) !important;
+  min-width: 0 !important;
   max-width: calc(100vw - 2rem) !important;
   right: 0 !important;
   left: auto !important;
