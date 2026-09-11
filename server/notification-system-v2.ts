@@ -9,7 +9,7 @@ import * as schema from '../src/db/schema.js';
 type NotificationRecord = { id: string; recipientId: string; type: string; title: string; message: string; relatedEmployeeId?: string; relatedLeaveId?: string; relatedOvertimeId?: string; relatedShiftSwapId?: string; link?: string; targetUrl?: string; isRead: boolean; createdAt: string; updatedAt: string; };
 const USE_DATABASE = Boolean(process.env.DATABASE_URL || process.env.SUPABASE_DB_URL);
 const LOCAL_FILE = path.join(process.cwd(), 'notifications_v2.json');
-const VERSION = '8-mark-read-hardened';
+const VERSION = '9-request-notifications-race-safe';
 let readyPromise: Promise<void> | null = null;
 const clean = (value: unknown) => String(value ?? '').trim();
 const nowIso = () => new Date().toISOString();
@@ -30,7 +30,10 @@ function targetFor(raw: any): string | undefined {
   if (clean(raw?.relatedLeaveId)) return `/leaves?leaveId=${encodeURIComponent(clean(raw.relatedLeaveId))}`;
   if (clean(raw?.relatedOvertimeId)) return `/overtime?overtimeId=${encodeURIComponent(clean(raw.relatedOvertimeId))}`;
   if (clean(raw?.relatedShiftSwapId)) return `/schedule?shiftSwapId=${encodeURIComponent(clean(raw.relatedShiftSwapId))}`;
-  if (type.startsWith('leave_')) return '/leaves'; if (type.startsWith('overtime_')) return '/leaves'; if (type.startsWith('shift_')) return '/schedule'; return '/notifications';
+  if (type.startsWith('leave_')) return '/leaves';
+  if (type.startsWith('overtime_')) return '/leaves';
+  if (type.startsWith('shift_')) return '/schedule';
+  return '/notifications';
 }
 function withTarget(item: NotificationRecord): NotificationRecord { const link = targetFor(item); return link ? { ...item, link, targetUrl: link } : item; }
 function normalize(raw: any): NotificationRecord | null {
@@ -91,22 +94,19 @@ async function saveOne(input: any): Promise<NotificationRecord | null> {
     const merged = { ...item, id: String(existing.id), isRead: Boolean(existing.isRead || item.isRead), updatedAt: nowIso() }; const { id: _ignoredId, link: _link, targetUrl: _targetUrl, ...changes } = merged;
     await db.update(schema.notifications).set(changes as any).where(eq(schema.notifications.id, String(existing.id))); return withTarget(merged);
   }
-  const { link: _link, targetUrl: _targetUrl, ...dbItem } = item; await db.insert(schema.notifications).values(dbItem as any); return item;
+  const { link: _link, targetUrl: _targetUrl, ...dbItem } = item;
+  await db.insert(schema.notifications).values(dbItem as any).onConflictDoNothing({ target: schema.notifications.id });
+  const persisted = await db.select().from(schema.notifications).where(eq(schema.notifications.id, item.id));
+  return persisted[0] ? withTarget({ ...persisted[0], id: String(persisted[0].id), recipientId: String(persisted[0].recipientId) }) : item;
 }
 async function markRead(id: string, recipientId: string) {
   await ensureReady(); const notificationId = clean(id); const userId = clean(recipientId); if (!notificationId || !userId) return false;
   if (!USE_DATABASE) { const items = readLocal(); const target = items.find(item => item.id === notificationId && item.recipientId === userId); if (!target) return false; const key = semanticKey(target); const updated = items.map(item => semanticKey(item) === key ? { ...item, isRead: true, updatedAt: nowIso() } : item); writeLocal(updated); return true; }
   const rows = await db.select().from(schema.notifications).where(eq(schema.notifications.recipientId, userId));
   let target: any = rows.find((row: any) => String(row.id) === notificationId);
-  if (!target) {
-    const byId = await db.select().from(schema.notifications).where(eq(schema.notifications.id, notificationId));
-    target = byId[0];
-  }
-  if (!target) return false;
-  const key = semanticKey(target);
-  const matches = rows.filter((row: any) => semanticKey(row) === key);
-  const ids = new Set(matches.map((row: any) => String(row.id)));
-  ids.add(String(target.id));
+  if (!target) { const byId = await db.select().from(schema.notifications).where(eq(schema.notifications.id, notificationId)); target = byId[0]; }
+  if (!target || String(target.recipientId) !== userId) return false;
+  const key = semanticKey(target); const matches = rows.filter((row: any) => semanticKey(row) === key); const ids = new Set(matches.map((row: any) => String(row.id))); ids.add(String(target.id));
   await Promise.all(Array.from(ids).map((notificationIdToUpdate) => db.update(schema.notifications).set({ isRead: true, updatedAt: nowIso() }).where(eq(schema.notifications.id, notificationIdToUpdate))));
   return true;
 }
