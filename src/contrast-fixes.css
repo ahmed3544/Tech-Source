@@ -70,6 +70,35 @@ html:not(.dark) #root .bg-gray-100 { color: #0f172a !important; }
   opacity: 1 !important;
 }
 
+/* User profile/avatar dropdown: keep a stable readable width and horizontal RTL layout. */
+#root header .absolute.right-0.top-full.mt-2.w-56 {
+  width: 14rem !important;
+  min-width: 14rem !important;
+  max-width: 14rem !important;
+  right: 0 !important;
+  left: auto !important;
+  direction: rtl;
+  white-space: nowrap;
+}
+#root header .absolute.right-0.top-full.mt-2.w-56 > button {
+  width: 100% !important;
+  min-width: 0;
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: 0.5rem;
+  text-align: right !important;
+  white-space: nowrap !important;
+  overflow: hidden;
+}
+#root header .absolute.right-0.top-full.mt-2.w-56 > button > svg {
+  flex: 0 0 auto;
+}
+#root header .absolute.right-0.top-full.mt-2.w-56 > button:first-child {
+  display: block !important;
+}
+
 /* Prevent labels/buttons from overflowing their boxes. */
 #root button, #root label, #root option {
   max-width: 100%;
