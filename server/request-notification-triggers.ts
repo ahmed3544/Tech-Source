@@ -13,7 +13,7 @@ async function insertNotification(recipientId:string, type:string, title:string,
   const relatedId = clean(relatedLeaveId || relatedOvertimeId || relatedShiftSwapId);
   const id = hashId(recipientId, type, relatedId || `${title}|${message}`);
   const now = new Date().toISOString();
-  const result = await db.insert(schema.notifications).values({
+  await db.insert(schema.notifications).values({
     id,
     recipientId,
     type,
@@ -27,8 +27,6 @@ async function insertNotification(recipientId:string, type:string, title:string,
     createdAt: now,
     updatedAt: now,
   } as any).onConflictDoNothing({ target: schema.notifications.id });
-  const inserted = Number((result as any)?.rowCount ?? 0) > 0;
-  if (!inserted) return;
   try { await sendPushToEmployee(recipientId, title, message, { type, relatedId }); } catch (e) { console.warn('[FCM] request notification push failed', e); }
 }
 
@@ -46,9 +44,8 @@ async function emitForSync(body:any) {
     return clean(e?.nameAr) || clean(e?.nameEn) || id;
   };
 
-  // Always read the record back from the database after /api/sync has completed.
-  // This prevents a stale device snapshot from creating a notification for a
-  // mutation that the server rejected because its updatedAt was older.
+  // Re-read the persisted request. This prevents stale client snapshots from
+  // generating notifications for a mutation that the sync layer rejected.
   for (const requested of requestedLeaves) {
     const id = clean(requested?.id);
     if (!id) continue;
@@ -90,33 +87,30 @@ async function emitForSync(body:any) {
     }
   }
 
-  // Shift swaps are persisted in settings by the device-sync layer.
-  if (requestedSwaps.length) {
-    const settings = await db.select().from(schema.settings).where(eq(schema.settings.key, 'shiftSwapRequests'));
-    const persistedSwaps:any[] = Array.isArray(settings[0]?.value) ? settings[0].value : [];
-    for (const requested of requestedSwaps) {
-      const id = clean(requested?.id);
-      const r:any = persistedSwaps.find((x:any) => clean(x?.id) === id);
-      if (!r) continue;
-      const requesterId = clean(r.requesterId), targetId = clean(r.targetEmployeeId), status = clean(r.status).toLowerCase();
-      if (!requesterId || !targetId) continue;
-      const date = clean(r.date);
-      if (status === 'awaiting_target') {
-        await insertNotification(targetId, 'shift_swap_requested', 'طلب تبديل شفت جديد', `${employeeName(requesterId)} أرسل لك طلب تبديل شفت ليوم ${date}. راجع الطلب واضغط موافقة أو رفض.`, requesterId, undefined, undefined, id);
-      } else if (status === 'pending') {
-        const leaderId = clean(employees.find((e:any) => String(e.id) === requesterId)?.teamLeaderId);
-        const recipients = leaderId ? [leaderId] : leaders;
-        for (const recipientId of recipients) {
-          if (recipientId === requesterId || recipientId === targetId) continue;
-          await insertNotification(recipientId, 'shift_swap_accepted', 'تمت الموافقة على Swap', `${employeeName(targetId)} وافق على تبديل الشفت مع ${employeeName(requesterId)} ليوم ${date}. أصبح الطلب جاهزًا لمراجعة الليدر.`, requesterId, undefined, undefined, id);
-        }
-      } else if (status === 'approved') {
-        await insertNotification(requesterId, 'shift_changed', 'تم اعتماد تبديل الشفت', `تم اعتماد تبديل الشفت مع ${employeeName(targetId)} ليوم ${date}.`, requesterId, undefined, undefined, id);
-        await insertNotification(targetId, 'shift_changed', 'تم اعتماد تبديل الشفت', `تم اعتماد تبديل الشفت مع ${employeeName(requesterId)} ليوم ${date}.`, targetId, undefined, undefined, id);
-      } else if (status === 'rejected') {
-        await insertNotification(requesterId, 'shift_swap_rejected', 'تم رفض طلب تبديل الشفت', `تم رفض طلب تبديل الشفت ليوم ${date}.`, requesterId, undefined, undefined, id);
-        await insertNotification(targetId, 'shift_swap_rejected', 'تم رفض طلب تبديل الشفت', `تم رفض طلب تبديل الشفت ليوم ${date}.`, targetId, undefined, undefined, id);
+  const settings = await db.select().from(schema.settings).where(eq(schema.settings.key, 'shiftSwapRequests'));
+  const persistedSwaps:any[] = Array.isArray(settings[0]?.value) ? settings[0].value : [];
+  for (const requested of requestedSwaps) {
+    const id = clean(requested?.id);
+    const r:any = persistedSwaps.find((x:any) => clean(x?.id) === id);
+    if (!r) continue;
+    const requesterId = clean(r.requesterId), targetId = clean(r.targetEmployeeId), status = clean(r.status).toLowerCase();
+    if (!requesterId || !targetId) continue;
+    const date = clean(r.date);
+    if (status === 'awaiting_target') {
+      await insertNotification(targetId, 'shift_swap_requested', 'طلب تبديل شفت جديد', `${employeeName(requesterId)} أرسل لك طلب تبديل شفت ليوم ${date}. راجع الطلب واضغط موافقة أو رفض.`, requesterId, undefined, undefined, id);
+    } else if (status === 'pending') {
+      const leaderId = clean(employees.find((e:any) => String(e.id) === requesterId)?.teamLeaderId);
+      const recipients = leaderId ? [leaderId] : leaders;
+      for (const recipientId of recipients) {
+        if (recipientId === requesterId || recipientId === targetId) continue;
+        await insertNotification(recipientId, 'shift_swap_accepted', 'تمت الموافقة على Swap', `${employeeName(targetId)} وافق على تبديل الشفت مع ${employeeName(requesterId)} ليوم ${date}. أصبح الطلب جاهزًا لمراجعة الليدر.`, requesterId, undefined, undefined, id);
       }
+    } else if (status === 'approved') {
+      await insertNotification(requesterId, 'shift_changed', 'تم اعتماد تبديل الشفت', `تم اعتماد تبديل الشفت مع ${employeeName(targetId)} ليوم ${date}.`, requesterId, undefined, undefined, id);
+      await insertNotification(targetId, 'shift_changed', 'تم اعتماد تبديل الشفت', `تم اعتماد تبديل الشفت مع ${employeeName(requesterId)} ليوم ${date}.`, targetId, undefined, undefined, id);
+    } else if (status === 'rejected') {
+      await insertNotification(requesterId, 'shift_swap_rejected', 'تم رفض طلب تبديل الشفت', `تم رفض طلب تبديل الشفت ليوم ${date}.`, requesterId, undefined, undefined, id);
+      await insertNotification(targetId, 'shift_swap_rejected', 'تم رفض طلب تبديل الشفت ليوم ${date}.`, targetId, undefined, undefined, id);
     }
   }
 }
@@ -124,10 +118,19 @@ async function emitForSync(body:any) {
 export function registerRequestNotificationTriggers(app:any) {
   app.use((req:any, res:any, next:any) => {
     if (req.method !== 'POST' || !['/api/sync','/sync'].includes(String(req.path || '').replace(/\/+$/,''))) return next();
-    const body = req.body || {};
-    res.on('finish', () => {
-      void emitForSync(body).catch((e) => console.error('[request-notification-triggers]', e));
-    });
+
+    // Vercel/serverless can stop background work after the response finishes.
+    // Wrap res.json so request notifications are persisted BEFORE the sync response
+    // is sent back to the client.
+    const originalJson = res.json.bind(res);
+    res.json = async (body:any) => {
+      try {
+        await emitForSync(req.body || {});
+      } catch (error) {
+        console.error('[request-notification-triggers]', error);
+      }
+      return originalJson(body);
+    };
     next();
   });
 }
