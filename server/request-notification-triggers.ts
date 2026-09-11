@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { db } from '../src/db/index.js';
 import * as schema from '../src/db/schema.js';
 import { sendPushToEmployee } from './fcm.js';
@@ -8,9 +8,9 @@ const hasDatabase = () => Boolean(process.env.DATABASE_URL || process.env.SUPABA
 const clean = (v:any) => String(v ?? '').trim();
 const hashId = (recipientId:string, type:string, relatedId:string) => `n2_${crypto.createHash('sha256').update(`${recipientId}|${type}|${relatedId}`).digest('hex').slice(0,40)}`;
 
-async function insertNotification(recipientId:string, type:string, title:string, message:string, relatedEmployeeId:string, relatedLeaveId?:string, relatedOvertimeId?:string) {
+async function insertNotification(recipientId:string, type:string, title:string, message:string, relatedEmployeeId:string, relatedLeaveId?:string, relatedOvertimeId?:string, relatedShiftSwapId?:string) {
   if (!recipientId) return;
-  const relatedId = clean(relatedLeaveId || relatedOvertimeId);
+  const relatedId = clean(relatedLeaveId || relatedOvertimeId || relatedShiftSwapId);
   const id = hashId(recipientId, type, relatedId || `${title}|${message}`);
   const existing = await db.select({ id: schema.notifications.id }).from(schema.notifications).where(eq(schema.notifications.id,id));
   if (existing[0]) return;
@@ -24,6 +24,7 @@ async function insertNotification(recipientId:string, type:string, title:string,
     relatedEmployeeId: relatedEmployeeId || null,
     relatedLeaveId: relatedLeaveId || null,
     relatedOvertimeId: relatedOvertimeId || null,
+    relatedShiftSwapId: relatedShiftSwapId || null,
     isRead: false,
     createdAt: now,
     updatedAt: now,
@@ -35,10 +36,15 @@ async function emitForSync(body:any) {
   if (!hasDatabase()) return;
   const leaves = Array.isArray(body?.leaveRequests) ? body.leaveRequests : [];
   const overtimes = Array.isArray(body?.overtimeRequests) ? body.overtimeRequests : [];
-  if (!leaves.length && !overtimes.length) return;
+  const swaps = Array.isArray(body?.shiftSwapRequests) ? body.shiftSwapRequests : [];
+  if (!leaves.length && !overtimes.length && !swaps.length) return;
 
   const employees = await db.select().from(schema.employees);
   const leaders = employees.filter((e:any) => e.role === 'leader' || e.role === 'admin').map((e:any) => String(e.id));
+  const employeeName = (id:string) => {
+    const e:any = employees.find((x:any) => String(x.id) === id);
+    return clean(e?.nameAr) || clean(e?.nameEn) || id;
+  };
 
   for (const r of leaves) {
     const id = clean(r?.id), employeeId = clean(r?.employeeId), status = clean(r?.status).toLowerCase();
@@ -47,7 +53,7 @@ async function emitForSync(body:any) {
     if (status === 'pending') {
       for (const recipientId of leaders) {
         if (recipientId === employeeId) continue;
-        await insertNotification(recipientId, 'leave_requested', 'طلب إجازة جديد', `${employeeId} أرسل طلب ${kind} من ${start} إلى ${end}.`, employeeId, id);
+        await insertNotification(recipientId, 'leave_requested', 'طلب إجازة جديد', `${employeeName(employeeId)} أرسل طلب ${kind} من ${start} إلى ${end}.`, employeeId, id);
       }
     } else if (status === 'approved' || status === 'rejected') {
       const approved = status === 'approved';
@@ -62,11 +68,33 @@ async function emitForSync(body:any) {
     if (status === 'pending') {
       for (const recipientId of leaders) {
         if (recipientId === employeeId) continue;
-        await insertNotification(recipientId, 'overtime_requested', 'طلب وقت إضافي جديد', `${employeeId} أرسل طلب وقت إضافي ليوم ${date}${duration ? ` لمدة ${duration}` : ''}.`, employeeId, undefined, id);
+        await insertNotification(recipientId, 'overtime_requested', 'طلب وقت إضافي جديد', `${employeeName(employeeId)} أرسل طلب وقت إضافي ليوم ${date}${duration ? ` لمدة ${duration}` : ''}.`, employeeId, undefined, id);
       }
     } else if (status === 'approved' || status === 'rejected') {
       const approved = status === 'approved';
       await insertNotification(employeeId, approved ? 'overtime_approved' : 'overtime_rejected', approved ? 'تم اعتماد الوقت الإضافي' : 'تم رفض الوقت الإضافي', approved ? `تم اعتماد طلب الوقت الإضافي ليوم ${date}${duration ? ` لمدة ${duration}` : ''}.` : `تم رفض طلب الوقت الإضافي ليوم ${date}.${clean(r?.reviewNotes) ? ` السبب: ${clean(r.reviewNotes)}` : ''}`, employeeId, undefined, id);
+    }
+  }
+
+  for (const r of swaps) {
+    const id = clean(r?.id), requesterId = clean(r?.requesterId), targetId = clean(r?.targetEmployeeId), status = clean(r?.status).toLowerCase();
+    if (!id || !requesterId || !targetId) continue;
+    const date = clean(r?.date);
+    if (status === 'awaiting_target') {
+      await insertNotification(targetId, 'shift_swap_requested', 'طلب تبديل شفت جديد', `${employeeName(requesterId)} أرسل لك طلب تبديل شفت ليوم ${date}. راجع الطلب واضغط موافقة أو رفض.`, requesterId, undefined, undefined, id);
+    } else if (status === 'pending') {
+      const leaderId = clean(employees.find((e:any) => String(e.id) === requesterId)?.teamLeaderId);
+      const recipients = leaderId ? [leaderId] : leaders;
+      for (const recipientId of recipients) {
+        if (recipientId === requesterId || recipientId === targetId) continue;
+        await insertNotification(recipientId, 'shift_swap_accepted', 'تمت الموافقة على Swap', `${employeeName(targetId)} وافق على تبديل الشفت مع ${employeeName(requesterId)} ليوم ${date}. أصبح الطلب جاهزًا لمراجعة الليدر.`, requesterId, undefined, undefined, id);
+      }
+    } else if (status === 'approved') {
+      await insertNotification(requesterId, 'shift_changed', 'تم اعتماد تبديل الشفت', `تم اعتماد تبديل الشفت مع ${employeeName(targetId)} ليوم ${date}.`, requesterId, undefined, undefined, id);
+      await insertNotification(targetId, 'shift_changed', 'تم اعتماد تبديل الشفت', `تم اعتماد تبديل الشفت مع ${employeeName(requesterId)} ليوم ${date}.`, targetId, undefined, undefined, id);
+    } else if (status === 'rejected') {
+      await insertNotification(requesterId, 'shift_swap_rejected', 'تم رفض طلب تبديل الشفت', `تم رفض طلب تبديل الشفت ليوم ${date}.`, requesterId, undefined, undefined, id);
+      await insertNotification(targetId, 'shift_swap_rejected', 'تم رفض طلب تبديل الشفت', `تم رفض طلب تبديل الشفت ليوم ${date}.`, targetId, undefined, undefined, id);
     }
   }
 }
