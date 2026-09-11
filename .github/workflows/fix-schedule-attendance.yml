@@ -1,0 +1,38 @@
+name: Apply schedule-aware attendance fix
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: ${{ !contains(github.event.head_commit.message, 'schedule-aware attendance fix applied') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Patch EmployeePortal
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('src/components/EmployeePortal.tsx')
+          s = p.read_text(encoding='utf-8')
+          old = """  const isWeekendToday = isWeekend(todayStr);\n  const isOnLeaveToday = Boolean(empLeaveToday || todayRecord?.status === 'on_leave' || isWeekendToday);"""
+          new = """  const todayAssignment = emp\n    ? dailyShiftAssignments.find(item => item.employeeId === emp.id && item.date === todayStr)\n    : undefined;\n  const dayOfWeek = new Date(`${todayStr}T00:00:00`).getDay();\n  const hasExplicitSchedule = Boolean(todayAssignment);\n  const isExplicitOffDay = Boolean(todayAssignment?.isOffDay);\n  const isExplicitWorkday = Boolean(todayAssignment?.shiftId);\n  const isShiftWorkday = Array.isArray(todayShift?.workDays)\n    ? todayShift.workDays.includes(dayOfWeek)\n    : !isWeekend(todayStr);\n  const isScheduledOffToday = hasExplicitSchedule\n    ? isExplicitOffDay && !isExplicitWorkday\n    : !isShiftWorkday;\n  const isOnLeaveToday = Boolean(\n    empLeaveToday ||\n    todayRecord?.status === 'on_leave' ||\n    isScheduledOffToday\n  );"""
+          if old not in s:
+              raise SystemExit('Expected attendance status block was not found')
+          p.write_text(s.replace(old, new, 1), encoding='utf-8')
+      - name: Commit fix and remove temporary workflow
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm -f .github/workflows/fix-schedule-attendance.yml
+          git add src/components/EmployeePortal.tsx .github/workflows/fix-schedule-attendance.yml
+          git diff --cached --quiet && exit 0
+          git commit -m "fix: make attendance status follow employee schedule"
+          git push
