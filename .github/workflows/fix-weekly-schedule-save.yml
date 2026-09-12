@@ -2,263 +2,28 @@ name: Fix weekly schedule save
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
 
 permissions:
   contents: write
 
 jobs:
   patch:
-    if: github.event.head_commit.message != 'fix: harden weekly schedule save diagnostics'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Patch weekly schedule save handler
+      - name: Apply patch
+        run: python3 scripts/patch_weekly_schedule_save.py
+
+      - name: Remove patch tooling and commit
         run: |
-          python3 - <<'PY'
-          from pathlib import Path
-
-          path = Path('src/components/WeeklyShiftSchedule.tsx')
-          text = path.read_text()
-
-          old_persist = '''  const persistAssignments = async (next: DailyShiftAssignment[]) => {
-    setAssignments(next);
-    localStorage.setItem('daily_shift_assignments', JSON.stringify(next));
-    const response = await fetch('/api/sync', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ dailyShiftAssignments: next }),
-    });
-    if (!response.ok) throw new Error('sync failed');
-  };'''
-
-          new_persist = '''  const persistAssignments = async (next: DailyShiftAssignment[]) => {
-    console.log('[Schedule Save] ===============================');
-    console.log('[Schedule Save] Starting server synchronization');
-    console.log('[Schedule Save] Raw assignments:', next);
-
-    const cleanAssignments = next
-      .map((item: DailyShiftAssignment) => {
-        const employeeId = String(item.employeeId ?? (item as any).employee_id ?? '').trim();
-        const date = String(item.date ?? '').trim();
-        const isOffDay = Boolean(
-          item.isOffDay ||
-          (item as any).is_off_day ||
-          String((item as any).status || '').toUpperCase() === 'OFF'
-        );
-        const shiftId = isOffDay ? null : (String(item.shiftId ?? (item as any).shift_id ?? '').trim() || null);
-        return { employee_id: employeeId, date, is_off_day: isOffDay, shift_id: shiftId };
-      })
-      .filter((item) => {
-        if (!item.employee_id) {
-          console.error('[Schedule Save] Ignoring assignment with empty employee_id:', item);
-          return false;
-        }
-        if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(item.date)) {
-          console.error('[Schedule Save] Ignoring assignment with invalid date:', item);
-          return false;
-        }
-        if (!item.is_off_day && !item.shift_id) {
-          console.error('[Schedule Save] Non-OFF day has no shift_id:', item);
-          return false;
-        }
-        return true;
-      });
-
-    const payload = { dailyShiftAssignments: cleanAssignments };
-    console.log('[Schedule Save] POST /api/sync payload:', JSON.stringify(payload, null, 2));
-
-    try {
-      const response = await fetch('/api/sync', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      console.log('[Schedule Save] API Response status:', response.status, response.statusText);
-      console.log('[Schedule Save] API Response headers:', Object.fromEntries(response.headers.entries()));
-
-      const responseText = await response.text();
-      console.log('[Schedule Save] Raw API response:', responseText);
-
-      let responseData: any = {};
-      try {
-        responseData = responseText ? JSON.parse(responseText) : {};
-      } catch (parseError) {
-        console.error('[Schedule Save] Failed to parse API response as JSON:', parseError);
-      }
-
-      console.log('[Schedule Save] Parsed API response:', responseData);
-
-      if (!response.ok) {
-        const serverError = responseData?.message || responseData?.error || responseData?.code || responseText || `HTTP ${response.status}`;
-        console.error('[Schedule Save] SERVER REJECTED REQUEST:', {
-          status: response.status,
-          statusText: response.statusText,
-          data: responseData,
-          message: serverError,
-        });
-        throw new Error(`Server error ${response.status}: ${serverError}`);
-      }
-
-      if (responseData?.success === false) {
-        const serverError = responseData?.message || responseData?.error || responseData?.code || 'Server returned success:false';
-        console.error('[Schedule Save] API returned success:false:', responseData);
-        throw new Error(serverError);
-      }
-
-      const serverAssignments = Array.isArray(responseData?.dailyShiftAssignments)
-        ? responseData.dailyShiftAssignments
-        : null;
-
-      console.log('[Schedule Save] SERVER SAVE SUCCESS:', {
-        savedCount: responseData?.savedCount,
-        updatedAt: responseData?.updatedAt,
-        assignments: serverAssignments,
-      });
-
-      const finalAssignments = serverAssignments || next;
-      setAssignments(finalAssignments as DailyShiftAssignment[]);
-      localStorage.setItem('daily_shift_assignments', JSON.stringify(finalAssignments));
-
-      console.log('[Schedule Save] Local state/localStorage updated after SERVER success.');
-      return { success: true, assignments: finalAssignments, response: responseData };
-    } catch (error: any) {
-      console.error('[Schedule Save] API REQUEST FAILED');
-      console.error('[Schedule Save] Error object:', error);
-      console.error('[Schedule Save] Error message:', error?.message);
-      console.error('[Schedule Save] error.response?.data:', error?.response?.data);
-      console.error('[Schedule Save] error.response?.status:', error?.response?.status);
-      console.error('[Schedule Save] error.response:', error?.response);
-      throw error;
-    }
-  };'''
-
-          if old_persist not in text:
-              raise SystemExit('persistAssignments target not found')
-          text = text.replace(old_persist, new_persist, 1)
-
-          old_save = '''    try {
-      await persistAssignments(next);
-      days.forEach(day => {
-        const saved = next.find(a => a.employeeId === employee.id && a.date === day.key);
-        if (saved) onSaveDailyShift?.(saved);
-      });
-      setSavedAt(new Date().toLocaleTimeString(lang === 'ar' ? 'ar-EG' : 'en-US', { hour: '2-digit', minute: '2-digit' }));
-      setDraft({});
-    } catch (err) {
-      console.error(err);
-      setError(lang === 'ar' ? 'تم الحفظ محليًا لكن تعذر المزامنة مع السيرفر.' : 'Saved locally, but server sync failed.');
-    }'''
-
-          new_save = '''    try {
-      const result = await persistAssignments(next);
-      console.log('[Schedule Save] Weekly schedule successfully saved on server:', result);
-
-      days.forEach(day => {
-        const saved = result.assignments.find((a: any) =>
-          String(a.employeeId ?? a.employee_id) === String(employee.id) && String(a.date) === day.key
-        );
-        if (saved) onSaveDailyShift?.({
-          employeeId: String(saved.employeeId ?? saved.employee_id),
-          date: String(saved.date),
-          shiftId: saved.shiftId ?? saved.shift_id ?? '',
-          isOffDay: Boolean(saved.isOffDay ?? saved.is_off_day),
-          assignedBy: saved.assignedBy ?? saved.assigned_by ?? currentUser?.id,
-          updatedAt: saved.updatedAt ?? saved.updated_at ?? updatedAt,
-        });
-      });
-
-      setSavedAt(new Date().toLocaleTimeString(lang === 'ar' ? 'ar-EG' : 'en-US', { hour: '2-digit', minute: '2-digit' }));
-      setDraft({});
-      setError(lang === 'ar' ? 'تم حفظ وتحديث الجدول بنجاح على السيرفر' : 'Schedule saved and updated successfully on the server.');
-    } catch (err: any) {
-      const realError = err?.response?.data?.message || err?.response?.data?.error || err?.message || 'Unknown server error';
-      console.error('[Schedule Save] FINAL SERVER ERROR:', realError);
-      console.error('[Schedule Save] Full error:', err);
-      setError(lang === 'ar' ? `فشل حفظ الجدول على السيرفر: ${realError}` : `Server failed to save the schedule: ${realError}`);
-    }'''
-
-          if old_save not in text:
-              raise SystemExit('saveWeek target not found')
-          text = text.replace(old_save, new_save, 1)
-
-          old_bulk = '''    try {
-      let next = [...assignments];
-      for (const employeeId of selectedEmployeeIds) {
-        next = buildWeekForEmployee(employeeId, employee.id, next, updatedAt);
-      }
-      await persistAssignments(next);
-      selectedEmployeeIds.forEach(employeeId => {
-        days.forEach(day => {
-          const saved = next.find(a => a.employeeId === employeeId && a.date === day.key);
-          if (saved) onSaveDailyShift?.(saved);
-        });
-      });
-      setSavedAt(new Date().toLocaleTimeString(lang === 'ar' ? 'ar-EG' : 'en-US', { hour: '2-digit', minute: '2-digit' }));
-      setSelectedEmployeeIds([]);
-    } catch (err) {
-      console.error(err);
-      setError(lang === 'ar' ? 'تعذر تطبيق الجدول على الموظفين المحددين.' : 'Could not apply the schedule to the selected employees.');
-    } finally {'''
-
-          new_bulk = '''    const selectedEmployees = Array.from(new Set(selectedEmployeeIds.map(id => String(id ?? '').trim()).filter(Boolean)));
-    console.log('[Schedule Bulk Save] Selected employees:', selectedEmployees);
-    if (selectedEmployees.length === 0) {
-      setBulkSaving(false);
-      return;
-    }
-
-    try {
-      let next = [...assignments];
-      for (const employeeId of selectedEmployees) {
-        next = buildWeekForEmployee(employeeId, employee.id, next, updatedAt);
-      }
-      const result = await persistAssignments(next);
-      console.log('[Schedule Bulk Save] Server synchronization successful:', result);
-      selectedEmployees.forEach(employeeId => {
-        days.forEach(day => {
-          const saved = result.assignments.find((a: any) =>
-            String(a.employeeId ?? a.employee_id) === String(employeeId) && String(a.date) === day.key
-          );
-          if (saved) onSaveDailyShift?.({
-            employeeId: String(saved.employeeId ?? saved.employee_id),
-            date: String(saved.date),
-            shiftId: saved.shiftId ?? saved.shift_id ?? '',
-            isOffDay: Boolean(saved.isOffDay ?? saved.is_off_day),
-            assignedBy: saved.assignedBy ?? saved.assigned_by ?? currentUser?.id,
-            updatedAt: saved.updatedAt ?? saved.updated_at ?? updatedAt,
-          });
-        });
-      });
-      setSavedAt(new Date().toLocaleTimeString(lang === 'ar' ? 'ar-EG' : 'en-US', { hour: '2-digit', minute: '2-digit' }));
-      setSelectedEmployeeIds([]);
-      setError(lang === 'ar' ? 'تم حفظ وتحديث الجدول بنجاح على السيرفر' : 'Schedule saved and updated successfully on the server.');
-    } catch (err: any) {
-      const realError = err?.response?.data?.message || err?.response?.data?.error || err?.message || 'Unknown server error';
-      console.error('[Schedule Bulk Save] SERVER ERROR:', realError);
-      console.error('[Schedule Bulk Save] Full error:', err);
-      setError(lang === 'ar' ? `فشل حفظ الجدول على السيرفر: ${realError}` : `Server failed to save the schedule: ${realError}`);
-    } finally {'''
-
-          if old_bulk not in text:
-              raise SystemExit('bulk save target not found')
-          text = text.replace(old_bulk, new_bulk, 1)
-
-          path.write_text(text)
-          print('patched', path)
-          PY
-
-      - name: Remove temporary workflow and commit patch
-        run: |
-          rm -f .github/workflows/fix-weekly-schedule-save.yml
+          rm -f scripts/patch_weekly_schedule_save.py .github/workflows/fix-weekly-schedule-save.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/components/WeeklyShiftSchedule.tsx .github/workflows/fix-weekly-schedule-save.yml
+          git add src/components/WeeklyShiftSchedule.tsx scripts/patch_weekly_schedule_save.py .github/workflows/fix-weekly-schedule-save.yml
           git diff --cached --check
           git commit -m "fix: harden weekly schedule save diagnostics"
           git push
