@@ -41,53 +41,45 @@ function mergeAssignments(existing:any, incoming:any[]) {
 
   for (const item of Array.isArray(existing) ? existing : []) {
     const normalized = normalizeAssignment(item);
-    if (normalized.employeeId && normalized.date) {
-      map.set(`${normalized.employeeId}:${normalized.date}`, normalized);
-    }
+    if (normalized.employeeId && normalized.date) map.set(`${normalized.employeeId}:${normalized.date}`, normalized);
   }
 
   let ignoredStale = 0;
   for (const item of incoming) {
     const normalized = normalizeAssignment(item);
     if (!normalized.employeeId || !normalized.date) continue;
-
     const key = `${normalized.employeeId}:${normalized.date}`;
     const current = map.get(key);
     if (current && timeMs(normalized.updatedAt) < timeMs(current.updatedAt)) {
       ignoredStale += 1;
-      console.warn('[schedule-sync] Ignoring stale assignment:', {
-        key,
-        incomingUpdatedAt: normalized.updatedAt,
-        currentUpdatedAt: current.updatedAt,
-      });
       continue;
     }
-
     map.set(key, normalized);
   }
 
   return { assignments: Array.from(map.values()), ignoredStale };
 }
 
-async function persistBackgroundSyncEvent(event:any) {
-  // Best-effort background event. A failure here MUST NEVER fail the database write.
+async function upsertSetting(key:string, value:any) {
+  const rows = await db.select().from(schema.settings).where(eq(schema.settings.key, key));
+  if (rows[0]) {
+    await db.update(schema.settings).set({ value } as any).where(eq(schema.settings.key, key));
+    return;
+  }
   try {
-    const key = '__sync_event:dailyShiftAssignments';
-    await db.insert(schema.settings).values({ key, value: event } as any).onConflictDoUpdate({
-      target: schema.settings.key,
-      set: { value: event } as any,
-    });
-    console.log('[schedule-sync] Background sync event recorded:', event);
+    await db.insert(schema.settings).values({ key, value } as any);
   } catch (error) {
-    console.error('[schedule-sync] Background sync event failed (non-blocking):', error);
+    // Another request may have inserted the same key between SELECT and INSERT.
+    // Re-read and update instead of converting a successful schedule save to HTTP 500.
+    const retry = await db.select().from(schema.settings).where(eq(schema.settings.key, key));
+    if (retry[0]) {
+      await db.update(schema.settings).set({ value } as any).where(eq(schema.settings.key, key));
+      return;
+    }
+    throw error;
   }
 }
 
-/**
- * Schedule save is database-first. The cross-device event is deliberately
- * best-effort and asynchronous so a sync failure can never turn a successful
- * database write into HTTP 500.
- */
 export function registerScheduleSyncGuard(app:any) {
   app.use(async (req:any, res:any, next:any) => {
     if (req.method !== 'POST' || !isSyncPath(req) || !isSchedulePayload(req.body)) return next();
@@ -100,75 +92,35 @@ export function registerScheduleSyncGuard(app:any) {
       const raw = req.body?.dailyShiftAssignments;
       const incoming = raw.map((item:any) => normalizeAssignment(item, assignedBy, requestTimestamp));
       const invalid = incoming.find((item:any) =>
-        !item.employeeId ||
-        !item.date ||
-        !/^\d{4}-\d{2}-\d{2}$/.test(item.date) ||
-        (!item.isOffDay && !item.shiftId)
+        !item.employeeId || !item.date || !/^\d{4}-\d{2}-\d{2}$/.test(item.date) || (!item.isOffDay && !item.shiftId)
       );
 
       if (invalid) {
-        return res.status(400).json({
-          success: false,
-          code: 'INVALID_SCHEDULE_PAYLOAD',
-          message: 'Each schedule assignment requires employee_id, YYYY-MM-DD date, and shift_id or OFF.',
-        });
+        return res.status(400).json({ success:false, code:'INVALID_SCHEDULE_PAYLOAD', message:'Each schedule assignment requires employee_id, YYYY-MM-DD date, and shift_id or OFF.' });
       }
 
-      // DATABASE WRITE FIRST: this is the authoritative save operation.
       const settingsRows = await db.select().from(schema.settings).where(eq(schema.settings.key, 'dailyShiftAssignments'));
-      const existing = settingsRows[0]?.value;
-      const { assignments: merged, ignoredStale } = mergeAssignments(existing, incoming);
-      const key = 'dailyShiftAssignments';
+      const { assignments: merged, ignoredStale } = mergeAssignments(settingsRows[0]?.value, incoming);
 
-      if (settingsRows[0]) {
-        await db.update(schema.settings).set({ value: merged } as any).where(eq(schema.settings.key, key));
-      } else {
-        await db.insert(schema.settings).values({ key, value: merged } as any);
-      }
-
+      // Atomic/race-safe persistence: concurrent devices cannot turn a valid save into 500.
+      await upsertSetting('dailyShiftAssignments', merged);
       const now = new Date().toISOString();
-      const stampKey = '__sync_updated_at:dailyShiftAssignments';
-      const stampRows = await db.select().from(schema.settings).where(eq(schema.settings.key, stampKey));
-      if (stampRows[0]) {
-        await db.update(schema.settings).set({ value: now } as any).where(eq(schema.settings.key, stampKey));
-      } else {
-        await db.insert(schema.settings).values({ key: stampKey, value: now } as any);
-      }
+      await upsertSetting('__sync_updated_at:dailyShiftAssignments', now);
 
-      const response = {
-        success: true,
-        message: 'Schedule saved successfully. Cross-device synchronization is running in the background.',
-        dailyShiftAssignments: merged,
-        savedCount: incoming.length - ignoredStale,
+      return res.status(200).json({
+        success:true,
+        message:'Schedule saved successfully.',
+        dailyShiftAssignments:merged,
+        savedCount:incoming.length - ignoredStale,
         ignoredStale,
-        updatedAt: now,
-        syncTimestamp: requestTimestamp,
-        syncRevision: requestRevision,
-        syncQueued: true,
-      };
-
-      // BACKGROUND SYNC: never await it and never let it change the 200 response.
-      const backgroundEvent = {
-        type: 'dailyShiftAssignments.updated',
-        revision: requestRevision,
-        timestamp: requestTimestamp,
-        committedAt: now,
-        count: incoming.length,
-      };
-      setImmediate(() => {
-        void persistBackgroundSyncEvent(backgroundEvent);
+        updatedAt:now,
+        syncTimestamp:requestTimestamp,
+        syncRevision:requestRevision,
+        syncQueued:true,
       });
-
-      return res.status(200).json(response);
     } catch (error:any) {
-      // Only a real DATABASE WRITE failure is allowed to fail the request.
-      // Cross-device sync errors are intentionally outside this catch/response path.
       console.error('[schedule-sync] DATABASE WRITE FAILED:', error);
-      return res.status(500).json({
-        success: false,
-        code: 'SCHEDULE_DATABASE_WRITE_FAILED',
-        message: error?.message || 'Schedule database write failed.',
-      });
+      return res.status(500).json({ success:false, code:'SCHEDULE_DATABASE_WRITE_FAILED', message:error?.message || 'Schedule database write failed.' });
     }
   });
 }
