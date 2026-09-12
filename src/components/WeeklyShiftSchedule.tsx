@@ -210,14 +210,22 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
         return true;
       });
 
-    const payload = { dailyShiftAssignments: cleanAssignments };
+    const syncTimestamp = new Date().toISOString();
+    const syncRevision = `${syncTimestamp}-${Math.random().toString(36).slice(2, 10)}`;
+    const payload = { dailyShiftAssignments: cleanAssignments, syncTimestamp, syncRevision };
+    console.log('[Schedule Save] Sync metadata:', { syncTimestamp, syncRevision });
     console.log('[Schedule Save] POST /api/sync payload:', JSON.stringify(payload, null, 2));
 
     try {
       const response = await fetch('/api/sync', {
         method: 'POST',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          'X-Sync-Timestamp': syncTimestamp,
+          'X-Sync-Revision': syncRevision,
+        },
         body: JSON.stringify(payload),
       });
 
