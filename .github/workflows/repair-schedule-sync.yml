@@ -1,0 +1,45 @@
+name: Repair schedule sync
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: ${{ github.event_name == 'workflow_dispatch' || !contains(github.event.head_commit.message, 'repair: schedule sync') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Repair atomic schedule settings writes
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('server/device-sync-v2.ts')
+          s = p.read_text()
+          old = "if(!a[0]){await db.insert(schema.settings).values({key:k,value:v} as any);if(isCollection){const stampKey=`__sync_updated_at:${k}`,next=stamp(updatedAt);await db.insert(schema.settings).values({key:stampKey,value:next} as any);}return;}"
+          new = "if(!a[0]){try{await db.insert(schema.settings).values({key:k,value:v} as any);}catch(e){const retry=await db.select().from(schema.settings).where(eq(schema.settings.key,k));if(!retry[0])throw e;}const fresh=await db.select().from(schema.settings).where(eq(schema.settings.key,k));if(!fresh[0])throw new Error(`SETTINGS_INSERT_FAILED:${k}`);if(isCollection){await db.update(schema.settings).set({value:mergeCollection(fresh[0].value,v)} as any).where(eq(schema.settings.key,k));const stampKey=`__sync_updated_at:${k}`,next=stamp(updatedAt);try{await db.insert(schema.settings).values({key:stampKey,value:next} as any);}catch(e){const retry=await db.select().from(schema.settings).where(eq(schema.settings.key,stampKey));if(!retry[0])throw e;}return;}return;}"
+          if old not in s:
+              raise SystemExit('schedule settings insert block not found')
+          s = s.replace(old, new, 1)
+          old2 = "if(!t[0])await db.insert(schema.settings).values({key:stampKey,value:next} as any);else await db.update(schema.settings).set({value:next} as any).where(eq(schema.settings.key,stampKey));return;}"
+          new2 = "if(!t[0]){try{await db.insert(schema.settings).values({key:stampKey,value:next} as any);}catch(e){const retry=await db.select().from(schema.settings).where(eq(schema.settings.key,stampKey));if(!retry[0])throw e;}}else await db.update(schema.settings).set({value:next} as any).where(eq(schema.settings.key,stampKey));return;}"
+          if old2 not in s:
+              raise SystemExit('schedule collection stamp block not found')
+          s = s.replace(old2, new2, 1)
+          old3 = "if(!t[0])await db.insert(schema.settings).values({key:stampKey,value:next} as any);else await db.update(schema.settings).set({value:next} as any).where(eq(schema.settings.key,stampKey));}"
+          new3 = "if(!t[0]){try{await db.insert(schema.settings).values({key:stampKey,value:next} as any);}catch(e){const retry=await db.select().from(schema.settings).where(eq(schema.settings.key,stampKey));if(!retry[0])throw e;}}else await db.update(schema.settings).set({value:next} as any).where(eq(schema.settings.key,stampKey));}"
+          if old3 not in s:
+              raise SystemExit('schedule normal stamp block not found')
+          s = s.replace(old3, new3, 1)
+          p.write_text(s)
+      - name: Commit repair
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add server/device-sync-v2.ts
+          git diff --cached --quiet && exit 0
+          git commit -m 'repair: schedule sync'
+          git push
