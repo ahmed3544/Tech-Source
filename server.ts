@@ -12,6 +12,7 @@ import { registerNotificationSystemV2 } from "./server/notification-system-v2.js
 import { registerRequestNotificationTriggers } from "./server/request-notification-triggers.js";
 import { registerAttendanceRealtime } from "./server/attendance-realtime.js";
 import { registerDeviceSyncV2 } from "./server/device-sync-v2.js";
+import { registerScheduleSyncGuard } from "./server/schedule-sync-guard.js";
 import { recoverMissingLegacyData } from "./server/legacy-data-recovery.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -42,6 +43,7 @@ registerNotificationSystemV2(app);
 app.use(async (req:any,res:any,next:any)=>{if((process.env.DATABASE_URL||process.env.SUPABASE_DB_URL)&&(req.path==='/api/data'||req.path==='/api/sync')){try{await recoverMissingLegacyData();}catch(e){console.error('[legacy-recovery]',e);}}next();});
 registerRequestNotificationTriggers(app);
 registerAttendanceRealtime(app);
+registerScheduleSyncGuard(app);
 registerDeviceSyncV2(app);
 
 export default app;
