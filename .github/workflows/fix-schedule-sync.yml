@@ -1,30 +1,39 @@
-name: Fix schedule sync freshness
+name: Fix schedule sync race
 on:
   push:
     branches: [main]
 
 jobs:
   patch:
-    if: ${{ !contains(github.event.head_commit.message, 'fix: expose schedule sync updates to other devices') }}
+    if: ${{ !contains(github.event.head_commit.message, 'fix: prevent schedule sync race failures') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Patch schedule collection timestamps
+      - name: Patch schedule sync race handling
         run: |
           python3 - <<'PY'
           from pathlib import Path
           p = Path('server/device-sync-v2.ts')
           s = p.read_text()
-          old = "if(isCollection){await db.update(schema.settings).set({value:mergeCollection(a[0].value,v)} as any).where(eq(schema.settings.key,k));return;}"
-          new = "if(isCollection){await db.update(schema.settings).set({value:mergeCollection(a[0].value,v)} as any).where(eq(schema.settings.key,k));const next=stamp(updatedAt);const t=await db.select().from(schema.settings).where(eq(schema.settings.key,stampKey));if(!t[0])await db.insert(schema.settings).values({key:stampKey,value:next} as any);else await db.update(schema.settings).set({value:next} as any).where(eq(schema.settings.key,stampKey));return;}"
+
+          old = "if(!a[0]){await db.insert(schema.settings).values({key:k,value:v} as any);if(isCollection){const stampKey=`__sync_updated_at:${k}`,next=stamp(updatedAt);await db.insert(schema.settings).values({key:stampKey,value:next} as any);}return;}"
+          new = "if(!a[0]){try{await db.insert(schema.settings).values({key:k,value:v} as any);}catch(e){const retry=await db.select().from(schema.settings).where(eq(schema.settings.key,k));if(!retry[0])throw e;}const fresh=await db.select().from(schema.settings).where(eq(schema.settings.key,k));if(!fresh[0])throw new Error(`SETTINGS_INSERT_FAILED:${k}`);if(isCollection){await db.update(schema.settings).set({value:mergeCollection(fresh[0].value,v)} as any).where(eq(schema.settings.key,k));const stampKey=`__sync_updated_at:${k}`,next=stamp(updatedAt);try{await db.insert(schema.settings).values({key:stampKey,value:next} as any);}catch(e){const retry=await db.select().from(schema.settings).where(eq(schema.settings.key,stampKey));if(!retry[0])throw e;}return;}return;}"
           if old not in s:
-              raise SystemExit('collection setting block not found')
+              raise SystemExit('initial settings block not found')
           s = s.replace(old, new, 1)
-          old2 = "const all=[...employees,...attendanceRecords,...leaveRequests,...overtimeRequests,...shifts,...employeeShiftAssignments];const lastUpdated=Math.max(0,...all.map((x:any)=>ms(x?.updatedAt||x?.createdAt)));"
-          new2 = "const all=[...employees,...attendanceRecords,...leaveRequests,...overtimeRequests,...shifts,...employeeShiftAssignments];const syncSettingTimes=settings.filter((s:any)=>String(s.key).startsWith('__sync_updated_at:')).map((s:any)=>ms(s.value));const lastUpdated=Math.max(0,...all.map((x:any)=>ms(x?.updatedAt||x?.createdAt)),...syncSettingTimes);"
+
+          old2 = "if(!t[0])await db.insert(schema.settings).values({key:stampKey,value:next} as any);else await db.update(schema.settings).set({value:next} as any).where(eq(schema.settings.key,stampKey));return;}"
+          new2 = "if(!t[0]){try{await db.insert(schema.settings).values({key:stampKey,value:next} as any);}catch(e){const retry=await db.select().from(schema.settings).where(eq(schema.settings.key,stampKey));if(!retry[0])throw e;}}else await db.update(schema.settings).set({value:next} as any).where(eq(schema.settings.key,stampKey));return;}"
           if old2 not in s:
-              raise SystemExit('snapshot lastUpdated block not found')
+              raise SystemExit('collection stamp block not found')
           s = s.replace(old2, new2, 1)
+
+          old3 = "if(!t[0])await db.insert(schema.settings).values({key:stampKey,value:next} as any);else await db.update(schema.settings).set({value:next} as any).where(eq(schema.settings.key,stampKey));}"
+          new3 = "if(!t[0]){try{await db.insert(schema.settings).values({key:stampKey,value:next} as any);}catch(e){const retry=await db.select().from(schema.settings).where(eq(schema.settings.key,stampKey));if(!retry[0])throw e;}}else await db.update(schema.settings).set({value:next} as any).where(eq(schema.settings.key,stampKey));}"
+          if old3 not in s:
+              raise SystemExit('normal stamp block not found')
+          s = s.replace(old3, new3, 1)
+
           p.write_text(s)
           PY
       - name: Commit patch and remove helper
@@ -32,7 +41,7 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add server/device-sync-v2.ts
-          git commit -m 'fix: expose schedule sync updates to other devices'
+          git commit -m 'fix: prevent schedule sync race failures'
           git rm .github/workflows/fix-schedule-sync.yml
           git commit -m 'chore: remove temporary schedule sync workflow'
           git push
