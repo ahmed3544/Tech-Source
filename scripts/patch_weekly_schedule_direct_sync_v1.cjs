@@ -2,8 +2,16 @@ const fs = require('fs');
 const path = require('path');
 const file = path.join(process.cwd(), 'src/components/WeeklyShiftSchedule.tsx');
 let code = fs.readFileSync(file, 'utf8');
+
+// Keep the visual style deterministic even when earlier schedule patches rewrite the component.
+code = code.replaceAll('bg-emerald-500', 'bg-green-600');
+code = code.replaceAll('ring-emerald-700/20', 'ring-green-800/30');
+
 const marker = '/* WEEKLY_SCHEDULE_DIRECT_SYNC_V1 */';
-if (code.includes(marker)) process.exit(0);
+if (code.includes(marker)) {
+  fs.writeFileSync(file, code);
+  process.exit(0);
+}
 const start = code.indexOf('    const syncTimestamp = new Date().toISOString();');
 const end = code.indexOf("\n  const buildWeekForEmployee", start);
 if (start < 0 || end < 0) throw new Error('weekly schedule persistAssignments target not found');
