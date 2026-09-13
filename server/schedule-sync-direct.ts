@@ -2,11 +2,20 @@ import { eq } from 'drizzle-orm';
 import { db } from '../src/db/index.js';
 import * as schema from '../src/db/schema.js';
 
+const asBoolean = (value:any) => {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value !== 0;
+  const normalized = String(value ?? '').trim().toLowerCase();
+  return normalized === 'true' || normalized === '1' || normalized === 'yes' || normalized === 'off';
+};
+
 const normalizeAssignment = (item:any) => {
   const employeeId = String(item?.employeeId ?? item?.employee_id ?? '').trim();
   const date = String(item?.date ?? item?.scheduleDate ?? item?.schedule_date ?? '').slice(0, 10);
-  const isOffDay = Boolean(item?.isOffDay ?? item?.is_off_day ?? String(item?.status ?? '').toUpperCase() === 'OFF');
-  const shiftId = isOffDay ? '' : String(item?.shiftId ?? item?.shift_id ?? '').trim();
+  const rawShiftId = String(item?.shiftId ?? item?.shift_id ?? '').trim();
+  const status = String(item?.status ?? '').trim().toUpperCase();
+  const isOffDay = asBoolean(item?.isOffDay ?? item?.is_off_day) || status === 'OFF' || !rawShiftId;
+  const shiftId = isOffDay ? '' : rawShiftId;
   return { employeeId, date, shiftId, isOffDay, assignedBy: item?.assignedBy ?? item?.assigned_by, updatedAt: item?.updatedAt ?? item?.updated_at };
 };
 
