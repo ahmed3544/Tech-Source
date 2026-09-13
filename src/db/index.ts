@@ -8,13 +8,14 @@ declare global {
 
 export const createPool = () => {
   if (!global._postgresPool) {
-    // Production/runtime database is Neon. DATABASE_URL must point to the
-    // Neon Postgres connection string in Vercel/local environments.
-    const connectionString = process.env.DATABASE_URL;
+    // Use one authoritative production database connection. DATABASE_URL is
+    // preferred, while SUPABASE_DB_URL remains supported for compatibility.
+    const connectionString =
+      process.env.DATABASE_URL || process.env.SUPABASE_DB_URL;
 
     if (!connectionString) {
       console.warn(
-        "DATABASE_URL is not set. Neon database operations will fail if invoked."
+        "DATABASE_URL/SUPABASE_DB_URL is not set. Database operations will fail."
       );
     }
 
