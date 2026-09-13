@@ -2,7 +2,8 @@ import { eq } from 'drizzle-orm';
 import { db } from '../src/db/index.js';
 import * as schema from '../src/db/schema.js';
 
-const isSyncPath = (req:any) => ['/api/sync','/sync'].includes(String(req.path || req.url || '').split('?')[0].replace(/\/+$/,'') || '/');
+const apiPath = (req:any) => String(req.path || req.originalUrl || req.url || '').split('?')[0].replace(/\/+$/,'') || '/';
+const isSyncPath = (req:any) => ['/api/sync','/sync'].includes(apiPath(req));
 const isSchedulePayload = (body:any) => Array.isArray(body?.dailyShiftAssignments);
 
 const dateKey = (value:any) => {
@@ -61,8 +62,6 @@ function mergeAssignments(existing:any, incoming:any[]) {
 }
 
 async function upsertSetting(key:string, value:any) {
-  // Use PostgreSQL's native ON CONFLICT so concurrent schedule saves are truly atomic.
-  // The previous SELECT -> INSERT fallback still had a race window and could return 500.
   await db.insert(schema.settings).values({ key, value } as any).onConflictDoUpdate({
     target: schema.settings.key,
     set: { value } as any,
@@ -71,7 +70,12 @@ async function upsertSetting(key:string, value:any) {
 
 export function registerScheduleSyncGuard(app:any) {
   app.use(async (req:any, res:any, next:any) => {
-    if (req.method !== 'POST' || !isSyncPath(req) || !isSchedulePayload(req.body)) return next();
+    // Vercel's Express adapter can normalize req.path differently depending on
+    // the catch-all route. The payload is the authoritative discriminator here:
+    // a POST carrying dailyShiftAssignments is always a schedule-save request.
+    const scheduleRequest = req.method === 'POST' && isSchedulePayload(req.body);
+    if (!scheduleRequest && (req.method !== 'POST' || !isSyncPath(req))) return next();
+    if (!scheduleRequest) return next();
 
     const requestTimestamp = String(req.headers?.['x-sync-timestamp'] ?? req.body?.syncTimestamp ?? new Date().toISOString());
     const requestRevision = String(req.headers?.['x-sync-revision'] ?? req.body?.syncRevision ?? requestTimestamp);
