@@ -61,23 +61,12 @@ function mergeAssignments(existing:any, incoming:any[]) {
 }
 
 async function upsertSetting(key:string, value:any) {
-  const rows = await db.select().from(schema.settings).where(eq(schema.settings.key, key));
-  if (rows[0]) {
-    await db.update(schema.settings).set({ value } as any).where(eq(schema.settings.key, key));
-    return;
-  }
-  try {
-    await db.insert(schema.settings).values({ key, value } as any);
-  } catch (error) {
-    // Another request may have inserted the same key between SELECT and INSERT.
-    // Re-read and update instead of converting a successful schedule save to HTTP 500.
-    const retry = await db.select().from(schema.settings).where(eq(schema.settings.key, key));
-    if (retry[0]) {
-      await db.update(schema.settings).set({ value } as any).where(eq(schema.settings.key, key));
-      return;
-    }
-    throw error;
-  }
+  // Use PostgreSQL's native ON CONFLICT so concurrent schedule saves are truly atomic.
+  // The previous SELECT -> INSERT fallback still had a race window and could return 500.
+  await db.insert(schema.settings).values({ key, value } as any).onConflictDoUpdate({
+    target: schema.settings.key,
+    set: { value } as any,
+  });
 }
 
 export function registerScheduleSyncGuard(app:any) {
@@ -102,7 +91,6 @@ export function registerScheduleSyncGuard(app:any) {
       const settingsRows = await db.select().from(schema.settings).where(eq(schema.settings.key, 'dailyShiftAssignments'));
       const { assignments: merged, ignoredStale } = mergeAssignments(settingsRows[0]?.value, incoming);
 
-      // Atomic/race-safe persistence: concurrent devices cannot turn a valid save into 500.
       await upsertSetting('dailyShiftAssignments', merged);
       const now = new Date().toISOString();
       await upsertSetting('__sync_updated_at:dailyShiftAssignments', now);
