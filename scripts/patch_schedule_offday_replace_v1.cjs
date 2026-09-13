@@ -2,19 +2,30 @@ const fs = require('fs');
 const path = 'server/device-sync-v2.ts';
 let s = fs.readFileSync(path, 'utf8');
 const marker = '/* SCHEDULE_OFFDAY_REPLACE_V1 */';
+
 if (!s.includes(marker)) {
   const old = "function collectionKey(x:any,index:number){if(x?.id!=null)return `id:${String(x.id)}`;if(x?.employeeId!=null&&x?.date!=null)return `employee-date:${String(x.employeeId)}:${String(x.date)}`;if(x?.employeeId!=null&&x?.scheduleDate!=null)return `employee-schedule:${String(x.employeeId)}:${String(x.scheduleDate)}`;return `index:${index}`;}";
-  const neu = `${marker}\nfunction collectionKey(x:any,index:number){const employeeId=x?.employeeId??x?.employee_id;const date=x?.date??x?.scheduleDate??x?.schedule_date;if(x?.id!=null)return \`id:${String(x.id)}\`;if(employeeId!=null&&date!=null)return \`employee-date:${String(employeeId)}:${String(date).slice(0,10)}\`;return \`index:${index}\`;}\nfunction normalizeDailyShiftAssignment(x:any){return {employeeId:String(x?.employeeId??x?.employee_id??''),date:String(x?.date??'').slice(0,10),shiftId:(x?.shiftId??x?.shift_id??null)||null,isOffDay:Boolean(x?.isOffDay??x?.is_off_day??String(x?.status||'').toUpperCase()==='OFF'),assignedBy:x?.assignedBy??x?.assigned_by,updatedAt:x?.updatedAt??x?.updated_at};}`;
+  const neu = [
+    marker,
+    "function collectionKey(x:any,index:number){const employeeId=x?.employeeId??x?.employee_id;const date=x?.date??x?.scheduleDate??x?.schedule_date;if(x?.id!=null)return `id:${String(x.id)}`;if(employeeId!=null&&date!=null)return `employee-date:${String(employeeId)}:${String(date).slice(0,10)}`;return `index:${index}`;}",
+    "function normalizeDailyShiftAssignment(x:any){return {employeeId:String(x?.employeeId??x?.employee_id??''),date:String(x?.date??x?.scheduleDate??x?.schedule_date??'').slice(0,10),shiftId:(x?.shiftId??x?.shift_id??null)||null,isOffDay:Boolean(x?.isOffDay??x?.is_off_day??String(x?.status||'').toUpperCase()==='OFF'),assignedBy:x?.assignedBy??x?.assigned_by,updatedAt:x?.updatedAt??x?.updated_at};}"
+  ].join('\n');
+
   if (!s.includes(old)) throw new Error('collectionKey target not found');
   s = s.replace(old, neu);
+
   const oldSnapshot = "dailyShiftAssignments:Array.isArray(m.get('dailyShiftAssignments'))?m.get('dailyShiftAssignments'):[],";
   const newSnapshot = "dailyShiftAssignments:Array.isArray(m.get('dailyShiftAssignments'))?m.get('dailyShiftAssignments').map(normalizeDailyShiftAssignment):[],";
   if (!s.includes(oldSnapshot)) throw new Error('snapshot dailyShiftAssignments target not found');
   s = s.replace(oldSnapshot, newSnapshot);
+
   const oldSetting = "if(Array.isArray(b.dailyShiftAssignments))await setting('dailyShiftAssignments',b.dailyShiftAssignments,syncTime);";
   const newSetting = "if(Array.isArray(b.dailyShiftAssignments))await setting('dailyShiftAssignments',b.dailyShiftAssignments.map(normalizeDailyShiftAssignment),syncTime);";
   if (!s.includes(oldSetting)) throw new Error('sync dailyShiftAssignments target not found');
   s = s.replace(oldSetting, newSetting);
+
   fs.writeFileSync(path, s, 'utf8');
   console.log('Applied schedule off-day replacement fix.');
-} else console.log('Already patched.');
+} else {
+  console.log('Already patched.');
+}
