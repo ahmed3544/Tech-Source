@@ -26,7 +26,7 @@ const PORT = Number(process.env.PORT || 3000);
 const TZ = process.env.SERVER_TIME_ZONE || "Africa/Cairo";
 const DATA_FILE = path.join(process.cwd(), "server_data.json");
 const BACKUP_DIR = path.join(process.cwd(), "backups");
-const USE_DATABASE = Boolean(process.env.DATABASE_URL);
+const USE_DATABASE = Boolean(process.env.DATABASE_URL || process.env.SUPABASE_DB_URL);
 
 type State = { employees:any[]; attendanceRecords:any[]; leaveRequests:any[]; overtimeRequests:any[]; shifts:any[]; notifications:any[]; dailyShiftAssignments:any[]; shiftSwapRequests:any[]; companyNameAr?:any; companyNameEn?:any; urgentNotice?:any; lastUpdated:number; };
 const emptyState = ():State => ({employees:[],attendanceRecords:[],leaveRequests:[],overtimeRequests:[],shifts:[],notifications:[],dailyShiftAssignments:[],shiftSwapRequests:[],companyNameAr:null,companyNameEn:null,urgentNotice:null,lastUpdated:Date.now()});
@@ -42,16 +42,31 @@ async function dbSnapshot(){const [employees,attendanceRecords,leaveRequests,ove
 
 registerNotificationSystemV2(app);
 
+// Central snapshot endpoint. Keep it independent from the notification module so
+// one optional subsystem cannot take down cross-device synchronization.
+app.get('/api/data', async (_req, res) => {
+  if (!USE_DATABASE) return res.json(emptyState());
+  try {
+    const result = await dbSnapshot();
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    return res.json(result);
+  } catch (error) {
+    console.error('[api/data] database snapshot failed:', error);
+    return res.status(500).json({ success: false, error: 'database_snapshot_failed', details: process.env.NODE_ENV === 'development' ? String(error) : undefined });
+  }
+});
+
+registerRequestNotificationTriggers(app);
+registerAttendanceRealtime(app);
+registerScheduleSyncGuard(app);
+
 app.use((req:any,res:any,next:any)=>{
   if (process.env.DATABASE_URL && (req.path === '/api/data' || req.path === '/api/sync')) {
     void recoverMissingLegacyData().catch((e:any)=>console.error('[legacy-recovery]',e));
   }
   next();
 });
-
-registerRequestNotificationTriggers(app);
-registerAttendanceRealtime(app);
-registerScheduleSyncGuard(app);
 
 app.use(async (req:any,res:any,next:any)=>{
   const pathName = String(req.path || '').split('?')[0];
@@ -65,22 +80,17 @@ app.use(async (req:any,res:any,next:any)=>{
       if (!item?.id || !item?.employeeId) continue;
       const id = String(item.id);
       const values:any = {};
-      for (const key of ['id','employeeId','type','startDate','endDate','reason','status','createdAt','hours','permissionSlot','attachmentUrl','attachmentName','reviewedBy','reviewNotes']) {
-        if (item[key] !== undefined) values[key] = item[key];
-      }
+      for (const key of ['id','employeeId','type','startDate','endDate','reason','status','createdAt','hours','permissionSlot','attachmentUrl','attachmentName','reviewedBy','reviewNotes']) if (item[key] !== undefined) values[key] = item[key];
       const existing = await db.select().from(schema.leaveRequests).where(eq(schema.leaveRequests.id, id));
-      if (!existing[0]) await db.insert(schema.leaveRequests).values(values as any);
-      else await db.update(schema.leaveRequests).set(values as any).where(eq(schema.leaveRequests.id, id));
+      if (!existing[0]) await db.insert(schema.leaveRequests).values(values as any); else await db.update(schema.leaveRequests).set(values as any).where(eq(schema.leaveRequests.id, id));
       await setting(`__sync_updated_at:leave:${id}`, Date.now());
     }
     for (const rawId of deleted) {
-      const id = String(rawId || '').trim();
-      if (!id) continue;
+      const id = String(rawId || '').trim(); if (!id) continue;
       await db.delete(schema.leaveRequests).where(eq(schema.leaveRequests.id, id));
       const rows = await db.select().from(schema.settings).where(eq(schema.settings.key,'__sync_deleted_ids:leave'));
       const oldIds = Array.isArray(rows[0]?.value) ? rows[0].value.map(String) : [];
-      const nextIds = Array.from(new Set([...oldIds, id])).slice(-5000);
-      await setting('__sync_deleted_ids:leave', nextIds);
+      await setting('__sync_deleted_ids:leave', Array.from(new Set([...oldIds, id])).slice(-5000));
     }
     req.body = { ...body, leaveRequests: undefined, deletedLeaveIds: undefined };
     return next();
@@ -97,19 +107,13 @@ app.use(async (req:any,res:any,next:any)=>{
   try {
     for (const item of items) {
       if (!item?.id || !item?.recipientId) continue;
-      const id = String(item.id);
-      const values:any = {};
-      for (const key of ['id','recipientId','type','title','message','relatedEmployeeId','relatedLeaveId','relatedOvertimeId','relatedShiftSwapId','isRead','createdAt','updatedAt']) {
-        if (item[key] !== undefined) values[key] = item[key];
-      }
+      const id = String(item.id); const values:any = {};
+      for (const key of ['id','recipientId','type','title','message','relatedEmployeeId','relatedLeaveId','relatedOvertimeId','relatedShiftSwapId','isRead','createdAt','updatedAt']) if (item[key] !== undefined) values[key] = item[key];
       const existing = await db.select().from(schema.notifications).where(eq(schema.notifications.id,id));
       if (!existing[0]) await db.insert(schema.notifications).values(values as any);
       else {
-        const incoming = new Date(String(values.updatedAt || values.createdAt || '')).getTime();
-        const current = new Date(String((existing[0] as any).updatedAt || (existing[0] as any).createdAt || '')).getTime();
-        if (Number.isFinite(incoming) && (!Number.isFinite(current) || incoming >= current)) {
-          await db.update(schema.notifications).set(values as any).where(eq(schema.notifications.id,id));
-        }
+        const incoming = new Date(String(values.updatedAt || values.createdAt || '')).getTime(); const current = new Date(String((existing[0] as any).updatedAt || (existing[0] as any).createdAt || '')).getTime();
+        if (Number.isFinite(incoming) && (!Number.isFinite(current) || incoming >= current)) await db.update(schema.notifications).set(values as any).where(eq(schema.notifications.id,id));
       }
     }
   } catch (error:any) {
@@ -125,4 +129,4 @@ registerDeviceSyncV2(app);
 export default app;
 export { app };
 
-if (process.env.VERCEL !== '1') app.listen(PORT,()=>console.log(`Server running on port ${PORT} | Database: ${USE_DATABASE?'NEON':'LOCAL'}`));
+if (process.env.VERCEL !== '1') app.listen(PORT,()=>console.log(`Server running on port ${PORT} | Database: ${USE_DATABASE?'DATABASE':'LOCAL'}`));
