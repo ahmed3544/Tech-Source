@@ -8,6 +8,17 @@ if (!code.includes(marker)) {
   process.exit(0);
 }
 
+/*
+ * IMPORTANT: the central pull effect can retry a queued mutation before the
+ * lexical `const pushSync = ...` binding is initialized in the component.
+ * Convert pushSync to a function declaration so the retry path is hoisted and
+ * cannot throw "Cannot access 'X' before initialization" after minification.
+ */
+const pushSyncConst = /const pushSync = async \(/;
+if (pushSyncConst.test(code)) {
+  code = code.replace(pushSyncConst, 'async function pushSync(');
+}
+
 /* Remove the previous retry useEffect. It could execute a callback through a
    minified lexical binding before the component's initialization completed. */
 const retryStart = `  /* =========================================================\n     GUARANTEED SERVER RETRY\n     ========================================================= */`;
@@ -34,8 +45,8 @@ if (code.includes(successMarker) && !code.includes("localStorage.removeItem('att
   code = code.replace(successMarker, successReplacement);
 }
 
-/* Retry is owned by the already-mounted central pull effect. This avoids an
-   additional hook whose callback can be emitted into a TDZ by minification. */
+/* Retry is owned by the already-mounted central pull effect. Because pushSync
+   is now a hoisted function declaration, this call is safe in the effect. */
 const pullNeedle = `      const pullFromServer =\n      async () => {\n\n        if (`;
 const pullReplacement = `      const pullFromServer =\n      async () => {\n\n        try {\n          const pendingRaw = localStorage.getItem('attendance_pending_server_sync');\n          if (pendingRaw && !syncInFlightRef.current) {\n            const pending = JSON.parse(pendingRaw);\n            if (pending?.payload && typeof pending.payload === 'object') {\n              await pushSync(pending.payload);\n              return;\n            }\n            localStorage.removeItem('attendance_pending_server_sync');\n          }\n        } catch (error) {\n          console.warn('[sync-retry] pending mutation retry failed:', error);\n        }\n\n        if (`;
 
