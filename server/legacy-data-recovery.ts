@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { db } from '../src/db/index.js';
 import * as schema from '../src/db/schema.js';
 
@@ -72,12 +72,22 @@ export async function recoverMissingLegacyData() {
       if (Array.isArray(data.attendanceRecords)) {
         for (const record of data.attendanceRecords) {
           if (!record?.employeeId || !record?.date) continue;
-          const id = `rec-${String(record.employeeId).toLowerCase()}-${record.date}`;
-          const rows = await db.select({ id: schema.attendanceRecords.id }).from(schema.attendanceRecords).where(eq(schema.attendanceRecords.id, id)).limit(1);
+          const employeeId = String(record.employeeId);
+          const date = String(record.date);
+          const id = `rec-${employeeId.toLowerCase()}-${date}`;
+          // attendance_records is unique by employee + date, so use the same
+          // business key for recovery instead of checking only the synthetic id.
+          const rows = await db.select({ id: schema.attendanceRecords.id })
+            .from(schema.attendanceRecords)
+            .where(and(
+              eq(schema.attendanceRecords.employeeId, employeeId),
+              eq(schema.attendanceRecords.date, date),
+            ))
+            .limit(1);
           if (rows.length) continue;
           try {
             await db.insert(schema.attendanceRecords).values({
-              id, employeeId: String(record.employeeId), date: String(record.date),
+              id, employeeId, date,
               checkIn: record.checkIn || null, checkOut: record.checkOut || null,
               breakStart: record.breakStart || null, breakEnd: record.breakEnd || null,
               breaks: record.breaks || null, totalBreakSeconds: record.totalBreakSeconds || 0,
