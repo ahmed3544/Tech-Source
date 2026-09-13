@@ -73,16 +73,56 @@ app.use(async (req:any,res:any,next:any)=>{
       else await db.update(schema.leaveRequests).set(values as any).where(eq(schema.leaveRequests.id, id));
       await setting(`__sync_updated_at:leave:${id}`, Date.now());
     }
-    for (const id of deleted) {
+    for (const rawId of deleted) {
+      const id = String(rawId || '').trim();
       if (!id) continue;
-      await db.delete(schema.leaveRequests).where(eq(schema.leaveRequests.id, String(id)));
+      await db.delete(schema.leaveRequests).where(eq(schema.leaveRequests.id, id));
+      const rows = await db.select().from(schema.settings).where(eq(schema.settings.key,'__sync_deleted_ids:leave'));
+      const oldIds = Array.isArray(rows[0]?.value) ? rows[0].value.map(String) : [];
+      const nextIds = Array.from(new Set([...oldIds, id])).slice(-5000);
+      await setting('__sync_deleted_ids:leave', nextIds);
     }
-    req.body = { ...body, leaveRequests: [], deletedLeaveIds: [] };
-  } catch (error) {
-    console.error('[leave-sync-bridge]', error);
-    return res.status(500).json({ success:false, error:'leave_sync_failed' });
+    req.body = { ...body, leaveRequests: undefined, deletedLeaveIds: undefined };
+    return next();
+  } catch (error:any) {
+    console.error('[leave-sync-bridge] persistence failed:', error);
+    return res.status(500).json({ success:false, error:'Leave sync failed' });
   }
-  next();
 });
 
-// ...rest of the existing server implementation remains unchanged below...
+app.use(async (req:any,res:any,next:any)=>{
+  if (req.method !== 'POST' || !['/api/sync','/sync'].includes(String(req.path || '').split('?')[0])) return next();
+  const items = Array.isArray(req.body?.notifications) ? req.body.notifications : [];
+  if (!items.length) return next();
+  try {
+    for (const item of items) {
+      if (!item?.id || !item?.recipientId) continue;
+      const id = String(item.id);
+      const values:any = {};
+      for (const key of ['id','recipientId','type','title','message','relatedEmployeeId','relatedLeaveId','relatedOvertimeId','relatedShiftSwapId','isRead','createdAt','updatedAt']) {
+        if (item[key] !== undefined) values[key] = item[key];
+      }
+      const existing = await db.select().from(schema.notifications).where(eq(schema.notifications.id,id));
+      if (!existing[0]) await db.insert(schema.notifications).values(values as any);
+      else {
+        const incoming = new Date(String(values.updatedAt || values.createdAt || '')).getTime();
+        const current = new Date(String((existing[0] as any).updatedAt || (existing[0] as any).createdAt || '')).getTime();
+        if (Number.isFinite(incoming) && (!Number.isFinite(current) || incoming >= current)) {
+          await db.update(schema.notifications).set(values as any).where(eq(schema.notifications.id,id));
+        }
+      }
+    }
+  } catch (error:any) {
+    console.error('[sync-bridge] notification persistence failed:', error);
+    return res.status(500).json({success:false,error:'Notification sync failed'});
+  }
+  return next();
+});
+
+registerDirectScheduleSync(app);
+registerDeviceSyncV2(app);
+
+export default app;
+export { app };
+
+if (process.env.VERCEL !== '1') app.listen(PORT,()=>console.log(`Server running on port ${PORT} | Database: ${USE_DATABASE?'NEON':'LOCAL'}`));
