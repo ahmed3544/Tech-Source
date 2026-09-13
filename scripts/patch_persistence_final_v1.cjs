@@ -22,7 +22,7 @@ if (!app.includes(marker)) {
   // that is still present locally. A non-empty server snapshot remains authoritative.
   app = app.replace(
     /if \(Array\.isArray\(data\.dailyShiftAssignments\)\) \{\s*setDailyShiftAssignments\(data\.dailyShiftAssignments\);\s*try \{ localStorage\.setItem\('daily_shift_assignments', JSON\.stringify\(data\.dailyShiftAssignments\)\); \} catch \{\}\s*\}/g,
-    `if (Array.isArray(data.dailyShiftAssignments)) {\n          const stableAssignments = mergeScheduleSnapshotPreservingLocal(dailyShiftAssignmentsRef.current, data.dailyShiftAssignments as DailyShiftAssignment[]);\n          setDailyShiftAssignments(stableAssignments);\n          try { localStorage.setItem('daily_shift_assignments', JSON.stringify(stableAssignments)); } catch {}\n          if (!data.dailyShiftAssignments.length && dailyShiftAssignmentsRef.current.length && !syncInFlightRef.current) {\n            void pushSync({ dailyShiftAssignments: dailyShiftAssignmentsRef.current });\n          }\n        }`
+    `if (Array.isArray(data.dailyShiftAssignments)) {\n          const localAssignments = Array.isArray(dailyShiftAssignments) ? dailyShiftAssignments : [];\n          const stableAssignments = mergeScheduleSnapshotPreservingLocal(localAssignments, data.dailyShiftAssignments as DailyShiftAssignment[]);\n          setDailyShiftAssignments(stableAssignments);\n          try { localStorage.setItem('daily_shift_assignments', JSON.stringify(stableAssignments)); } catch {}\n          if (!data.dailyShiftAssignments.length && localAssignments.length && !syncInFlightRef.current) {\n            void pushSync({ dailyShiftAssignments: localAssignments });\n          }\n        }`
   );
 
   fs.writeFileSync(appPath, app, 'utf8');
