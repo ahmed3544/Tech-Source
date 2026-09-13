@@ -14,8 +14,12 @@ const normalizeAssignment = (item:any) => {
   const date = String(item?.date ?? item?.scheduleDate ?? item?.schedule_date ?? '').slice(0, 10);
   const rawShiftId = String(item?.shiftId ?? item?.shift_id ?? '').trim();
   const status = String(item?.status ?? '').trim().toUpperCase();
-  const isOffDay = asBoolean(item?.isOffDay ?? item?.is_off_day) || status === 'OFF' || !rawShiftId;
+
+  // A selected shift is authoritative. Never let a stale/string isOffDay flag
+  // convert a real shift back to OFF during persistence.
+  const isOffDay = rawShiftId ? false : (asBoolean(item?.isOffDay ?? item?.is_off_day) || status === 'OFF');
   const shiftId = isOffDay ? '' : rawShiftId;
+
   return { employeeId, date, shiftId, isOffDay, assignedBy: item?.assignedBy ?? item?.assigned_by, updatedAt: item?.updatedAt ?? item?.updated_at };
 };
 
