@@ -76,6 +76,23 @@ function findEmployee(employees: any[], input: string) {
   });
 }
 
+async function auditLogin(input: { employeeId?: string | null; loginIdentifier: string; success: boolean; failureReason?: string; req: any }) {
+  try {
+    await db.insert(schema.loginAudit).values({
+      id: crypto.randomUUID(),
+      employeeId: input.employeeId ? String(input.employeeId) : null,
+      loginIdentifier: String(input.loginIdentifier || "").slice(0, 255),
+      success: Boolean(input.success),
+      failureReason: input.failureReason ? String(input.failureReason).slice(0, 255) : null,
+      ipAddress: String(input.req?.headers?.["x-forwarded-for"] || input.req?.socket?.remoteAddress || "").split(",")[0].trim().slice(0, 100) || null,
+      userAgent: String(input.req?.headers?.["user-agent"] || "").slice(0, 500) || null,
+      createdAt: new Date().toISOString(),
+    } as any);
+  } catch (auditError) {
+    console.error("[login-audit] failed:", auditError);
+  }
+}
+
 export default async function handler(req: any, res: any) {
   res.setHeader("Cache-Control", "no-store, max-age=0");
 
@@ -89,12 +106,13 @@ export default async function handler(req: any, res: any) {
     const password = normalizeDigits(body.password);
 
     if (!loginCode || !password) {
+      await auditLogin({ loginIdentifier: loginCode || "", success: false, failureReason: "MISSING_CREDENTIALS", req });
       return res.status(400).json({ success: false, error: "Missing credentials" });
     }
 
     let employees: any[] = [];
 
-    if (process.env.SUPABASE_DB_URL) {
+    if (process.env.DATABASE_URL || process.env.SUPABASE_DB_URL) {
       try {
         employees = await db.select().from(schema.employees);
       } catch (dbError) {
@@ -109,19 +127,23 @@ export default async function handler(req: any, res: any) {
     const employee = findEmployee(employees, loginCode);
 
     if (!employee) {
+      await auditLogin({ loginIdentifier: loginCode, success: false, failureReason: "INVALID_CREDENTIALS", req });
       return res.status(401).json({ success: false, error: "INVALID_CREDENTIALS" });
     }
 
     if (String(employee.status ?? "").toLowerCase() === "inactive") {
+      await auditLogin({ employeeId: employee.id, loginIdentifier: loginCode, success: false, failureReason: "ACCOUNT_INACTIVE", req });
       return res.status(403).json({ success: false, error: "ACCOUNT_INACTIVE" });
     }
 
     if (!passwordMatches(employee, password)) {
+      await auditLogin({ employeeId: employee.id, loginIdentifier: loginCode, success: false, failureReason: "INVALID_CREDENTIALS", req });
       return res.status(401).json({ success: false, error: "INVALID_CREDENTIALS" });
     }
 
     const safeEmployee = { ...employee };
     delete safeEmployee.pin;
+    await auditLogin({ employeeId: employee.id, loginIdentifier: loginCode, success: true, req });
 
     return res.status(200).json({
       success: true,
