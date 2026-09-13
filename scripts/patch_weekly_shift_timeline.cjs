@@ -67,13 +67,10 @@ if (!s.includes('Shift & Break Timeline')) {
     `                  })() : null}`,
   ].join('\n');
 
-  // Earlier build patches may reformat the exact JSX, so match the semantic
-  // selectedShift break block instead of relying on one whitespace-sensitive
-  // string. Keep the replacement bounded to the single JSX expression.
-  const breakBlock = /\{selectedShift\?\.breaks\?\.length\s*\?\s*<div className="mt-2 rounded-xl bg-amber-50 border border-amber-100 p-2 space-y-1">[\s\S]*?<\/div>\s*:\s*null\}/;
-  if (!breakBlock.test(s)) {
-    throw new Error('Expected weekly break block was not found');
-  }
+  // Match the whole ternary expression semantically. This tolerates formatting
+  // changes made by earlier prebuild patches while stopping at its : null} tail.
+  const breakBlock = /\{selectedShift\?\.breaks\?\.length\s*\?[\s\S]*?:\s*null\}/;
+  if (!breakBlock.test(s)) throw new Error('Expected weekly break block was not found');
   s = s.replace(breakBlock, replacement);
   fs.writeFileSync(path, s);
   console.log('Weekly shift timeline added');
