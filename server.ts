@@ -75,20 +75,19 @@ app.use(async (req:any,res:any,next:any)=>{
         if (item[key] !== undefined) values[key] = item[key];
       }
       const existing = await db.select().from(schema.leaveRequests).where(eq(schema.leaveRequests.id, id));
-      if (!existing[0]) {
-        await db.insert(schema.leaveRequests).values(values as any);
-      } else {
-        await db.update(schema.leaveRequests).set(values as any).where(eq(schema.leaveRequests.id, id));
-      }
+      if (!existing[0]) await db.insert(schema.leaveRequests).values(values as any);
+      else await db.update(schema.leaveRequests).set(values as any).where(eq(schema.leaveRequests.id, id));
       await setting(`__sync_updated_at:leave:${id}`, Date.now());
     }
     for (const rawId of deleted) {
       const id = String(rawId || '').trim();
       if (!id) continue;
       await db.delete(schema.leaveRequests).where(eq(schema.leaveRequests.id, id));
-      await setting(`__sync_deleted_ids:leave`, Array.from(new Set([...(Array.isArray((await db.select().from(schema.settings).where(eq(schema.settings.key,'__sync_deleted_ids:leave'))))[0]?.value || []), id])).slice(-5000));
+      const rows = await db.select().from(schema.settings).where(eq(schema.settings.key,'__sync_deleted_ids:leave'));
+      const oldIds = Array.isArray(rows[0]?.value) ? rows[0].value.map(String) : [];
+      const nextIds = Array.from(new Set([...oldIds, id])).slice(-5000);
+      await setting('__sync_deleted_ids:leave', nextIds);
     }
-    // Do not let device-sync-v2 process leaveRequests a second time.
     req.body = { ...body, leaveRequests: undefined, deletedLeaveIds: undefined };
     return next();
   } catch (error:any) {
