@@ -1,0 +1,2 @@
+ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS updated_at text;
+UPDATE leave_requests SET updated_at = COALESCE(created_at, to_char(NOW(), 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')) WHERE updated_at IS NULL;
