@@ -28,8 +28,6 @@ function normalizeAssignment(item:any, assignedBy?:string, fallbackUpdatedAt?:st
   const employeeId = String(item?.employeeId ?? item?.employee_id ?? '').trim();
   const date = dateKey(item?.date ?? item?.scheduleDate ?? item?.schedule_date);
   const rawShift = String(item?.shiftId ?? item?.shift_id ?? '').trim();
-  // A selected shift always means a working day. This prevents a stale/string
-  // is_off_day value from turning a newly selected shift back into OFF.
   const isOffDay = rawShift ? false : (asBoolean(item?.isOffDay ?? item?.is_off_day) || String(item?.status ?? '').toUpperCase() === 'OFF');
   const shiftId = isOffDay ? null : rawShift || null;
   const rawUpdatedAt = item?.updatedAt ?? item?.updated_at ?? fallbackUpdatedAt ?? '';
@@ -56,6 +54,16 @@ function mergeAssignments(existing:any, incoming:any[]) {
     if (!normalized.employeeId || !normalized.date) continue;
     const key = `${normalized.employeeId}:${normalized.date}`;
     const current = map.get(key);
+
+    // /api/sync is a legacy/general sync channel. It must never overwrite an
+    // already-versioned schedule with an unversioned snapshot from localStorage.
+    // The dedicated /api/schedule-sync endpoint supplies per-assignment updatedAt
+    // values and remains the authoritative schedule write path.
+    if (current && !normalized.updatedAt) {
+      ignoredStale += 1;
+      continue;
+    }
+
     if (current?.updatedAt && normalized.updatedAt && timeMs(normalized.updatedAt) < timeMs(current.updatedAt)) {
       ignoredStale += 1;
       continue;
@@ -72,7 +80,7 @@ export function registerScheduleSyncGuard(app:any) {
     const requestTimestamp = String(req.headers?.['x-sync-timestamp'] ?? req.body?.syncTimestamp ?? new Date().toISOString());
     const assignedBy = String(req.body?.assignedBy ?? req.body?.assigned_by ?? '').trim() || undefined;
     try {
-      const incoming = req.body.dailyShiftAssignments.map((item:any) => normalizeAssignment(item, assignedBy, requestTimestamp));
+      const incoming = req.body.dailyShiftAssignments.map((item:any) => normalizeAssignment(item, assignedBy, item?.updatedAt ?? item?.updated_at));
       const invalid = incoming.find((item:any) => !item.employeeId || !item.date || !/^\d{4}-\d{2}-\d{2}$/.test(item.date) || (!item.isOffDay && !item.shiftId));
       if (invalid) return res.status(400).json({ success:false, code:'INVALID_SCHEDULE_PAYLOAD', message:'Each schedule assignment requires employee_id, YYYY-MM-DD date, and shift_id or OFF.' });
       const settingsRows = await db.select().from(schema.settings).where(eq(schema.settings.key, 'dailyShiftAssignments'));
