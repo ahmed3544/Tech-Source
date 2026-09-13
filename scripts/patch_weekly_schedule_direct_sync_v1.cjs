@@ -64,5 +64,13 @@ if (!code.includes(marker)) {
   code = code.slice(0, start) + replacement + code.slice(end);
 }
 
+// Full-day 24-hour timeline: midnight through 24:00, using 24-hour labels.
+code = code.replace('const CALENDAR_START = 6;', 'const CALENDAR_START = 0;');
+code = code.replace('const CALENDAR_END = 22;', 'const CALENDAR_END = 24;');
+code = code.replace(
+  "const formatHour = (hour: number, ar: boolean) => { const suffix = hour >= 12 ? 'PM' : 'AM'; const display = hour % 12 || 12; return ar ? `${String(display).padStart(2,'0')}:00 ${hour >= 12 ? 'م' : 'ص'}` : `${String(display).padStart(2,'0')}:00 ${suffix}`; };",
+  "const formatHour = (hour: number, _ar: boolean) => `${String(hour).padStart(2, '0')}:00`;"
+);
+
 fs.writeFileSync(file, code);
-console.log('[patch_weekly_schedule_direct_sync_v1] applied schedule state normalization');
+console.log('[patch_weekly_schedule_direct_sync_v1] applied schedule state normalization + 24h timeline');
