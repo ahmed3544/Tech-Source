@@ -9,16 +9,25 @@ if (s.includes(marker)) {
 }
 
 const replacement = marker + '\n' +
-  "function collectionKey(x:any,index:number){const employeeId=x?.employeeId??x?.employee_id;const date=x?.date??x?.scheduleDate??x?.schedule_date;if(x?.id!=null)return `id:${String(x.id)}`;if(employeeId!=null&&date!=null)return `employee-date:${String(employeeId)}:${String(date).slice(0,10)}`;return `index:${index}`;}";
+  "function collectionKey(x:any,index:number){const employeeId=x?.employeeId??x?.employee_id;const date=x?.date??x?.scheduleDate??x?.schedule_date;if(x?.id!=null)return `id:${String(x.id)}`;if(employeeId!=null&&date!=null)return `employee-date:${String(employeeId)}:${String(date).slice(0,10)}`;return `index:${index}`;}" + '\n' +
+  "function normalizeDailyShiftAssignment(x:any){return {employeeId:String(x?.employeeId??x?.employee_id??''),date:String(x?.date??x?.scheduleDate??x?.schedule_date??'').slice(0,10),shiftId:(x?.shiftId??x?.shift_id??null)||null,isOffDay:Boolean(x?.isOffDay??x?.is_off_day??String(x?.status||'').toUpperCase()==='OFF'),assignedBy:x?.assignedBy??x?.assigned_by,updatedAt:x?.updatedAt??x?.updated_at};}";
 
-const collectionRegex = /function collectionKey\(x:any,index:number\)\{[\\s\\S]*?\}\n(?=function normalizeDailyShiftAssignment)/;
-if (collectionRegex.test(s)) {
-  s = s.replace(collectionRegex, replacement + '\n');
-} else {
-  const legacy = /function collectionKey\(x:any,index:number\)\{[\\s\\S]*?\}/;
-  if (!legacy.test(s)) throw new Error('collectionKey target not found');
-  s = s.replace(legacy, replacement);
+const start = s.indexOf('function collectionKey(');
+if (start < 0) throw new Error('collectionKey target not found');
+const open = s.indexOf('{', start);
+if (open < 0) throw new Error('collectionKey opening brace not found');
+let depth = 0;
+let end = -1;
+for (let i = open; i < s.length; i++) {
+  if (s[i] === '{') depth++;
+  else if (s[i] === '}') {
+    depth--;
+    if (depth === 0) { end = i + 1; break; }
+  }
 }
+if (end < 0) throw new Error('collectionKey closing brace not found');
+
+s = s.slice(0, start) + replacement + s.slice(end);
 
 const rawSetting = "if(Array.isArray(b.dailyShiftAssignments))await setting('dailyShiftAssignments',b.dailyShiftAssignments,syncTime);";
 const normalizedSetting = "if(Array.isArray(b.dailyShiftAssignments))await setting('dailyShiftAssignments',b.dailyShiftAssignments.map(normalizeDailyShiftAssignment),syncTime);";
