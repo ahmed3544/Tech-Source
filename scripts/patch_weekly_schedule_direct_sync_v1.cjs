@@ -6,7 +6,6 @@ let code = fs.readFileSync(file, 'utf8');
 code = code.replaceAll('bg-emerald-500', 'bg-green-600');
 code = code.replaceAll('ring-emerald-700/20', 'ring-green-800/30');
 
-// IMPORTANT: Boolean('false') is true in JavaScript. Normalize persisted OFF flags safely.
 if (!code.includes('const asBoolean = (value: unknown)')) {
   code = code.replace(
     'const HOUR_HEIGHT = 64;',
@@ -14,7 +13,6 @@ if (!code.includes('const asBoolean = (value: unknown)')) {
   );
 }
 
-// Draft must win first; then a real shiftId must always win over OFF.
 code = code.replace(
   "    const assignment = assignmentFor(employee?.id || '', date);\n    if (assignment?.isOffDay) return OFF_DAY_SHIFT_ID;\n    if (draft[date] !== undefined) return draft[date];\n    if (assignment?.shiftId) return assignment.shiftId;",
   "    const assignment = assignmentFor(employee?.id || '', date);\n    if (draft[date] !== undefined) return draft[date];\n    const shiftId = String(assignment?.shiftId ?? (assignment as any)?.shift_id ?? '').trim();\n    if (shiftId) return shiftId;\n    if (asBoolean(assignment?.isOffDay ?? (assignment as any)?.is_off_day) || String((assignment as any)?.status ?? '').toUpperCase() === 'OFF') return OFF_DAY_SHIFT_ID;"
@@ -25,19 +23,16 @@ code = code.replace(
   "    const assignment = assignmentFor(employeeId,date);\n    const shiftId = String(assignment?.shiftId ?? (assignment as any)?.shift_id ?? '').trim();\n    if (shiftId) return shifts.find(s => s.id === shiftId);\n    if (asBoolean(assignment?.isOffDay ?? (assignment as any)?.is_off_day)) return undefined;"
 );
 
-// Selecting a shift clears OFF. Selecting OFF explicitly clears the shift.
 code = code.replace(
   "onChange={e=>setDraft(prev=>({...prev,[day.key]:e.target.value}))}",
   "onChange={e=>setDraft(prev=>({...prev,[day.key]:e.target.value ? e.target.value : OFF_DAY_SHIFT_ID}))}"
 );
 
-// Fix the grid border class when this old literal exists.
 code = code.replace(
   'className="absolute left-0 right-0 border-b ${isWeekend||off?\'border-slate-300\':\'border-slate-200\'}"',
   'className={`absolute left-0 right-0 border-b ${isWeekend||off?\'border-slate-300\':\'border-slate-200\'}`}'
 );
 
-// Never use Boolean() for persisted OFF fields.
 code = code.replace(
   'const isOffDay = rawShift ? false : Boolean(item.isOffDay || (item as any).is_off_day || String((item as any).status || \'\').toUpperCase() === \'OFF\');',
   'const isOffDay = rawShift ? false : (asBoolean(item.isOffDay ?? (item as any).is_off_day) || String((item as any).status || \'\').toUpperCase() === \'OFF\');'
@@ -48,20 +43,16 @@ code = code.replace(
   'isOffDay: String(item.shiftId ?? item.shift_id ?? \'\').trim() ? false : (asBoolean(item.isOffDay ?? item.is_off_day) || String(item.status ?? \'\').toUpperCase() === \'OFF\'),'
 );
 
-// The existing build function can also read a string "false" as true. Replace it with
-// explicit precedence: draft -> shiftId -> OFF -> base shift.
 code = code.replace(
   `      const isOffDay = draftValue !== undefined ? draftValue === OFF_DAY_SHIFT_ID : source ? Boolean(source.isOffDay) : !works;\n      const shiftId = isOffDay ? '' : (draftValue !== undefined ? draftValue : source?.shiftId || baseShift?.id || '');`,
   `      const sourceShiftId = String(source?.shiftId ?? (source as any)?.shift_id ?? '').trim();\n      const sourceOff = asBoolean(source?.isOffDay ?? (source as any)?.is_off_day) || String((source as any)?.status ?? '').toUpperCase() === 'OFF';\n      let shiftId = '';\n      let isOffDay = false;\n      if (draftValue !== undefined) {\n        shiftId = draftValue === OFF_DAY_SHIFT_ID ? '' : String(draftValue || '').trim();\n        isOffDay = draftValue === OFF_DAY_SHIFT_ID;\n      } else if (sourceShiftId) {\n        shiftId = sourceShiftId;\n        isOffDay = false;\n      } else if (sourceOff) {\n        shiftId = '';\n        isOffDay = true;\n      } else {\n        shiftId = baseShift?.id || '';\n        isOffDay = !shiftId && !works;\n      }`
 );
 
-// The schedule component used to call the parent save callback once per day after
-// the direct server save. App.tsx's legacy callback also pushes /api/sync and can
-// overwrite the freshly persisted week with stale OFF assignments. The direct
-// server response is now authoritative, so do not replay the legacy callback here.
+// Critical: do not replay the legacy parent callback after the direct schedule save.
+// That callback writes /api/sync from a stale React closure and can turn saved shifts into OFF.
 code = code.replace(
-  /\n\s*days\.forEach\(day => \{ const saved = result\.assignments\.find\(.*?\}\);\n/,
-  '\n'
+  /const result = await persistAssignments\(next\);\s*days\.forEach\(day => \{[\s\S]*?\}\);\s*setSavedAt/,
+  'await persistAssignments(next); setSavedAt'
 );
 
 const marker = '/* WEEKLY_SCHEDULE_DIRECT_SYNC_V1 */';
@@ -73,7 +64,6 @@ if (!code.includes(marker)) {
   code = code.slice(0, start) + replacement + code.slice(end);
 }
 
-// Full-day 24-hour timeline: midnight through 24:00, using 24-hour labels.
 code = code.replace('const CALENDAR_START = 6;', 'const CALENDAR_START = 0;');
 code = code.replace('const CALENDAR_END = 22;', 'const CALENDAR_END = 24;');
 code = code.replace(
@@ -82,4 +72,4 @@ code = code.replace(
 );
 
 fs.writeFileSync(file, code);
-console.log('[patch_weekly_schedule_direct_sync_v1] applied schedule state normalization + 24h timeline');
+console.log('[patch_weekly_schedule_direct_sync_v1] applied schedule state normalization + 24h timeline + legacy overwrite guard');
