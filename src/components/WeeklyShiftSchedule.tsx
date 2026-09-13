@@ -23,6 +23,13 @@ const CALENDAR_START = 6;
 const CALENDAR_END = 22;
 const HOUR_HEIGHT = 64;
 
+const asBoolean = (value: unknown) => {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value !== 0;
+  const normalized = String(value ?? '').trim().toLowerCase();
+  return normalized === 'true' || normalized === '1' || normalized === 'yes' || normalized === 'off';
+};
+
 const minutesOf = (value?: string | null) => {
   if (!value) return NaN;
   const m = String(value).trim().match(/^(\d{1,2}):(\d{2})/);
@@ -118,12 +125,13 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
     return { date, key: toDateKey(date), labelAr: ar[date.getDay()], labelEn: en[date.getDay()] };
   }), [weekStart]);
 
-  const assignmentFor = (employeeId: string, date: string) => assignments.find(a => String(a.employeeId) === String(employeeId) && a.date === date);
+  const assignmentFor = (employeeId: string, date: string) => assignments.find(a => String(a.employeeId ?? (a as any).employee_id) === String(employeeId) && String(a.date) === date);
   const getValue = (date: string) => {
     const assignment = assignmentFor(employee?.id || '', date);
-    if (assignment?.isOffDay) return OFF_DAY_SHIFT_ID;
     if (draft[date] !== undefined) return draft[date];
-    if (assignment?.shiftId) return assignment.shiftId;
+    const shiftId = String(assignment?.shiftId ?? (assignment as any)?.shift_id ?? '').trim();
+    if (shiftId) return shiftId;
+    if (asBoolean(assignment?.isOffDay ?? (assignment as any)?.is_off_day) || String((assignment as any)?.status ?? '').toUpperCase() === 'OFF') return OFF_DAY_SHIFT_ID;
     const baseShift = employee?.shiftId ? shifts.find(s => s.id === employee.shiftId) : undefined;
     const dow = new Date(`${date}T00:00:00`).getDay();
     if (baseShift && Array.isArray(baseShift.workDays) && baseShift.workDays.includes(dow)) return baseShift.id;
@@ -131,8 +139,9 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
   };
   const shiftFor = (employeeId: string, date: string) => {
     const assignment = assignmentFor(employeeId,date);
-    if (assignment?.isOffDay) return undefined;
-    if (assignment?.shiftId) return shifts.find(s => s.id === assignment.shiftId);
+    const shiftId = String(assignment?.shiftId ?? (assignment as any)?.shift_id ?? '').trim();
+    if (shiftId) return shifts.find(s => s.id === shiftId);
+    if (asBoolean(assignment?.isOffDay ?? (assignment as any)?.is_off_day)) return undefined;
     const base = employees.find(e => e.id === employeeId);
     return base?.shiftId ? shifts.find(s => s.id === base.shiftId) : undefined;
   };
@@ -142,18 +151,23 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
       const employeeId = String(item.employeeId ?? (item as any).employee_id ?? '').trim();
       const date = String(item.date ?? '').trim();
       const rawShift = String(item.shiftId ?? (item as any).shift_id ?? '').trim();
-      const isOffDay = rawShift ? false : Boolean(item.isOffDay || (item as any).is_off_day || String((item as any).status || '').toUpperCase() === 'OFF');
+      const isOffDay = rawShift ? false : (asBoolean(item.isOffDay ?? (item as any).is_off_day) || String((item as any).status || '').toUpperCase() === 'OFF');
       const shiftId = isOffDay ? null : (rawShift || null);
       return { employee_id: employeeId, date, is_off_day: isOffDay, shift_id: shiftId };
     }).filter(item => item.employee_id && /^\d{4}-\d{2}-\d{2}$/.test(item.date) && (item.is_off_day || item.shift_id));
     const syncTimestamp = new Date().toISOString();
     const syncRevision = `${syncTimestamp}-${Math.random().toString(36).slice(2,10)}`;
-    const response = await fetch('/api/sync', { method:'POST', credentials:'include', headers:{'Content-Type':'application/json','Accept':'application/json','X-Sync-Timestamp':syncTimestamp,'X-Sync-Revision':syncRevision}, body:JSON.stringify({dailyShiftAssignments:clean,syncTimestamp,syncRevision}) });
+    const response = await fetch('/api/schedule-sync', { method:'POST', credentials:'include', cache:'no-store', headers:{'Content-Type':'application/json','Accept':'application/json','Cache-Control':'no-cache','Pragma':'no-cache','X-Sync-Timestamp':syncTimestamp,'X-Sync-Revision':syncRevision}, body:JSON.stringify({dailyShiftAssignments:clean,syncTimestamp,syncRevision}) });
     const text = await response.text();
     let data:any = {}; try { data = text ? JSON.parse(text) : {}; } catch {}
     if (!response.ok) throw new Error(`Server error ${response.status}: ${data?.message || data?.error || text || 'Sync failed'}`);
     if (data?.success === false) throw new Error(data?.message || data?.error || 'Server returned success:false');
-    const finalAssignments = Array.isArray(data?.dailyShiftAssignments) ? data.dailyShiftAssignments : next;
+    const serverAssignments = Array.isArray(data?.dailyShiftAssignments) ? data.dailyShiftAssignments : [];
+    const finalAssignments = (serverAssignments.length ? serverAssignments : clean.map(item => ({employeeId:item.employee_id,date:item.date,shiftId:item.shift_id || '',isOffDay:item.is_off_day}))).map((item:any) => {
+      const shiftId = String(item.shiftId ?? item.shift_id ?? '').trim();
+      const isOffDay = shiftId ? false : (asBoolean(item.isOffDay ?? item.is_off_day) || String(item.status ?? '').toUpperCase() === 'OFF');
+      return { ...item, employeeId:String(item.employeeId ?? item.employee_id ?? ''), date:String(item.date ?? '').slice(0,10), shiftId, isOffDay };
+    });
     setAssignments(finalAssignments as DailyShiftAssignment[]);
     localStorage.setItem('daily_shift_assignments', JSON.stringify(finalAssignments));
     return { assignments: finalAssignments };
@@ -167,10 +181,27 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
       const sourceEmployee = employees.find(e => e.id === sourceEmployeeId);
       const baseShift = sourceEmployee?.shiftId ? shifts.find(s => s.id === sourceEmployee.shiftId) : undefined;
       const works = Boolean(baseShift && Array.isArray(baseShift.workDays) && baseShift.workDays.includes(day.date.getDay()));
-      const isOffDay = draftValue !== undefined ? draftValue === OFF_DAY_SHIFT_ID : source ? Boolean(source.isOffDay) : !works;
-      const shiftId = isOffDay ? '' : (draftValue !== undefined ? draftValue : source?.shiftId || baseShift?.id || '');
-      const index = next.findIndex(a => String(a.employeeId) === String(employeeId) && a.date === day.key);
-      if (!shiftId && !isOffDay) { if (index >= 0) next.splice(index,1); continue; }
+      const sourceShiftId = String(source?.shiftId ?? (source as any)?.shift_id ?? '').trim();
+      const sourceOff = asBoolean(source?.isOffDay ?? (source as any)?.is_off_day) || String((source as any)?.status ?? '').toUpperCase() === 'OFF';
+      let shiftId = '';
+      let isOffDay = false;
+      if (draftValue !== undefined) {
+        shiftId = draftValue === OFF_DAY_SHIFT_ID ? '' : String(draftValue || '').trim();
+        isOffDay = draftValue === OFF_DAY_SHIFT_ID;
+      } else if (sourceShiftId) {
+        shiftId = sourceShiftId;
+        isOffDay = false;
+      } else if (sourceOff) {
+        shiftId = '';
+        isOffDay = true;
+      } else if (baseShift?.id && works) {
+        shiftId = baseShift.id;
+        isOffDay = false;
+      } else {
+        shiftId = '';
+        isOffDay = true;
+      }
+      const index = next.findIndex(a => String(a.employeeId ?? (a as any).employee_id) === String(employeeId) && a.date === day.key);
       const assignment: DailyShiftAssignment = { employeeId, date:day.key, shiftId, isOffDay, assignedBy:currentUser?.id, updatedAt };
       if (index >= 0) next[index] = assignment; else next.push(assignment);
     }
@@ -182,7 +213,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
     setError(null); const updatedAt = new Date().toISOString(); const next = buildWeekForEmployee(employee.id,employee.id,assignments,updatedAt);
     try {
       const result = await persistAssignments(next);
-      days.forEach(day => { const saved = result.assignments.find((a:any) => String(a.employeeId ?? a.employee_id) === String(employee.id) && String(a.date) === day.key); if (saved) onSaveDailyShift?.({employeeId:String(saved.employeeId ?? saved.employee_id),date:String(saved.date),shiftId:saved.shiftId ?? saved.shift_id ?? '',isOffDay:Boolean(saved.isOffDay ?? saved.is_off_day),assignedBy:saved.assignedBy ?? saved.assigned_by ?? currentUser?.id,updatedAt:saved.updatedAt ?? saved.updated_at ?? updatedAt}); });
+      days.forEach(day => { const saved = result.assignments.find((a:any) => String(a.employeeId ?? a.employee_id) === String(employee.id) && String(a.date) === day.key); if (saved) onSaveDailyShift?.({employeeId:String(saved.employeeId ?? saved.employee_id),date:String(saved.date),shiftId:saved.shiftId ?? saved.shift_id ?? '',isOffDay:asBoolean(saved.isOffDay ?? saved.is_off_day),assignedBy:saved.assignedBy ?? saved.assigned_by ?? currentUser?.id,updatedAt:saved.updatedAt ?? saved.updated_at ?? updatedAt}); });
       setSavedAt(new Date().toLocaleTimeString(lang === 'ar' ? 'ar-EG' : 'en-US',{hour:'2-digit',minute:'2-digit'})); setDraft({}); setError(lang === 'ar' ? 'تم حفظ وتحديث الجدول بنجاح على السيرفر' : 'Schedule saved successfully on the server.');
     } catch (err:any) { setError(lang === 'ar' ? `فشل حفظ الجدول على السيرفر: ${err?.message || 'خطأ غير معروف'}` : `Server failed to save the schedule: ${err?.message || 'Unknown error'}`); }
   };
@@ -205,8 +236,8 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
     if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return null;
     const top = Math.max(0, ((start - CALENDAR_START*60) / 60) * HOUR_HEIGHT);
     const height = Math.min(timelineHeight-top, ((end-start)/60) * HOUR_HEIGHT);
-    return <div className="absolute left-1/2 z-10 w-14 -translate-x-1/2 overflow-hidden rounded-xl bg-emerald-600 shadow-lg ring-2 ring-emerald-700/20" style={{top,height}}>
-      <div className="flex h-8 items-center justify-center border-b border-white/25 bg-emerald-700/35 px-1 text-[9px] font-black text-white">{shift.nameAr || shift.nameEn}</div>
+    return <div className="absolute left-1/2 z-10 w-14 -translate-x-1/2 overflow-hidden rounded-xl bg-green-600 shadow-lg ring-2 ring-green-800/30" style={{top,height}}>
+      <div className="flex h-8 items-center justify-center border-b border-white/25 bg-green-700/35 px-1 text-[9px] font-black text-white">{shift.nameAr || shift.nameEn}</div>
       <div className="absolute bottom-1 left-0 right-0 text-center text-[8px] font-bold text-white">{shift.startTime}-{shift.endTime}</div>
       {(shift.breaks || []).map((br:any) => {
         const bs=minutesOf(br.startTime), be=minutesOf(br.endTime);
@@ -243,16 +274,16 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
                 {days.map(day=>{
                   const value=getValue(day.key); const off=value===OFF_DAY_SHIFT_ID; const selectedShift=!off&&value?shifts.find(s=>s.id===value):shiftFor(employee.id,day.key); const isWeekend=day.date.getDay()===5||day.date.getDay()===6;
                   return <div key={day.key} className={`relative border-e border-slate-300 ${isWeekend||off?'bg-slate-200':'bg-white'}`} style={{height:timelineHeight}}>
-                    {hours.slice(0,-1).map(hour=><div key={hour} className="absolute left-0 right-0 border-b ${isWeekend||off?'border-slate-300':'border-slate-200'}" style={{top:(hour-CALENDAR_START)*HOUR_HEIGHT}} />)}
+                    {hours.slice(0,-1).map(hour=><div key={hour} className={`absolute left-0 right-0 border-b ${isWeekend||off?'border-slate-300':'border-slate-200'}`} style={{top:(hour-CALENDAR_START)*HOUR_HEIGHT}} />)}
                     {selectedShift && renderShiftBar(selectedShift)}
                     {off && <div className="absolute inset-0 flex items-center justify-center"><span className="rounded-xl border-2 border-slate-400 bg-slate-300 px-3 py-2 text-[10px] font-black text-slate-700 shadow-sm">{lang==='ar'?'OFF / عطلة':'OFF DAY'}</span></div>}
-                    {isLeader && <div className="absolute bottom-2 left-2 right-2 z-30 space-y-1"><label className="flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-2 py-1 text-[9px] font-bold text-slate-700 shadow"><input type="checkbox" checked={off} onChange={e=>setDraft(prev=>({...prev,[day.key]:e.target.checked?OFF_DAY_SHIFT_ID:''}))} className="h-3 w-3" />{lang==='ar'?'OFF':'Off'}</label><select value={off?'':value} disabled={off} onChange={e=>setDraft(prev=>({...prev,[day.key]:e.target.value}))} className="w-full rounded-lg border border-slate-300 bg-white px-1.5 py-1 text-[9px] font-bold text-slate-800 shadow"><option value="">{lang==='ar'?'غير محدد':'Not assigned'}</option>{shifts.map(s=><option key={s.id} value={s.id}>{s.nameAr||s.nameEn} · {s.startTime}-{s.endTime}</option>)}</select></div>}
+                    {isLeader && <div className="absolute bottom-2 left-2 right-2 z-30 space-y-1"><label className="flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-2 py-1 text-[9px] font-bold text-slate-700 shadow"><input type="checkbox" checked={off} onChange={e=>setDraft(prev=>({...prev,[day.key]:e.target.checked?OFF_DAY_SHIFT_ID:(assignmentFor(employee.id,day.key)?.shiftId || '')}))} className="h-3 w-3" />{lang==='ar'?'OFF':'Off'}</label><select value={off?'':value} disabled={off} onChange={e=>setDraft(prev=>({...prev,[day.key]:e.target.value ? e.target.value : OFF_DAY_SHIFT_ID}))} className="w-full rounded-lg border border-slate-300 bg-white px-1.5 py-1 text-[9px] font-bold text-slate-800 shadow"><option value="">{lang==='ar'?'غير محدد':'Not assigned'}</option>{shifts.map(s=><option key={s.id} value={s.id}>{s.nameAr||s.nameEn} · {s.startTime}-{s.endTime}</option>)}</select></div>}
                   </div>;
                 })}
               </div>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-300 bg-white px-3 py-2 text-[10px] font-bold text-slate-600 shadow-sm"><span className="inline-flex items-center gap-1.5"><i className="h-3 w-3 rounded bg-emerald-600" />{lang==='ar'?'ساعات العمل':'Work shift'}</span><span className="inline-flex items-center gap-1.5"><i className="h-3 w-3 rounded bg-red-600" />{lang==='ar'?'البريك':'Break'}</span><span className="inline-flex items-center gap-1.5"><i className="h-3 w-3 rounded border-2 border-slate-400 bg-slate-300" />OFF</span></div>
+          <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-300 bg-white px-3 py-2 text-[10px] font-bold text-slate-600 shadow-sm"><span className="inline-flex items-center gap-1.5"><i className="h-3 w-3 rounded bg-green-600" />{lang==='ar'?'ساعات العمل':'Work shift'}</span><span className="inline-flex items-center gap-1.5"><i className="h-3 w-3 rounded bg-red-600" />{lang==='ar'?'البريك':'Break'}</span><span className="inline-flex items-center gap-1.5"><i className="h-3 w-3 rounded border-2 border-slate-400 bg-slate-300" />OFF</span></div>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div className="text-xs font-medium text-slate-600">{isLeader?(lang==='ar'?'عدّل الشفت من أسفل كل يوم ثم احفظ الجدول.':'Edit each day from the bottom controls, then save.'):(lang==='ar'?'الأخضر = ساعات العمل، الأحمر = البريك، الرمادي = عطلة.':'Green = work hours, red = break, gray = OFF.')}</div>{isLeader&&<button onClick={saveWeek} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-xs font-black text-white shadow hover:bg-emerald-700 sm:w-auto"><Save className="h-4 w-4" />{lang==='ar'?'حفظ الجدول':'Save Schedule'}</button>}</div>
           {savedAt&&<div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700"><Check className="h-4 w-4" />{lang==='ar'?`تم حفظ جدول الأسبوع الساعة ${savedAt}`:`Week saved at ${savedAt}`}</div>}
           {error&&<div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-700">{error}</div>}
