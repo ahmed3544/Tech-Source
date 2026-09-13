@@ -43,7 +43,7 @@ async function dbSnapshot(){const [employees,attendanceRecords,leaveRequests,ove
 registerNotificationSystemV2(app);
 
 // Legacy recovery is a one-time safety net. It must never block or replace the
-authoritative /api/data or /api/sync response from the current database.
+// authoritative /api/data or /api/sync response from the current database.
 app.use((req:any,res:any,next:any)=>{
   if (process.env.DATABASE_URL && (req.path === '/api/data' || req.path === '/api/sync')) {
     void recoverMissingLegacyData().catch((e:any)=>console.error('[legacy-recovery]',e));
