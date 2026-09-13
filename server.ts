@@ -25,7 +25,7 @@ const PORT = Number(process.env.PORT || 3000);
 const TZ = process.env.SERVER_TIME_ZONE || "Africa/Cairo";
 const DATA_FILE = path.join(process.cwd(), "server_data.json");
 const BACKUP_DIR = path.join(process.cwd(), "backups");
-const USE_DATABASE = Boolean(process.env.DATABASE_URL || process.env.SUPABASE_DB_URL);
+const USE_DATABASE = Boolean(process.env.DATABASE_URL);
 
 type State = { employees:any[]; attendanceRecords:any[]; leaveRequests:any[]; overtimeRequests:any[]; shifts:any[]; notifications:any[]; dailyShiftAssignments:any[]; shiftSwapRequests:any[]; companyNameAr?:any; companyNameEn?:any; urgentNotice?:any; lastUpdated:number; };
 const emptyState = ():State => ({employees:[],attendanceRecords:[],leaveRequests:[],overtimeRequests:[],shifts:[],notifications:[],dailyShiftAssignments:[],shiftSwapRequests:[],companyNameAr:null,companyNameEn:null,urgentNotice:null,lastUpdated:Date.now()});
@@ -40,7 +40,7 @@ async function setting(key:string,value:any){await db.insert(schema.settings).va
 async function dbSnapshot(){const [employees,attendanceRecords,leaveRequests,overtimeRequests,shifts,notifications,settings,employeeShiftAssignments]=await Promise.all([db.select().from(schema.employees),db.select().from(schema.attendanceRecords),db.select().from(schema.leaveRequests),db.select().from(schema.overtimeRequests),db.select().from(schema.shifts),db.select().from(schema.notifications),db.select().from(schema.settings),db.select().from(schema.employeeShiftAssignments)]);const m=new Map(settings.map((s:any)=>[String(s.key),s.value]));return{success:true,employees,attendanceRecords,leaveRequests,overtimeRequests,shifts,notifications,employeeShiftAssignments,dailyShiftAssignments:Array.isArray(m.get("dailyShiftAssignments"))?m.get("dailyShiftAssignments"):[],shiftSwapRequests:Array.isArray(m.get("shiftSwapRequests"))?m.get("shiftSwapRequests"):[],companyNameAr:m.get("companyNameAr")??null,companyNameEn:m.get("companyNameEn")??null,urgentNotice:m.get("urgentNotice")??null,lastUpdated:Date.now()};}
 
 registerNotificationSystemV2(app);
-app.use(async (req:any,res:any,next:any)=>{if((process.env.DATABASE_URL||process.env.SUPABASE_DB_URL)&&(req.path==='/api/data'||req.path==='/api/sync')){try{await recoverMissingLegacyData();}catch(e){console.error('[legacy-recovery]',e);}}next();});
+app.use(async (req:any,res:any,next:any)=>{if(process.env.DATABASE_URL&&(req.path==='/api/data'||req.path==='/api/sync')){try{await recoverMissingLegacyData();}catch(e){console.error('[legacy-recovery]',e);}}next();});
 registerRequestNotificationTriggers(app);
 registerAttendanceRealtime(app);
 registerScheduleSyncGuard(app);
@@ -49,4 +49,4 @@ registerDeviceSyncV2(app);
 export default app;
 export { app };
 
-if (process.env.VERCEL !== '1') app.listen(PORT,()=>console.log(`Server running on port ${PORT} | Database: ${USE_DATABASE?'SUPABASE/NEON':'LOCAL'}`));
+if (process.env.VERCEL !== '1') app.listen(PORT,()=>console.log(`Server running on port ${PORT} | Database: ${USE_DATABASE?'NEON':'LOCAL'}`));
