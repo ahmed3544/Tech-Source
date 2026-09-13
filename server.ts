@@ -4,7 +4,7 @@ import express from "express";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
-import { sql } from "drizzle-orm";
+import { sql, eq } from "drizzle-orm";
 import { db } from "./src/db/index.js";
 import * as schema from "./src/db/schema.js";
 import { registerFcmRoutes } from "./server/fcm.js";
@@ -44,8 +44,6 @@ registerNotificationSystemV2(app);
 
 // Legacy recovery is a one-time safety net. It must never block or replace the
 // authoritative /api/data or /api/sync response from the current database.
-// If a legacy backup exists, recovery runs in the background; the normal API
-// pipeline immediately continues to device-sync-v2, which reads Neon directly.
 app.use((req:any,res:any,next:any)=>{
   if (process.env.DATABASE_URL && (req.path === '/api/data' || req.path === '/api/sync')) {
     void recoverMissingLegacyData().catch((e:any)=>console.error('[legacy-recovery]',e));
@@ -56,6 +54,40 @@ app.use((req:any,res:any,next:any)=>{
 registerRequestNotificationTriggers(app);
 registerAttendanceRealtime(app);
 registerScheduleSyncGuard(app);
+
+// Sync bridge: /api/sync accepts notifications from the client, but the
+// device-sync handler historically did not persist that collection. Persist it
+// here and continue to the authoritative Neon sync pipeline for every other
+// collection. No attendance or leave calculations are changed.
+app.use(async (req:any,res:any,next:any)=>{
+  if (req.method !== 'POST' || !['/api/sync','/sync'].includes(String(req.path || '').split('?')[0])) return next();
+  const items = Array.isArray(req.body?.notifications) ? req.body.notifications : [];
+  if (!items.length) return next();
+  try {
+    for (const item of items) {
+      if (!item?.id || !item?.recipientId) continue;
+      const id = String(item.id);
+      const values:any = {};
+      for (const key of ['id','recipientId','type','title','message','relatedEmployeeId','relatedLeaveId','relatedOvertimeId','relatedShiftSwapId','isRead','createdAt','updatedAt']) {
+        if (item[key] !== undefined) values[key] = item[key];
+      }
+      const existing = await db.select().from(schema.notifications).where(eq(schema.notifications.id,id));
+      if (!existing[0]) await db.insert(schema.notifications).values(values as any);
+      else {
+        const incoming = new Date(String(values.updatedAt || values.createdAt || '')).getTime();
+        const current = new Date(String((existing[0] as any).updatedAt || (existing[0] as any).createdAt || '')).getTime();
+        if (Number.isFinite(incoming) && (!Number.isFinite(current) || incoming >= current)) {
+          await db.update(schema.notifications).set(values as any).where(eq(schema.notifications.id,id));
+        }
+      }
+    }
+  } catch (error:any) {
+    console.error('[sync-bridge] notification persistence failed:', error);
+    return res.status(500).json({success:false,error:'Notification sync failed'});
+  }
+  return next();
+});
+
 registerDirectScheduleSync(app);
 registerDeviceSyncV2(app);
 
