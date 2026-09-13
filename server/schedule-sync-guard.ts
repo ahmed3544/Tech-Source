@@ -61,24 +61,16 @@ function mergeAssignments(existing:any, incoming:any[]) {
   return { assignments: Array.from(map.values()), ignoredStale };
 }
 
-async function upsertSetting(key:string, value:any) {
-  await db.insert(schema.settings).values({ key, value } as any).onConflictDoUpdate({
-    target: schema.settings.key,
-    set: { value } as any,
-  });
-}
-
 export function registerScheduleSyncGuard(app:any) {
   app.use(async (req:any, res:any, next:any) => {
-    // Vercel's Express adapter can normalize req.path differently depending on
-    // the catch-all route. The payload is the authoritative discriminator here:
-    // a POST carrying dailyShiftAssignments is always a schedule-save request.
-    const scheduleRequest = req.method === 'POST' && isSchedulePayload(req.body);
-    if (!scheduleRequest && (req.method !== 'POST' || !isSyncPath(req))) return next();
+    // This middleware validates/merges the schedule portion of /api/sync,
+    // but MUST NOT terminate the request. A single pushSync payload can also
+    // contain attendance, leave, employee and notification mutations. The
+    // device-sync middleware registered after this one must receive all of it.
+    const scheduleRequest = req.method === 'POST' && isSyncPath(req) && isSchedulePayload(req.body);
     if (!scheduleRequest) return next();
 
     const requestTimestamp = String(req.headers?.['x-sync-timestamp'] ?? req.body?.syncTimestamp ?? new Date().toISOString());
-    const requestRevision = String(req.headers?.['x-sync-revision'] ?? req.body?.syncRevision ?? requestTimestamp);
     const assignedBy = String(req.body?.assignedBy ?? req.body?.assigned_by ?? '').trim() || undefined;
 
     try {
@@ -89,30 +81,28 @@ export function registerScheduleSyncGuard(app:any) {
       );
 
       if (invalid) {
-        return res.status(400).json({ success:false, code:'INVALID_SCHEDULE_PAYLOAD', message:'Each schedule assignment requires employee_id, YYYY-MM-DD date, and shift_id or OFF.' });
+        return res.status(400).json({
+          success:false,
+          code:'INVALID_SCHEDULE_PAYLOAD',
+          message:'Each schedule assignment requires employee_id, YYYY-MM-DD date, and shift_id or OFF.'
+        });
       }
 
       const settingsRows = await db.select().from(schema.settings).where(eq(schema.settings.key, 'dailyShiftAssignments'));
-      const { assignments: merged, ignoredStale } = mergeAssignments(settingsRows[0]?.value, incoming);
+      const { assignments: merged } = mergeAssignments(settingsRows[0]?.value, incoming);
 
-      await upsertSetting('dailyShiftAssignments', merged);
-      const now = new Date().toISOString();
-      await upsertSetting('__sync_updated_at:dailyShiftAssignments', now);
-
-      return res.status(200).json({
-        success:true,
-        message:'Schedule saved successfully.',
-        dailyShiftAssignments:merged,
-        savedCount:incoming.length - ignoredStale,
-        ignoredStale,
-        updatedAt:now,
-        syncTimestamp:requestTimestamp,
-        syncRevision:requestRevision,
-        syncQueued:true,
-      });
+      // Pass the canonical schedule through to device-sync-v2 instead of
+      // returning here. That middleware will persist the complete mutation
+      // payload and return one canonical snapshot to every device.
+      req.body.dailyShiftAssignments = merged;
+      return next();
     } catch (error:any) {
-      console.error('[schedule-sync] DATABASE WRITE FAILED:', error);
-      return res.status(500).json({ success:false, code:'SCHEDULE_DATABASE_WRITE_FAILED', message:error?.message || 'Schedule database write failed.' });
+      console.error('[schedule-sync] DATABASE PREPROCESS FAILED:', error);
+      return res.status(500).json({
+        success:false,
+        code:'SCHEDULE_DATABASE_PREPROCESS_FAILED',
+        message:error?.message || 'Schedule database preprocessing failed.'
+      });
     }
   });
 }
