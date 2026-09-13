@@ -25,7 +25,8 @@ function normalizeAssignment(item:any, assignedBy?:string, fallbackUpdatedAt?:st
   const isOffDay = Boolean(item?.isOffDay ?? item?.is_off_day ?? String(item?.status ?? '').toUpperCase() === 'OFF');
   const rawShift = item?.shiftId ?? item?.shift_id ?? null;
   const shiftId = isOffDay ? null : (rawShift == null ? null : String(rawShift).trim() || null);
-  const updatedAt = String(item?.updatedAt ?? item?.updated_at ?? fallbackUpdatedAt ?? new Date().toISOString());
+  const rawUpdatedAt = item?.updatedAt ?? item?.updated_at ?? fallbackUpdatedAt ?? '';
+  const updatedAt = rawUpdatedAt ? String(rawUpdatedAt) : '';
 
   return {
     employeeId,
@@ -51,7 +52,9 @@ function mergeAssignments(existing:any, incoming:any[]) {
     if (!normalized.employeeId || !normalized.date) continue;
     const key = `${normalized.employeeId}:${normalized.date}`;
     const current = map.get(key);
-    if (current && timeMs(normalized.updatedAt) < timeMs(current.updatedAt)) {
+    // Legacy rows may have no timestamp. Treat them as older than a stamped
+    // mutation instead of fabricating a current timestamp and rejecting it.
+    if (current?.updatedAt && normalized.updatedAt && timeMs(normalized.updatedAt) < timeMs(current.updatedAt)) {
       ignoredStale += 1;
       continue;
     }
@@ -63,10 +66,9 @@ function mergeAssignments(existing:any, incoming:any[]) {
 
 export function registerScheduleSyncGuard(app:any) {
   app.use(async (req:any, res:any, next:any) => {
-    // This middleware validates/merges the schedule portion of /api/sync,
-    // but MUST NOT terminate the request. A single pushSync payload can also
-    // contain attendance, leave, employee and notification mutations. The
-    // device-sync middleware registered after this one must receive all of it.
+    // Validate/merge the schedule portion of /api/sync, but never terminate
+    // the request. The same payload may contain attendance/leave/employee
+    // mutations and device-sync-v2 must process those too.
     const scheduleRequest = req.method === 'POST' && isSyncPath(req) && isSchedulePayload(req.body);
     if (!scheduleRequest) return next();
 
@@ -74,8 +76,7 @@ export function registerScheduleSyncGuard(app:any) {
     const assignedBy = String(req.body?.assignedBy ?? req.body?.assigned_by ?? '').trim() || undefined;
 
     try {
-      const raw = req.body?.dailyShiftAssignments;
-      const incoming = raw.map((item:any) => normalizeAssignment(item, assignedBy, requestTimestamp));
+      const incoming = req.body.dailyShiftAssignments.map((item:any) => normalizeAssignment(item, assignedBy, requestTimestamp));
       const invalid = incoming.find((item:any) =>
         !item.employeeId || !item.date || !/^\d{4}-\d{2}-\d{2}$/.test(item.date) || (!item.isOffDay && !item.shiftId)
       );
@@ -90,10 +91,6 @@ export function registerScheduleSyncGuard(app:any) {
 
       const settingsRows = await db.select().from(schema.settings).where(eq(schema.settings.key, 'dailyShiftAssignments'));
       const { assignments: merged } = mergeAssignments(settingsRows[0]?.value, incoming);
-
-      // Pass the canonical schedule through to device-sync-v2 instead of
-      // returning here. That middleware will persist the complete mutation
-      // payload and return one canonical snapshot to every device.
       req.body.dailyShiftAssignments = merged;
       return next();
     } catch (error:any) {
