@@ -1,8 +1,17 @@
-import { pgTable, text, integer, boolean, jsonb, uniqueIndex } from 'drizzle-orm/pg-core';
+import {
+  pgTable,
+  text,
+  integer,
+  timestamp,
+  boolean,
+  uniqueIndex,
+  jsonb,
+  real
+} from 'drizzle-orm/pg-core';
 
 export const employees = pgTable('employees', {
   id: text('id').primaryKey(),
-  code: text('code').notNull(),
+  code: text('code'),
   nameAr: text('name_ar').notNull(),
   nameEn: text('name_en').notNull(),
   avatar: text('avatar'),
@@ -13,15 +22,14 @@ export const employees = pgTable('employees', {
   jobTitleEn: text('job_title_en'),
   shiftId: text('shift_id'),
   pin: text('pin'),
-  role: text('role').notNull().default('employee'),
+  role: text('role'),
   joinedDate: text('joined_date'),
-  status: text('status').default('active'),
-  annualLeaveBalance: integer('annual_leave_balance').default(15),
-  casualLeaveBalance: integer('casual_leave_balance').default(7),
-  regularLeaveBalance: integer('regular_leave_balance').default(8),
-  sickLeaveBalance: integer('sick_leave_balance').default(30),
-  isPhotoRemoved: boolean('is_photo_removed').default(false),
-  createdAt: text('created_at'),
+  status: text('status'),
+  annualLeaveBalance: real('annual_leave_balance'),
+  casualLeaveBalance: real('casual_leave_balance'),
+  regularLeaveBalance: real('regular_leave_balance'),
+  sickLeaveBalance: real('sick_leave_balance'),
+  isPhotoRemoved: boolean('is_photo_removed'),
   updatedAt: text('updated_at'),
 });
 
@@ -35,14 +43,14 @@ export const attendanceRecords = pgTable('attendance_records', {
   breakEnd: text('break_end'),
   breaks: jsonb('breaks'),
   totalBreakSeconds: integer('total_break_seconds'),
-  location: jsonb('location'),
-  deviceInfo: jsonb('device_info'),
-  lateMinutes: integer('late_minutes'),
-  lateSeconds: integer('late_seconds'),
-  earlyLeaveMinutes: integer('early_leave_minutes'),
-  workHours: text('work_hours'),
-  overtimeHours: text('overtime_hours'),
-  minusHours: text('minus_hours'),
+  location: text('location'),
+  deviceInfo: text('device_info'),
+  lateMinutes: integer('late_minutes').default(0),
+  lateSeconds: integer('late_seconds').default(0),
+  earlyLeaveMinutes: integer('early_leave_minutes').default(0),
+  workHours: real('work_hours').default(0),
+  overtimeHours: real('overtime_hours').default(0),
+  minusHours: real('minus_hours').default(0),
   status: text('status'),
   leaveType: text('leave_type'),
   notes: text('notes'),
@@ -65,9 +73,6 @@ export const leaveRequests = pgTable('leave_requests', {
   reason: text('reason'),
   status: text('status'),
   createdAt: text('created_at'),
-  // Keep this table compatible with the existing production database.
-  // Some deployments predate the updated_at column, so leave sync must not
-  // make reads/writes depend on it being present.
   hours: integer('hours'),
   permissionSlot: text('permission_slot'),
   attachmentUrl: text('attachment_url'),
@@ -137,7 +142,23 @@ export const rotationPatterns = pgTable('rotation_patterns', {
 export const rotationPatternItems = pgTable('rotation_pattern_items', {
   id: text('id').primaryKey(),
   patternId: text('pattern_id').notNull(),
-  dayOffset: integer('day_offset').notNull(),
-  shiftId: text('shift_id'),
-  isOff: boolean('is_off').default(false),
+  shiftId: text('shift_id').notNull(),
+  sequence: integer('sequence').notNull(),
+}, (table) => [
+  uniqueIndex('rotation_pattern_sequence_idx').on(table.patternId, table.sequence)
+]);
+
+export const notifications = pgTable('notifications', {
+  id: text('id').primaryKey(),
+  recipientId: text('recipient_id').notNull(),
+  type: text('type').notNull(),
+  title: text('title').notNull(),
+  message: text('message').notNull(),
+  relatedEmployeeId: text('related_employee_id'),
+  relatedLeaveId: text('related_leave_id'),
+  relatedOvertimeId: text('related_overtime_id'),
+  relatedShiftSwapId: text('related_shift_swap_id'),
+  isRead: boolean('is_read').default(false),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
 });
