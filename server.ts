@@ -13,6 +13,7 @@ import { registerRequestNotificationTriggers } from "./server/request-notificati
 import { registerAttendanceRealtime } from "./server/attendance-realtime.js";
 import { registerDeviceSyncV2 } from "./server/device-sync-v2.js";
 import { registerScheduleSyncGuard } from "./server/schedule-sync-guard.js";
+import { registerDirectScheduleSync } from "./server/schedule-sync-direct.js";
 import { recoverMissingLegacyData } from "./server/legacy-data-recovery.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -44,6 +45,7 @@ app.use(async (req:any,res:any,next:any)=>{if(process.env.DATABASE_URL&&(req.pat
 registerRequestNotificationTriggers(app);
 registerAttendanceRealtime(app);
 registerScheduleSyncGuard(app);
+registerDirectScheduleSync(app);
 registerDeviceSyncV2(app);
 
 export default app;
