@@ -55,6 +55,15 @@ code = code.replace(
   `      const sourceShiftId = String(source?.shiftId ?? (source as any)?.shift_id ?? '').trim();\n      const sourceOff = asBoolean(source?.isOffDay ?? (source as any)?.is_off_day) || String((source as any)?.status ?? '').toUpperCase() === 'OFF';\n      let shiftId = '';\n      let isOffDay = false;\n      if (draftValue !== undefined) {\n        shiftId = draftValue === OFF_DAY_SHIFT_ID ? '' : String(draftValue || '').trim();\n        isOffDay = draftValue === OFF_DAY_SHIFT_ID;\n      } else if (sourceShiftId) {\n        shiftId = sourceShiftId;\n        isOffDay = false;\n      } else if (sourceOff) {\n        shiftId = '';\n        isOffDay = true;\n      } else {\n        shiftId = baseShift?.id || '';\n        isOffDay = !shiftId && !works;\n      }`
 );
 
+// The schedule component used to call the parent save callback once per day after
+// the direct server save. App.tsx's legacy callback also pushes /api/sync and can
+// overwrite the freshly persisted week with stale OFF assignments. The direct
+// server response is now authoritative, so do not replay the legacy callback here.
+code = code.replace(
+  /\n\s*days\.forEach\(day => \{ const saved = result\.assignments\.find\(.*?\}\);\n/,
+  '\n'
+);
+
 const marker = '/* WEEKLY_SCHEDULE_DIRECT_SYNC_V1 */';
 if (!code.includes(marker)) {
   const start = code.indexOf('    const syncTimestamp = new Date().toISOString();');
