@@ -11,12 +11,22 @@ if (!code.includes(marker)) {
 /*
  * IMPORTANT: the central pull effect can retry a queued mutation before the
  * lexical `const pushSync = ...` binding is initialized in the component.
- * Convert pushSync to a function declaration so the retry path is hoisted and
- * cannot throw "Cannot access 'X' before initialization" after minification.
+ * Convert pushSync to a real function declaration so the retry path is
+ * hoisted and cannot throw a TDZ error after minification.
  */
 const pushSyncConst = /const pushSync = async \(/;
 if (pushSyncConst.test(code)) {
   code = code.replace(pushSyncConst, 'async function pushSync(');
+}
+
+/* The original arrow-function closing syntax is invalid after the conversion
+   above. Change only the pushSync signature terminator. */
+const pushSyncArrowEnd = /\n\) => \{\n\n  const now = Date\.now\(\);/;
+if (pushSyncArrowEnd.test(code)) {
+  code = code.replace(
+    pushSyncArrowEnd,
+    '\n) {\n\n  const now = Date.now();'
+  );
 }
 
 /* Remove the previous retry useEffect. It could execute a callback through a
