@@ -43,7 +43,7 @@ async function dbSnapshot(){const [employees,attendanceRecords,leaveRequests,ove
 registerNotificationSystemV2(app);
 
 // Legacy recovery is a one-time safety net. It must never block or replace the
-// authoritative /api/data or /api/sync response from the current database.
+authoritative /api/data or /api/sync response from the current database.
 app.use((req:any,res:any,next:any)=>{
   if (process.env.DATABASE_URL && (req.path === '/api/data' || req.path === '/api/sync')) {
     void recoverMissingLegacyData().catch((e:any)=>console.error('[legacy-recovery]',e));
@@ -54,6 +54,48 @@ app.use((req:any,res:any,next:any)=>{
 registerRequestNotificationTriggers(app);
 registerAttendanceRealtime(app);
 registerScheduleSyncGuard(app);
+
+// Leave sync bridge: leave_requests currently has no updated_at column in the
+// production schema. Persist leave mutations here using only real columns, then
+// remove them from the downstream device-sync payload so an extra updatedAt key
+// can never make the /api/sync request fail.
+app.use(async (req:any,res:any,next:any)=>{
+  const pathName = String(req.path || '').split('?')[0];
+  if (req.method !== 'POST' || !['/api/sync','/sync'].includes(pathName)) return next();
+  const body = req.body || {};
+  const incoming = Array.isArray(body.leaveRequests) ? body.leaveRequests : [];
+  const deleted = Array.isArray(body.deletedLeaveIds) ? body.deletedLeaveIds : [];
+  if (!incoming.length && !deleted.length) return next();
+  try {
+    for (const item of incoming) {
+      if (!item?.id || !item?.employeeId) continue;
+      const id = String(item.id);
+      const values:any = {};
+      for (const key of ['id','employeeId','type','startDate','endDate','reason','status','createdAt','hours','permissionSlot','attachmentUrl','attachmentName','reviewedBy','reviewNotes']) {
+        if (item[key] !== undefined) values[key] = item[key];
+      }
+      const existing = await db.select().from(schema.leaveRequests).where(eq(schema.leaveRequests.id, id));
+      if (!existing[0]) {
+        await db.insert(schema.leaveRequests).values(values as any);
+      } else {
+        await db.update(schema.leaveRequests).set(values as any).where(eq(schema.leaveRequests.id, id));
+      }
+      await setting(`__sync_updated_at:leave:${id}`, Date.now());
+    }
+    for (const rawId of deleted) {
+      const id = String(rawId || '').trim();
+      if (!id) continue;
+      await db.delete(schema.leaveRequests).where(eq(schema.leaveRequests.id, id));
+      await setting(`__sync_deleted_ids:leave`, Array.from(new Set([...(Array.isArray((await db.select().from(schema.settings).where(eq(schema.settings.key,'__sync_deleted_ids:leave'))))[0]?.value || []), id])).slice(-5000));
+    }
+    // Do not let device-sync-v2 process leaveRequests a second time.
+    req.body = { ...body, leaveRequests: undefined, deletedLeaveIds: undefined };
+    return next();
+  } catch (error:any) {
+    console.error('[leave-sync-bridge] persistence failed:', error);
+    return res.status(500).json({ success:false, error:'Leave sync failed' });
+  }
+});
 
 // Sync bridge: /api/sync accepts notifications from the client, but the
 // device-sync handler historically did not persist that collection. Persist it
