@@ -8,34 +8,25 @@ declare global {
 
 export const createPool = () => {
   if (!global._postgresPool) {
-    // Prefer the new Neon DATABASE_URL. Keep SUPABASE_DB_URL as a fallback
-    // during migration so the production database is never switched until
-    // the Neon copy has been verified.
-    const connectionString =
-      process.env.DATABASE_URL || process.env.SUPABASE_DB_URL;
+    // Production/runtime database is Neon. DATABASE_URL must point to the
+    // Neon Postgres connection string in Vercel/local environments.
+    const connectionString = process.env.DATABASE_URL;
 
     if (!connectionString) {
       console.warn(
-        "DATABASE_URL/SUPABASE_DB_URL is not set. Database operations will fail if invoked."
+        "DATABASE_URL is not set. Neon database operations will fail if invoked."
       );
     }
 
-    global._postgresPool =
-      new Pool({
-        connectionString,
-        max: 10,
-        connectionTimeoutMillis: 15000,
-      });
+    global._postgresPool = new Pool({
+      connectionString,
+      max: 10,
+      connectionTimeoutMillis: 15000,
+    });
 
-    global._postgresPool.on(
-      "error",
-      (err) => {
-        console.error(
-          "Unexpected error on idle SQL pool client:",
-          err
-        );
-      }
-    );
+    global._postgresPool.on("error", (err) => {
+      console.error("Unexpected error on idle SQL pool client:", err);
+    });
   }
 
   return global._postgresPool;
@@ -43,5 +34,4 @@ export const createPool = () => {
 
 const pool = createPool();
 
-export const db =
-  drizzle(pool, { schema });
+export const db = drizzle(pool, { schema });
