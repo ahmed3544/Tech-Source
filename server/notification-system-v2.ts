@@ -9,7 +9,7 @@ import * as schema from '../src/db/schema.js';
 type NotificationRecord = { id: string; recipientId: string; type: string; title: string; message: string; relatedEmployeeId?: string; relatedLeaveId?: string; relatedOvertimeId?: string; relatedShiftSwapId?: string; link?: string; targetUrl?: string; isRead: boolean; createdAt: string; updatedAt: string; };
 const USE_DATABASE = Boolean(process.env.DATABASE_URL || process.env.SUPABASE_DB_URL);
 const LOCAL_FILE = path.join(process.cwd(), 'notifications_v2.json');
-const VERSION = '9-request-notifications-race-safe';
+const VERSION = '10-notifications-bootstrap-safe';
 let readyPromise: Promise<void> | null = null;
 const clean = (value: unknown) => String(value ?? '').trim();
 const nowIso = () => new Date().toISOString();
@@ -58,10 +58,37 @@ function writeLocal(items: NotificationRecord[]) { try { fs.writeFileSync(LOCAL_
 async function ensureReady() {
   if (!readyPromise) readyPromise = (async () => {
     if (USE_DATABASE) {
+      // Bootstrap the notification table defensively so an older production
+      // database cannot make the polling endpoint fail with HTTP 500.
+      await db.execute(sql`CREATE TABLE IF NOT EXISTS notifications (
+        id text PRIMARY KEY,
+        recipient_id text NOT NULL,
+        type text NOT NULL,
+        title text NOT NULL,
+        message text NOT NULL,
+        related_employee_id text,
+        related_leave_id text,
+        related_overtime_id text,
+        related_shift_swap_id text,
+        is_read boolean DEFAULT false,
+        created_at text NOT NULL,
+        updated_at text NOT NULL
+      )`);
+      await db.execute(sql`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS related_employee_id text`);
+      await db.execute(sql`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS related_leave_id text`);
+      await db.execute(sql`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS related_overtime_id text`);
       await db.execute(sql`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS related_shift_swap_id text`);
+      await db.execute(sql`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS is_read boolean DEFAULT false`);
+      await db.execute(sql`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS created_at text`);
+      await db.execute(sql`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS updated_at text`);
       await db.execute(sql`CREATE TABLE IF NOT EXISTS notification_system_meta (key text PRIMARY KEY, value text NOT NULL)`);
       await db.execute(sql`INSERT INTO notification_system_meta (key, value) VALUES ('version', ${VERSION}) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`);
-      await db.execute(sql`DELETE FROM notifications n WHERE (n.type = 'leave_rejected' AND (n.related_leave_id IS NULL OR NOT EXISTS (SELECT 1 FROM leave_requests l WHERE l.id = n.related_leave_id AND LOWER(COALESCE(l.status,'')) = 'rejected')))`);
+      // Cleanup is non-critical; never let a stale leave row take down GET /api/notifications.
+      try {
+        await db.execute(sql`DELETE FROM notifications n WHERE (n.type = 'leave_rejected' AND (n.related_leave_id IS NULL OR NOT EXISTS (SELECT 1 FROM leave_requests l WHERE l.id = n.related_leave_id AND LOWER(COALESCE(l.status,'')) = 'rejected')))`);
+      } catch (error) {
+        console.warn('[Notifications v2] cleanup skipped:', error);
+      }
     } else if (!fs.existsSync(LOCAL_FILE)) writeLocal([]);
   })().catch(error => { readyPromise = null; throw error; });
   return readyPromise;
@@ -70,10 +97,11 @@ async function listForUser(userId: string): Promise<NotificationRecord[]> {
   await ensureReady(); const id = clean(userId); if (!id) return [];
   if (USE_DATABASE) {
     const rows = await db.select().from(schema.notifications).where(eq(schema.notifications.recipientId, id));
-    const leaveRows = await db.select({ id: schema.leaveRequests.id, status: schema.leaveRequests.status }).from(schema.leaveRequests);
+    let leaveRows: any[] = [];
+    try { leaveRows = await db.select({ id: schema.leaveRequests.id, status: schema.leaveRequests.status }).from(schema.leaveRequests); } catch (error) { console.warn('[Notifications v2] leave validation skipped:', error); }
     const validRejectedLeaveIds = new Set(leaveRows.filter((row: any) => String(row.status || '').toLowerCase() === 'rejected').map((row: any) => String(row.id)));
     const validLeaveIds = new Set(leaveRows.map((row: any) => String(row.id)));
-    const normalized = rows.map((row: any) => withTarget({ ...row, id: String(row.id), recipientId: String(row.recipientId) })).filter((item) => item.type === 'leave_rejected' ? Boolean(item.relatedLeaveId && validRejectedLeaveIds.has(String(item.relatedLeaveId))) : !(item.type.startsWith('leave_') && item.relatedLeaveId && !validLeaveIds.has(String(item.relatedLeaveId))));
+    const normalized = rows.map((row: any) => withTarget({ ...row, id: String(row.id), recipientId: String(row.recipientId) })).filter((item) => leaveRows.length === 0 || (item.type === 'leave_rejected' ? Boolean(item.relatedLeaveId && validRejectedLeaveIds.has(String(item.relatedLeaveId))) : !(item.type.startsWith('leave_') && item.relatedLeaveId && !validLeaveIds.has(String(item.relatedLeaveId)))));
     return mergeDuplicates(normalized);
   }
   return mergeDuplicates(readLocal().filter(item => item.recipientId === id).map(item => normalize(item)).filter((item): item is NotificationRecord => Boolean(item)));
