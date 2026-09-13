@@ -41,7 +41,18 @@ async function setting(key:string,value:any){await db.insert(schema.settings).va
 async function dbSnapshot(){const [employees,attendanceRecords,leaveRequests,overtimeRequests,shifts,notifications,settings,employeeShiftAssignments]=await Promise.all([db.select().from(schema.employees),db.select().from(schema.attendanceRecords),db.select().from(schema.leaveRequests),db.select().from(schema.overtimeRequests),db.select().from(schema.shifts),db.select().from(schema.notifications),db.select().from(schema.settings),db.select().from(schema.employeeShiftAssignments)]);const m=new Map(settings.map((s:any)=>[String(s.key),s.value]));return{success:true,employees,attendanceRecords,leaveRequests,overtimeRequests,shifts,notifications,employeeShiftAssignments,dailyShiftAssignments:Array.isArray(m.get("dailyShiftAssignments"))?m.get("dailyShiftAssignments"):[],shiftSwapRequests:Array.isArray(m.get("shiftSwapRequests"))?m.get("shiftSwapRequests"):[],companyNameAr:m.get("companyNameAr")??null,companyNameEn:m.get("companyNameEn")??null,urgentNotice:m.get("urgentNotice")??null,lastUpdated:Date.now()};}
 
 registerNotificationSystemV2(app);
-app.use(async (req:any,res:any,next:any)=>{if(process.env.DATABASE_URL&&(req.path==='/api/data'||req.path==='/api/sync')){try{await recoverMissingLegacyData();}catch(e){console.error('[legacy-recovery]',e);}}next();});
+
+// Legacy recovery is a one-time safety net. It must never block or replace the
+// authoritative /api/data or /api/sync response from the current database.
+// If a legacy backup exists, recovery runs in the background; the normal API
+// pipeline immediately continues to device-sync-v2, which reads Neon directly.
+app.use((req:any,res:any,next:any)=>{
+  if (process.env.DATABASE_URL && (req.path === '/api/data' || req.path === '/api/sync')) {
+    void recoverMissingLegacyData().catch((e:any)=>console.error('[legacy-recovery]',e));
+  }
+  next();
+});
+
 registerRequestNotificationTriggers(app);
 registerAttendanceRealtime(app);
 registerScheduleSyncGuard(app);
