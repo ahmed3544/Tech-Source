@@ -82,7 +82,7 @@ export const ShiftSwapPanel: React.FC<Props> = ({ employees, shifts, assignments
     const onAction = (event: Event) => {
       const detail = (event as CustomEvent<{ swapId?: string; action?: 'accept' | 'reject' }>).detail;
       if (detail?.swapId && detail.action && detail.action !== 'accept' && detail.action !== 'reject') return;
-      if (detail?.swapId && detail.action) void respondAsTarget(detail.swapId, detail.action);
+      if (detail?.swapId && detail.action) void respondAsTarget(detail.swapId, detail.action === 'accept' ? 'accepted' : 'rejected');
     };
     window.addEventListener('shift-swap-notification-action', onAction);
     return () => { cancelled = true; window.removeEventListener('shift-swap-notification-action', onAction); };

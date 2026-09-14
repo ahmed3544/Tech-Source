@@ -120,7 +120,7 @@ export const EmployeePortal: React.FC<EmployeePortalProps> = ({
   const [searchDayQuery, setSearchDayQuery] = useState('');
 
   // Active view tab inside dashboard
-  const [activeDashboardTab, setActiveDashboardTab] = useState<'attendance' | 'penalties'>('attendance');
+  const [activeDashboardTab, setActiveDashboardTab] = useState<'attendance' | 'penalties' | 'permissions'>('attendance');
 
   // Avatar Modal State
   const [showAvatarModal, setShowAvatarModal] = useState(false);
@@ -173,6 +173,7 @@ export const EmployeePortal: React.FC<EmployeePortalProps> = ({
 
   const emp = employees.find(e => e.id === targetEmpId) || employees[0];
   const todayStr = getTodayString();
+  const isWeekendToday = isWeekend(todayStr);
   const todayRecord = attendanceRecords.find(r =>
     r.date === todayStr &&
     Boolean(r.employeeId && emp?.id) &&
