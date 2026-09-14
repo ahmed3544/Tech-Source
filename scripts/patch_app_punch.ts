@@ -20,7 +20,7 @@ let code = fs.readFileSync(appPath, 'utf-8');
     try {
 */
 
-const targetRegex = /\/\/ 1\. Immediately update ref[\s\S]*?try \{[\s\S]*?fetch\('\/api\/punch'[\s\S]*?body: JSON\.stringify\(\{ employeeId: emp\.id, action, record: updatedRecord, nowTimeStr \}\)\s*\}\)\s*\.then\(res => res\.json\(\)\)\s*\.then\(data => \{[\s\S]*?\}\)\s*\.catch\(\(\) => \{\}\);\s*\} catch \{\s*\/\/ ignore\s*\}/;
+const targetRegex = /\\/\\/ 1\\. Immediately update ref[\\s\\S]*?try \\{[\\s\\S]*?fetch\\('\\/api\\/punch'[\\s\\S]*?body: JSON\\.stringify\\(\\{ employeeId: emp\\.id, action, record: updatedRecord, nowTimeStr \\}\\)\\s*\\}\\)\\s*\\.then\\(res => res\\.json\\(\\)\\)\\s*\\.then\\(data => \\{[\\s\\S]*?\\}\\)\\s*\\.catch\\(\\(\\) => \\{\\}\\);\\s*\\} catch \\{\\s*\\/\\/ ignore\\s*\\}/;
 
 const newLogic = `
     // Call server first to guarantee DB consistency (No Optimistic Overwrite)
@@ -28,9 +28,19 @@ const newLogic = `
       fetch('/api/punch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ employeeId: emp.id, action, record: updatedRecord, nowTimeStr })
+        body: JSON.stringify({
+          employeeId: emp.id,
+          employee: emp,
+          action,
+          record: updatedRecord,
+          nowTimeStr
+        })
       })
-      .then(res => res.json())
+      .then(async res => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data?.error || \`Punch failed: \${res.status}\`);
+        return data;
+      })
       .then(data => {
         if (data && data.success && Array.isArray(data.attendanceRecords)) {
           const sanitized = data.attendanceRecords.map(ensureSanitizedRecord);
@@ -42,9 +52,9 @@ const newLogic = `
           }
         }
       })
-      .catch((err) => { console.error("Punch Error:", err); });
+      .catch((err) => { console.error('[Punch Error]', err); });
     } catch (e) {
-      console.error(e);
+      console.error('[Punch Error]', e);
     }`;
 
 code = code.replace(targetRegex, newLogic);
