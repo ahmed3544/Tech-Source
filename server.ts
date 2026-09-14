@@ -31,6 +31,7 @@ const USE_DATABASE = Boolean(process.env.DATABASE_URL || process.env.SUPABASE_DB
 
 type State = { employees:any[]; attendanceRecords:any[]; leaveRequests:any[]; overtimeRequests:any[]; shifts:any[]; notifications:any[]; dailyShiftAssignments:any[]; shiftSwapRequests:any[]; companyNameAr?:any; companyNameEn?:any; urgentNotice?:any; lastUpdated:number; };
 const emptyState = ():State => ({employees:[],attendanceRecords:[],leaveRequests:[],overtimeRequests:[],shifts:[],notifications:[],dailyShiftAssignments:[],shiftSwapRequests:[],companyNameAr:null,companyNameEn:null,urgentNotice:null,lastUpdated:Date.now()});
+const localState: State = emptyState();
 function clock(){const now=new Date();return{date:now.toISOString().slice(0,10),time:now.toTimeString().slice(0,8),iso:now.toISOString(),timeZone:TZ};}
 const norm=(x:any)=>String(x??"").trim().toLowerCase();
 function mins(x:any){if(!x)return 0;const t=String(x).trim(),a=t.split(":");let h=Number(a[0]||0),m=Number(a[1]||0);if(/PM/i.test(t)&&h<12)h+=12;if(/AM/i.test(t)&&h===12)h=0;return h*60+m;}
