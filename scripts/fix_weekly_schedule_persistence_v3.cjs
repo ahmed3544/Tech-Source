@@ -17,4 +17,16 @@ const persistFn=`  const persistAssignments = async (next: DailyShiftAssignment[
 code=code.slice(0,persistStart)+persistFn+code.slice(persistEnd);
 code=code.replace('const CALENDAR_START = 6;','const CALENDAR_START = 0;').replace('const CALENDAR_END = 22;','const CALENDAR_END = 24;');
 fs.writeFileSync(file,code,'utf8');
-console.log('Weekly schedule persistence v4 applied');
+
+// The schedule screen is mounted without props from App.tsx. Bind it to the
+// authoritative App state so the employee list is available immediately,
+// instead of depending on a second /api/data request inside the component.
+const appFile = 'src/App.tsx';
+let app = fs.readFileSync(appFile, 'utf8');
+const oldSchedule = `          <WeeklyShiftSchedule\n            lang={lang}`;
+const newSchedule = `          <WeeklyShiftSchedule\n            employees={employees}\n            shifts={shifts}\n            dailyShiftAssignments={dailyShiftAssignments}\n            currentUser={currentUser}\n            onSaveDailyShift={(assignment) => {\n              setDailyShiftAssignments(prev => {\n                const key = String(assignment.employeeId) + '|' + String(assignment.date);\n                const next = prev.filter(item => String(item.employeeId) + '|' + String(item.date) !== key);\n                return [...next, assignment];\n              });\n            }}\n            lang={lang}`;
+if (app.includes(oldSchedule) && !app.includes('employees={employees}\n            shifts={shifts}\n            dailyShiftAssignments={dailyShiftAssignments}')) {
+  app = app.replace(oldSchedule, newSchedule);
+  fs.writeFileSync(appFile, app, 'utf8');
+}
+console.log('Weekly schedule persistence v4 + App employee binding applied');
