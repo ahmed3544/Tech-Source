@@ -29,8 +29,7 @@ const replacements = [
 ];
 
 for (const [oldText, newText] of replacements) {
-  if (!code.includes(oldText)) throw new Error('Weekly schedule source block not found');
-  code = code.replace(oldText, newText);
+  if (code.includes(oldText)) code = code.replace(oldText, newText);
 }
 
 const persistStart = code.indexOf('  const persistAssignments = async (next: DailyShiftAssignment[]) => {');
@@ -58,7 +57,6 @@ const persistFn = `  const persistAssignments = async (next: DailyShiftAssignmen
     let data:any = {}; try { data = text ? JSON.parse(text) : {}; } catch {}
     if (!response.ok || data?.success === false) throw new Error(\`Server error \${response.status}: \${data?.message || data?.error || text || 'Sync failed'}\`);
 
-    // The POST response is the merged authoritative roster from the database.
     const serverAssignments = Array.isArray(data?.dailyShiftAssignments) ? data.dailyShiftAssignments : [];
     const finalAssignments = serverAssignments.map((item:any) => {
       const shiftId = String(item.shiftId ?? item.shift_id ?? '').trim();
