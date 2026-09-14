@@ -19,7 +19,7 @@ const app = path.resolve('src/App.tsx');
 patch(app, [
   ['disable generic schedule payload', (s) => s.replace(/\n\s*if \(overrides\?\.dailyShiftAssignments !== undefined\) \{\s*payload\.dailyShiftAssignments = overrides\.dailyShiftAssignments;\s*\}/, '')],
   ['route local schedule save to direct endpoint', (s) => s.replace(/void pushSync\(\{ dailyShiftAssignments: next \}\);/, "void fetch('/api/schedule-sync', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' }, body: JSON.stringify({ dailyShiftAssignments: next }), cache: 'no-store' }).then((res) => { if (!res.ok) throw new Error(`Schedule sync failed: ${res.status}`); return res.json(); }).catch((error) => console.warn('[schedule-sync] failed:', error));")],
-  ['allow recovery after failed generic sync', (s) => s.replace(/(} catch \(error: any\) \{\s*\n\s*if \(\s*error\?\.name\s*===\s*'AbortError'\s*\) \{)/, "} catch (error: any) {\n\n    // A failed mutation must not permanently block /api/data pulls.\n    // The server is authoritative until the mutation is successfully retried.\n    lastLocalUpdateRef.current = 0;\n\n    $1")]
+  ['allow recovery after failed generic sync', (s) => s.replace(/(} catch \(error: any\) \{\s*\n\s*)(if \(\s*error\?\.name\s*===\s*'AbortError'\s*\) \{)/, "$1    // A failed mutation must not permanently block /api/data pulls.\n    // The server is authoritative until the mutation is successfully retried.\n    lastLocalUpdateRef.current = 0;\n\n$2")]
 ]);
 
 const swap = path.resolve('src/components/ShiftSwapPanel.tsx');
