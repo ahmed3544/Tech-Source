@@ -111,4 +111,34 @@ registerDeviceSyncV2(app);
 export default app;
 export { app };
 
-if (process.env.VERCEL !== '1') app.listen(PORT,()=>console.log(`Server running on port ${PORT} | Database: NEON`));
+async function startDevelopmentServer() {
+  if (process.env.VERCEL === '1') return;
+
+  if (process.env.NODE_ENV === 'production') {
+    const path = await import('node:path');
+    app.use(express.static(path.resolve(process.cwd(), 'dist')));
+    app.use((req, res, next) => {
+      if (req.method !== 'GET' || req.path.startsWith('/api/')) return next();
+      res.sendFile(path.resolve(process.cwd(), 'dist', 'index.html'));
+    });
+  } else {
+    const { createServer } = await import('vite');
+    const vite = await createServer({
+      appType: 'spa',
+      server: {
+        middlewareMode: true,
+        hmr: process.env.DISABLE_HMR !== 'true',
+      },
+    });
+    app.use(vite.middlewares);
+  }
+
+  app.listen(PORT, () =>
+    console.log(`Server running on port ${PORT} | Database: NEON`)
+  );
+}
+
+void startDevelopmentServer().catch((error) => {
+  console.error('Failed to start the application server:', error);
+  process.exitCode = 1;
+});
