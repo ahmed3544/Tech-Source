@@ -6027,6 +6027,11 @@ try {
 
         {activeTab === 'schedule' && (
           <WeeklyShiftSchedule
+            employees={employees}
+            shifts={shifts}
+            dailyShiftAssignments={dailyShiftAssignments}
+            currentUser={currentUser}
+            onSaveDailyShift={handleSaveDailyShift}
             lang={lang}
             onClose={() => setActiveTab(currentUser?.role === 'leader' || !currentUser ? 'dashboard' : 'portal')}
           />
