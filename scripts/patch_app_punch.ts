@@ -4,26 +4,12 @@ import path from 'path';
 const appPath = path.join(process.cwd(), 'src', 'App.tsx');
 let code = fs.readFileSync(appPath, 'utf-8');
 
-// The optimistic update in handlePunch looks like:
-/*
-    // 1. Immediately update ref
-    attendanceRecordsRef.current = nextRecords;
-    lastLocalUpdateRef.current = Date.now();
-
-    // 2. Synchronously write to localStorage
-    localStorage.setItem('attendance_records', JSON.stringify(nextRecords));
-
-    // 3. Update React UI state
-    setAttendanceRecords(nextRecords);
-
-    // 4. Send background sync and direct atomic punch to server, accepting authoritative server response
-    try {
-*/
-
-const targetRegex = /\\/\\/ 1\\. Immediately update ref[\\s\\S]*?try \\{[\\s\\S]*?fetch\\('\\/api\\/punch'[\\s\\S]*?body: JSON\\.stringify\\(\\{ employeeId: emp\\.id, action, record: updatedRecord, nowTimeStr \\}\\)\\s*\\}\\)\\s*\\.then\\(res => res\\.json\\(\\)\\)\\s*\\.then\\(data => \\{[\\s\\S]*?\\}\\)\\s*\\.catch\\(\\(\\) => \\{\\}\\);\\s*\\} catch \\{\\s*\\/\\/ ignore\\s*\\}/;
+// Match the old optimistic punch block without relying on escaped slash syntax
+// that can make the TypeScript transformer fail before the script runs.
+const targetRegex = /\/\/ 1\. Immediately update ref[\s\S]*?try \{[\s\S]*?fetch\('\/api\/punch'[\s\S]*?\}\);[\s\S]*?\} catch \{\s*\/\/ ignore\s*\}/;
 
 const newLogic = `
-    // Call server first to guarantee DB consistency (No Optimistic Overwrite)
+    // Call server first to guarantee DB consistency (Neon is authoritative)
     try {
       fetch('/api/punch', {
         method: 'POST',
@@ -46,7 +32,6 @@ const newLogic = `
           const sanitized = data.attendanceRecords.map(ensureSanitizedRecord);
           attendanceRecordsRef.current = sanitized;
           setAttendanceRecords(sanitized);
-          localStorage.setItem('attendance_records', JSON.stringify(sanitized));
           if (data.lastUpdated) {
             lastLocalUpdateRef.current = data.lastUpdated;
           }
@@ -57,6 +42,11 @@ const newLogic = `
       console.error('[Punch Error]', e);
     }`;
 
-code = code.replace(targetRegex, newLogic);
-fs.writeFileSync(appPath, code, 'utf-8');
-console.log('Patched App.tsx handlePunch');
+const nextCode = code.replace(targetRegex, newLogic);
+if (nextCode !== code) {
+  code = nextCode;
+  fs.writeFileSync(appPath, code, 'utf-8');
+  console.log('Patched App.tsx handlePunch');
+} else {
+  console.log('patch_app_punch: target block not found; leaving App.tsx unchanged');
+}
