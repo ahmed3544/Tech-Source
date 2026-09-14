@@ -47,7 +47,7 @@ const persistFn = `  const persistAssignments = async (next: DailyShiftAssignmen
 
     if (!clean.length) throw new Error('No valid schedule rows to save');
     const syncTimestamp = new Date().toISOString();
-    const syncRevision = \`${syncTimestamp}-${Math.random().toString(36).slice(2,10)}\`;
+    const syncRevision = syncTimestamp + '-' + Math.random().toString(36).slice(2, 10);
     const response = await fetch('/api/schedule-sync', {
       method:'POST', credentials:'include', cache:'no-store',
       headers:{'Content-Type':'application/json','Accept':'application/json','Cache-Control':'no-cache','Pragma':'no-cache','X-Sync-Timestamp':syncTimestamp,'X-Sync-Revision':syncRevision},
@@ -55,7 +55,7 @@ const persistFn = `  const persistAssignments = async (next: DailyShiftAssignmen
     });
     const text = await response.text();
     let data:any = {}; try { data = text ? JSON.parse(text) : {}; } catch {}
-    if (!response.ok || data?.success === false) throw new Error(\`Server error \${response.status}: \${data?.message || data?.error || text || 'Sync failed'}\`);
+    if (!response.ok || data?.success === false) throw new Error('Server error ' + response.status + ': ' + (data?.message || data?.error || text || 'Sync failed'));
 
     const serverAssignments = Array.isArray(data?.dailyShiftAssignments) ? data.dailyShiftAssignments : [];
     const finalAssignments = serverAssignments.map((item:any) => {
