@@ -1,1 +1,0 @@
-dotenv runtime dependency is required by the bundled server.
