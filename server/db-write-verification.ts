@@ -30,7 +30,7 @@ async function verifyCollection(name:string, items:any[]) {
     found = ids.filter(id => set.has(id)).length;
   } else if (name === 'shifts') {
     const rows = await db.select({ id: schema.shifts.id }).from(schema.shifts);
-    const set = new Set(rows.map(x => String(x.id));
+    const set = new Set(rows.map(x => String(x.id)));
     found = ids.filter(id => set.has(id)).length;
   } else if (name === 'employeeShiftAssignments') {
     const rows = await db.select({ id: schema.employeeShiftAssignments.id }).from(schema.employeeShiftAssignments);
