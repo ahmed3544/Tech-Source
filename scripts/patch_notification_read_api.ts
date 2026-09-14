@@ -22,7 +22,9 @@ if (!code.includes(marker)) {
 code = code.replace(/\n\s*try \{ localStorage\.setItem\('notifications', JSON\.stringify\([^\n]*\)\); \} catch \{\}/g, '');
 code = code.replace(/\n\s*if \(Array\.isArray\(data\.notifications\)\) \{[\s\S]*?\n\s*\}\n(?=\s*if \(Array\.isArray\(data\.shifts\))/g, '\n');
 code = code.replace(/\n\s*if \(overrides\?\.notifications !== undefined\) \{\s*payload\.notifications =\s*overrides\.notifications;\s*\}/g, '');
-code = code.replace(/\n\s*notifications\?: Notification\[\];/g, '');
+// Keep the optional property in pushSync's type so the later direct-emission
+// patch can handle notification writes without producing a TypeScript error.
+// It is still excluded from the generic payload below.
 code = code.replace(/\n\s*const serverNotifications = data\.notifications;[\s\S]*?localStorage\.setItem\(['"]notifications['"],\s*JSON\.stringify\(nextNotifications\)\);/g, '');
 
 fs.writeFileSync(appPath, code, 'utf8');

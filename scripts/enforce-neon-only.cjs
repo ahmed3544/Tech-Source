@@ -20,7 +20,10 @@ function stripBrowserStorage(code) {
   code = code.replace(/^[ \t]*(?:window\.)?(?:localStorage|sessionStorage)\.setItem\([\s\S]*?\);[ \t]*$/gm, '');
   code = code.replace(/^[ \t]*(?:window\.)?(?:localStorage|sessionStorage)\.removeItem\([\s\S]*?\);[ \t]*$/gm, '');
   code = code.replace(/^[ \t]*(?:window\.)?(?:localStorage|sessionStorage)\.clear\(\);[ \t]*$/gm, '');
-  code = code.replace(/(?:window\.)?(?:localStorage|sessionStorage)\.getItem\([\s\S]*?\)/g, 'null');
+  // Keep browser storage disabled without replacing reads with a literal
+  // `null`; TypeScript then flags normal fallback expressions such as
+  // `readValue() || defaultValue` as always falsy.
+  code = code.replace(/(?:window\.)?(?:localStorage|sessionStorage)\.getItem\([\s\S]*?\)/g, '(() => null)()');
   return code;
 }
 
