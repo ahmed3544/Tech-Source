@@ -19,6 +19,10 @@ const replacements = [
     `    // Do not invent OFF when the server has no assignment for this date.\n    return '';`
   ],
   [
+    `      } else {\n        shiftId = '';\n        isOffDay = true;\n      }\n      const index = next.findIndex`,
+    `      } else {\n        // An unassigned date must remain unassigned. Do not silently convert it to OFF.\n        shiftId = '';\n        isOffDay = false;\n      }\n      const index = next.findIndex`
+  ],
+  [
     `    const result = await persistAssignments(next);`,
     `    const weekKeys = new Set(days.map(day => day.key));\n    const changedWeekRows = next.filter(item => weekKeys.has(String(item.date)));\n    const result = await persistAssignments(changedWeekRows);`
   ],
