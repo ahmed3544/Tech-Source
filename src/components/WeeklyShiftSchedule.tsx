@@ -22,6 +22,44 @@ const OFF_DAY_SHIFT_ID = '__OFF_DAY__';
 const CALENDAR_START = 6;
 const CALENDAR_END = 22;
 const HOUR_HEIGHT = 64;
+const sameId = (left: unknown, right: unknown) =>
+  String(left ?? '').trim().toLowerCase() === String(right ?? '').trim().toLowerCase();
+
+const normalizeShift = (raw: any): Shift => {
+  const rawBreaks = Array.isArray(raw?.breaks)
+    ? raw.breaks
+    : (raw?.breakStart || raw?.breakEnd || raw?.break_start || raw?.break_end)
+      ? [{
+          id: `${raw?.id || 'shift'}-break`,
+          nameAr: 'راحة',
+          nameEn: 'Break',
+          startTime: raw?.breakStart ?? raw?.break_start ?? '',
+          endTime: raw?.breakEnd ?? raw?.break_end ?? '',
+        }]
+      : [];
+
+  return {
+    ...raw,
+    id: String(raw?.id ?? ''),
+    name: raw?.name ?? raw?.nameEn ?? raw?.nameAr ?? '',
+    nameAr: raw?.nameAr ?? raw?.name ?? raw?.nameEn ?? '',
+    nameEn: raw?.nameEn ?? raw?.name ?? raw?.nameAr ?? '',
+    startTime: String(raw?.startTime ?? raw?.start_time ?? ''),
+    endTime: String(raw?.endTime ?? raw?.end_time ?? ''),
+    breakMinutes: Number(raw?.breakMinutes ?? raw?.break_minutes ?? 0),
+    durationMinutes: Number(raw?.durationMinutes ?? raw?.duration_minutes ?? 0) || undefined,
+    gracePeriodMinutes: Number(raw?.gracePeriodMinutes ?? raw?.grace_period_minutes ?? 0),
+    workDays: Array.isArray(raw?.workDays)
+      ? raw.workDays.map(Number)
+      : (Array.isArray(raw?.work_days) ? raw.work_days.map(Number) : [0, 1, 2, 3, 4]),
+    breaks: rawBreaks.map((item: any, index: number) => ({
+      ...item,
+      id: String(item?.id ?? `${raw?.id || 'shift'}-break-${index}`),
+      startTime: String(item?.startTime ?? item?.start_time ?? ''),
+      endTime: String(item?.endTime ?? item?.end_time ?? ''),
+    })),
+  } as Shift;
+};
 
 const asBoolean = (value: unknown) => {
   if (typeof value === 'boolean') return value;
@@ -70,7 +108,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
 
   useEffect(() => {
     if (suppliedEmployees) setEmployees(suppliedEmployees);
-    if (suppliedShifts) setShifts(suppliedShifts);
+    if (suppliedShifts) setShifts(suppliedShifts.map(normalizeShift));
     if (suppliedAssignments) setAssignments(suppliedAssignments);
     if (suppliedUser) { setCurrentUser(suppliedUser); setSelectedEmployeeId(suppliedUser.id); }
   }, [suppliedEmployees, suppliedShifts, suppliedAssignments, suppliedUser]);
@@ -93,7 +131,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
             const data = await response.json();
             if (!cancelled) {
               if (Array.isArray(data.employees)) setEmployees(data.employees);
-              if (Array.isArray(data.shifts)) setShifts(data.shifts);
+              if (Array.isArray(data.shifts)) setShifts(data.shifts.map(normalizeShift));
               if (Array.isArray(data.dailyShiftAssignments)) setAssignments(data.dailyShiftAssignments);
             }
           }
@@ -131,14 +169,17 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
     return { date, key: toDateKey(date), labelAr: ar[date.getDay()], labelEn: en[date.getDay()] };
   }), [weekStart]);
 
-  const assignmentFor = (employeeId: string, date: string) => assignments.find(a => String(a.employeeId ?? (a as any).employee_id) === String(employeeId) && String(a.date) === date);
+  const assignmentFor = (employeeId: string, date: string) => assignments.find(a =>
+    sameId(a.employeeId ?? (a as any).employee_id, employeeId) &&
+    String(a.date).slice(0, 10) === date
+  );
   const getValue = (date: string) => {
     const assignment = assignmentFor(employee?.id || '', date);
     if (draft[date] !== undefined) return draft[date];
     const shiftId = String(assignment?.shiftId ?? (assignment as any)?.shift_id ?? '').trim();
     if (shiftId) return shiftId;
     if (asBoolean(assignment?.isOffDay ?? (assignment as any)?.is_off_day) || String((assignment as any)?.status ?? '').toUpperCase() === 'OFF') return OFF_DAY_SHIFT_ID;
-    const baseShift = employee?.shiftId ? shifts.find(s => s.id === employee.shiftId) : undefined;
+    const baseShift = employee?.shiftId ? shifts.find(s => sameId(s.id, employee.shiftId)) : undefined;
     const dow = new Date(`${date}T00:00:00`).getDay();
     if (baseShift && Array.isArray(baseShift.workDays) && baseShift.workDays.includes(dow)) return baseShift.id;
     return baseShift ? OFF_DAY_SHIFT_ID : '';
@@ -149,7 +190,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
     if (shiftId) return shifts.find(s => s.id === shiftId);
     if (asBoolean(assignment?.isOffDay ?? (assignment as any)?.is_off_day)) return undefined;
     const base = employees.find(e => e.id === employeeId);
-    return base?.shiftId ? shifts.find(s => s.id === base.shiftId) : undefined;
+    return base?.shiftId ? shifts.find(s => sameId(s.id, base.shiftId)) : undefined;
   };
 
   const persistAssignments = async (next: DailyShiftAssignment[]) => {
@@ -184,8 +225,8 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
     for (const day of days) {
       const draftValue = employeeId === sourceEmployeeId && Object.prototype.hasOwnProperty.call(draft,day.key) ? draft[day.key] : undefined;
       const source = assignmentFor(sourceEmployeeId,day.key);
-      const sourceEmployee = employees.find(e => e.id === sourceEmployeeId);
-      const baseShift = sourceEmployee?.shiftId ? shifts.find(s => s.id === sourceEmployee.shiftId) : undefined;
+      const sourceEmployee = employees.find(e => sameId(e.id, sourceEmployeeId));
+      const baseShift = sourceEmployee?.shiftId ? shifts.find(s => sameId(s.id, sourceEmployee.shiftId)) : undefined;
       const works = Boolean(baseShift && Array.isArray(baseShift.workDays) && baseShift.workDays.includes(day.date.getDay()));
       const sourceShiftId = String(source?.shiftId ?? (source as any)?.shift_id ?? '').trim();
       const sourceOff = asBoolean(source?.isOffDay ?? (source as any)?.is_off_day) || String((source as any)?.status ?? '').toUpperCase() === 'OFF';
@@ -292,7 +333,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
                 {days.map((day,index)=><div key={day.key} className={`sticky top-0 z-20 border-b border-e border-slate-300 p-2 text-center ${index>=5?'bg-slate-300':'bg-slate-700'}`}><div className="text-xs font-black text-white">{lang==='ar'?day.labelAr:day.labelEn}</div><div className="mt-0.5 font-mono text-[9px] text-slate-200">{day.key}</div></div>)}
                 <div className="relative border-e border-slate-300 bg-slate-200" style={{height:timelineHeight}}>{hours.map(hour=><div key={hour} className="absolute left-0 right-0 -translate-y-1/2 border-b border-slate-300" style={{top:(hour-CALENDAR_START)*HOUR_HEIGHT}}><span className="absolute right-2 -top-2 rounded bg-slate-200 px-1 text-[10px] font-bold text-slate-600">{formatHour(hour,lang==='ar')}</span></div>)}</div>
                 {days.map(day=>{
-                  const value=getValue(day.key); const off=value===OFF_DAY_SHIFT_ID; const selectedShift=!off&&value?shifts.find(s=>s.id===value):shiftFor(employee.id,day.key); const isWeekend=day.date.getDay()===5||day.date.getDay()===6;
+                  const value=getValue(day.key); const off=value===OFF_DAY_SHIFT_ID; const selectedShift=!off&&value?shifts.find(s=>sameId(s.id,value)):shiftFor(employee.id,day.key); const isWeekend=day.date.getDay()===5||day.date.getDay()===6;
                   return <div key={day.key} className={`relative border-e border-slate-300 ${isWeekend||off?'bg-slate-200':'bg-white'}`} style={{height:timelineHeight}}>
                     {hours.slice(0,-1).map(hour=><div key={hour} className={`absolute left-0 right-0 border-b ${isWeekend||off?'border-slate-300':'border-slate-200'}`} style={{top:(hour-CALENDAR_START)*HOUR_HEIGHT}} />)}
                     {selectedShift && renderShiftBar(selectedShift)}
