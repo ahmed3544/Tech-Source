@@ -32,10 +32,16 @@ const asBoolean = (value: unknown) => {
 
 const minutesOf = (value?: string | null) => {
   if (!value) return NaN;
-  const m = String(value).trim().match(/^(\d{1,2}):(\d{2})/);
+  const m = String(value).trim().match(/^(\d{1,2})(?::(\d{2}))?(?::\d{2})?\s*(AM|PM|ص|م)?$/i);
   if (!m) return NaN;
-  return Number(m[1]) * 60 + Number(m[2]);
+  let hour = Number(m[1]);
+  const minute = Number(m[2] || 0);
+  const suffix = String(m[3] || '').toLowerCase();
+  if ((suffix === 'pm' || suffix === 'م') && hour < 12) hour += 12;
+  if ((suffix === 'am' || suffix === 'ص') && hour === 12) hour = 0;
+  return hour * 60 + minute;
 };
+const timeLabel = (minutes: number) => `${pad(Math.floor(minutes / 60) % 24)}:${pad(minutes % 60)}`;
 const formatHour = (hour: number, ar: boolean) => {
   const suffix = hour >= 12 ? 'PM' : 'AM';
   const display = hour % 12 || 12;
@@ -236,15 +242,29 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
     if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return null;
     const top = Math.max(0, ((start - CALENDAR_START*60) / 60) * HOUR_HEIGHT);
     const height = Math.min(timelineHeight-top, ((end-start)/60) * HOUR_HEIGHT);
-    return <div className="absolute left-1/2 z-10 w-14 -translate-x-1/2 overflow-hidden rounded-xl bg-green-600 shadow-lg ring-2 ring-green-800/30" style={{top,height}}>
-      <div className="flex h-8 items-center justify-center border-b border-white/25 bg-green-700/35 px-1 text-[9px] font-black text-white">{shift.nameAr || shift.nameEn}</div>
-      <div className="absolute bottom-1 left-0 right-0 text-center text-[8px] font-bold text-white">{shift.startTime}-{shift.endTime}</div>
-      {(shift.breaks || []).map((br:any) => {
+    if (height <= 0) return null;
+    const configuredBreaks = Array.isArray(shift.breaks) ? shift.breaks : [];
+    const breakMinutes = Number(shift.breakMinutes || 0);
+    const breaks = configuredBreaks.length || breakMinutes <= 0
+      ? configuredBreaks
+      : [{
+          id: `${shift.id}-default-break`,
+          nameAr: 'راحة',
+          nameEn: 'Break',
+          startTime: timeLabel(start + Math.floor((end - start) / 2)),
+          endTime: timeLabel(start + Math.floor((end - start) / 2) + Math.min(breakMinutes, end - start)),
+        }];
+    const shiftName = shift.nameAr || shift.nameEn || shift.name || (lang === 'ar' ? 'وقت الشفت' : 'Work shift');
+    return <div className="absolute left-1 right-1 z-10 overflow-hidden rounded-xl border-2 border-green-700/60 bg-green-500/80 shadow-lg ring-1 ring-green-900/20" style={{top,height}}>
+      <div className="flex min-h-8 items-center justify-center border-b border-white/40 bg-green-700/80 px-2 text-center text-[10px] font-black text-white">{shiftName}</div>
+      <div className="absolute bottom-1 left-0 right-0 text-center text-[9px] font-black text-white drop-shadow">{shift.startTime}-{shift.endTime}</div>
+      {breaks.map((br:any) => {
         const bs=minutesOf(br.startTime), be=minutesOf(br.endTime);
         if (!Number.isFinite(bs)||!Number.isFinite(be)||be<=bs) return null;
-        const breakTop=((bs-start)/(end-start))*100;
-        const breakHeight=((be-bs)/(end-start))*100;
-        return <div key={br.id} className="absolute left-0 right-0 z-20 bg-red-600 ring-1 ring-red-800/30" style={{top:`${breakTop}%`,height:`${Math.max(2,breakHeight)}%`}} title={`${br.nameAr||br.nameEn}: ${br.startTime}-${br.endTime}`} />;
+        const breakTop=Math.max(0,Math.min(100,((bs-start)/(end-start))*100));
+        const breakBottom=Math.max(breakTop,Math.min(100,((be-start)/(end-start))*100));
+        const breakHeight=Math.max(3,breakBottom-breakTop);
+        return <div key={br.id} className="absolute left-0 right-0 z-20 flex items-center justify-center border-y border-red-900/40 bg-red-600/95 text-[9px] font-black text-white shadow-inner" style={{top:`${breakTop}%`,height:`${breakHeight}%`}} title={`${br.nameAr||br.nameEn||'Break'}: ${br.startTime}-${br.endTime}`}>{br.nameAr || br.nameEn || (lang === 'ar' ? 'راحة' : 'Break')}</div>;
       })}
     </div>;
   };
