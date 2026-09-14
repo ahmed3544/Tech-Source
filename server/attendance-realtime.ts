@@ -26,23 +26,28 @@ function normalizeAction(value: any) {
   if (x === 'breakstart' || x === 'break_start' || x === 'start_break') return 'break_start';
   if (x === 'breakend' || x === 'break_end' || x === 'end_break') return 'break_end';
   if (x === 'forcebreakend' || x === 'force_break_end' || x === 'force_break_end_break') return 'force_break_end';
+  if (x === 'update' || x === 'edit' || x === 'manual_update') return 'update';
   return x;
 }
 
 const norm = (value: any) => String(value ?? '').trim().toLowerCase();
-const allowedActions = ['check_in', 'check_out', 'break_start', 'break_end', 'force_break_end'];
+const allowedActions = ['check_in', 'check_out', 'break_start', 'break_end', 'force_break_end', 'update'];
 
 export function registerAttendanceRealtime(app: any) {
   app.post('/api/punch', async (req: any, res: any) => {
     try {
       const requestedEmployeeId = String(req.body?.employeeId || req.body?.employee_id || '').trim();
       const action = normalizeAction(req.body?.action || req.body?.type);
+      const bodyRecord: any = req.body?.record || {};
       if (!requestedEmployeeId) {
         return res.status(400).json({ success: false, error: 'EMPLOYEE_ID_REQUIRED' });
       }
       if (!allowedActions.includes(action)) {
         console.warn('[attendance-realtime] invalid punch action', { action, requestedEmployeeId });
         return res.status(400).json({ success: false, error: 'INVALID_PUNCH_ACTION', action, allowedActions });
+      }
+      if (action === 'update' && !/^\d{4}-\d{2}-\d{2}$/.test(String(bodyRecord.date || '').slice(0, 10))) {
+        return res.status(400).json({ success: false, error: 'RECORD_DATE_REQUIRED' });
       }
 
       const clock = cairoParts();
@@ -93,19 +98,28 @@ export function registerAttendanceRealtime(app: any) {
       }
 
       const employeeId = String(employee.id);
-      const rows = await db.select().from(schema.attendanceRecords).where(and(
-        eq(schema.attendanceRecords.employeeId, employeeId),
-        eq(schema.attendanceRecords.date, clock.date)
-      ));
+      const recordDate = action === 'update'
+        ? String(bodyRecord.date).slice(0, 10)
+        : clock.date;
+      const rows = bodyRecord.id
+        ? await db.select().from(schema.attendanceRecords).where(eq(schema.attendanceRecords.id, String(bodyRecord.id)))
+        : await db.select().from(schema.attendanceRecords).where(and(
+            eq(schema.attendanceRecords.employeeId, employeeId),
+            eq(schema.attendanceRecords.date, recordDate)
+          ));
       const existing: any = rows[0];
-      const bodyRecord: any = req.body?.record || {};
+
+      if (existing && norm(existing.employeeId) !== norm(employeeId)) {
+        return res.status(409).json({ success: false, error: 'RECORD_EMPLOYEE_MISMATCH' });
+      }
+
       const nowIso = new Date().toISOString();
       const updatedRecord: any = {
         ...(existing || {}),
         ...bodyRecord,
-        id: existing?.id || bodyRecord.id || `${employeeId}-${clock.date}`,
+        id: existing?.id || bodyRecord.id || `${employeeId}-${recordDate}`,
         employeeId,
-        date: clock.date,
+        date: recordDate,
         updatedAt: nowIso
       };
 
