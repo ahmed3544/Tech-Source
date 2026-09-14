@@ -70,8 +70,6 @@ async function rotationSnapshot() {
 }
 
 export function registerDirectScheduleSync(app:any) {
-  // Dedicated rotation endpoints. These are persisted directly in Neon and are
-  // independent from browser localStorage so another device can read the same data.
   app.get('/api/rotation-patterns', async (_req:any, res:any) => {
     try { return res.json({ success:true, ...(await rotationSnapshot()) }); }
     catch (error) { console.error('[rotation-patterns] GET failed', error); return res.status(500).json({ success:false, error:'ROTATION_PATTERNS_READ_FAILED' }); }
@@ -85,8 +83,6 @@ export function registerDirectScheduleSync(app:any) {
     } catch (error) { console.error('[rotation-patterns] POST failed', error); return res.status(500).json({ success:false, error:'ROTATION_PATTERNS_SAVE_FAILED' }); }
   });
 
-  // Central sync also accepts rotation data. This keeps Neon authoritative even
-  // when the client batches several kinds of changes into /api/sync.
   app.use(async (req:any, res:any, next:any) => {
     const pathName = String(req.path || '').split('?')[0];
     if (req.method !== 'POST' || !['/api/sync','/sync'].includes(pathName)) return next();
@@ -108,16 +104,42 @@ export function registerDirectScheduleSync(app:any) {
       if (!Array.isArray(req.body?.dailyShiftAssignments)) {
         return res.status(400).json({ success:false, error:'dailyShiftAssignments must be an array' });
       }
-      const received = req.body.dailyShiftAssignments.map(normalizeAssignment).filter((x:any) => x.employeeId && /^\d{4}-\d{2}-\d{2}$/.test(x.date));
+
+      const received = req.body.dailyShiftAssignments
+        .map(normalizeAssignment)
+        .filter((x:any) => x.employeeId && /^\d{4}-\d{2}-\d{2}$/.test(x.date));
+
       const stamp = new Date().toISOString();
-      const assignments = received.map((x:any) => ({ ...x, updatedAt: x.updatedAt || stamp }));
-      const existing = await db.select().from(schema.settings).where(eq(schema.settings.key, 'dailyShiftAssignments'));
-      if (existing[0]) await db.update(schema.settings).set({ value: assignments } as any).where(eq(schema.settings.key, 'dailyShiftAssignments'));
+      const incoming = received.map((x:any) => ({ ...x, updatedAt: x.updatedAt || stamp }));
+
+      // IMPORTANT: never replace the entire persisted roster with a partial
+      // browser snapshot. Merge by employee + date so saving one week/device
+      // cannot delete assignments belonging to another employee/week/device.
+      const existingRows = await db.select().from(schema.settings).where(eq(schema.settings.key, 'dailyShiftAssignments'));
+      const existing = Array.isArray(existingRows[0]?.value) ? existingRows[0].value.map(normalizeAssignment) : [];
+      const merged = new Map<string, any>();
+      for (const row of existing) {
+        if (row.employeeId && row.date) merged.set(`${row.employeeId}|${row.date}`, row);
+      }
+      for (const row of incoming) {
+        const key = `${row.employeeId}|${row.date}`;
+        const previous = merged.get(key);
+        const previousTime = Date.parse(String(previous?.updatedAt || ''));
+        const incomingTime = Date.parse(String(row.updatedAt || stamp));
+        if (!previous || !Number.isFinite(previousTime) || !Number.isFinite(incomingTime) || incomingTime >= previousTime) {
+          merged.set(key, row);
+        }
+      }
+
+      const assignments = Array.from(merged.values());
+      if (existingRows[0]) await db.update(schema.settings).set({ value: assignments } as any).where(eq(schema.settings.key, 'dailyShiftAssignments'));
       else await db.insert(schema.settings).values({ key:'dailyShiftAssignments', value:assignments } as any);
+
       const stampKey = '__sync_updated_at:dailyShiftAssignments';
       const stampRow = await db.select().from(schema.settings).where(eq(schema.settings.key, stampKey));
       if (stampRow[0]) await db.update(schema.settings).set({ value:stamp } as any).where(eq(schema.settings.key, stampKey));
       else await db.insert(schema.settings).values({ key:stampKey,value:stamp } as any);
+
       return res.json({ success:true, dailyShiftAssignments:assignments, lastUpdated:Date.now(), updatedAt:stamp });
     } catch (error) {
       console.error('[direct-schedule-sync]', error);
