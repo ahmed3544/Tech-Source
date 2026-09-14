@@ -66,7 +66,7 @@ async function emitForSync(body:any) {
       const date = clean(r.date);
       if (status === 'awaiting_target') await insertNotification(targetId, 'shift_swap_requested', 'طلب تبديل شفت جديد', `${employeeName(requesterId)} أرسل لك طلب تبديل شفت ليوم ${date}. راجع الطلب واضغط موافقة أو رفض.`, requesterId, undefined, undefined, id);
       else if (status === 'pending') {
-        const leaderId = clean(employees.find((e:any) => String(e.id) === requesterId)?.teamLeaderId); const recipients = leaderId ? [leaderId] : leaders;
+        const leaderId = clean((employees as any[]).find((e:any) => String(e.id) === requesterId)?.teamLeaderId); const recipients = leaderId ? [leaderId] : leaders;
         for (const recipientId of recipients) if (recipientId !== requesterId && recipientId !== targetId) await insertNotification(recipientId, 'shift_swap_accepted', 'تمت الموافقة على Swap', `${employeeName(targetId)} وافق على تبديل الشفت مع ${employeeName(requesterId)} ليوم ${date}. أصبح الطلب جاهزًا لمراجعة الليدر.`, requesterId, undefined, undefined, id);
       } else if (status === 'approved') {
         await insertNotification(requesterId, 'shift_changed', 'تم اعتماد تبديل الشفت', `تم اعتماد تبديل الشفت مع ${employeeName(targetId)} ليوم ${date}.`, requesterId, undefined, undefined, id);
