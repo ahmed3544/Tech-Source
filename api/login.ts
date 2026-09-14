@@ -1,6 +1,4 @@
 import crypto from "crypto";
-import fs from "fs";
-import path from "path";
 import { db } from "../src/db/index.js";
 import * as schema from "../src/db/schema.js";
 
@@ -12,17 +10,6 @@ function normalizeDigits(value: unknown) {
   return String(value ?? "")
     .replace(/[٠-٩]/g, (d) => "٠١٢٣٤٥٦٧٨٩".indexOf(d).toString())
     .trim();
-}
-
-function readLocalEmployees(): any[] {
-  try {
-    const file = path.join(process.cwd(), "server_data.json");
-    if (!fs.existsSync(file)) return [];
-    const data = JSON.parse(fs.readFileSync(file, "utf8"));
-    return Array.isArray(data?.employees) ? data.employees : [];
-  } catch {
-    return [];
-  }
 }
 
 function passwordMatches(employee: any, password: string) {
@@ -110,18 +97,13 @@ export default async function handler(req: any, res: any) {
       return res.status(400).json({ success: false, error: "Missing credentials" });
     }
 
-    let employees: any[] = [];
-
-    if (process.env.DATABASE_URL || process.env.SUPABASE_DB_URL) {
-      try {
-        employees = await db.select().from(schema.employees);
-      } catch (dbError) {
-        console.error("Vercel login database error:", dbError);
-      }
-    }
-
-    if (!employees.length) {
-      employees = readLocalEmployees();
+    let employees: any[];
+    try {
+      employees = await db.select().from(schema.employees);
+    } catch (dbError) {
+      console.error("Neon login database error:", dbError);
+      await auditLogin({ loginIdentifier: loginCode, success: false, failureReason: "DATABASE_ERROR", req });
+      return res.status(500).json({ success: false, error: "LOGIN_DATABASE_ERROR" });
     }
 
     const employee = findEmployee(employees, loginCode);
