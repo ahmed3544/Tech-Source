@@ -75,8 +75,11 @@ export async function recoverMissingLegacyData() {
           const employeeId = String(record.employeeId);
           const date = String(record.date);
           const id = `rec-${employeeId.toLowerCase()}-${date}`;
-          // attendance_records is unique by employee + date, so use the same
-          // business key for recovery instead of checking only the synthetic id.
+          const existingById = await db.select({ id: schema.attendanceRecords.id })
+            .from(schema.attendanceRecords)
+            .where(eq(schema.attendanceRecords.id, id))
+            .limit(1);
+          if (existingById.length) continue;
           const rows = await db.select({ id: schema.attendanceRecords.id })
             .from(schema.attendanceRecords)
             .where(and(
