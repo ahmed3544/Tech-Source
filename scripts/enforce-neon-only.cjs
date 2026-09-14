@@ -17,19 +17,21 @@ function walk(dir) {
 }
 
 function stripBrowserStorage(code) {
-  // Remove standalone localStorage/sessionStorage writes. Application data must
-  // be persisted through the Neon-backed API, never in browser storage.
   code = code.replace(/^[ \t]*(?:window\.)?(?:localStorage|sessionStorage)\.setItem\([\s\S]*?\);[ \t]*$/gm, '');
   code = code.replace(/^[ \t]*(?:window\.)?(?:localStorage|sessionStorage)\.removeItem\([\s\S]*?\);[ \t]*$/gm, '');
   code = code.replace(/^[ \t]*(?:window\.)?(?:localStorage|sessionStorage)\.clear\(\);[ \t]*$/gm, '');
-  // Reads become null so old cache paths cannot resurrect stale application data.
   code = code.replace(/(?:window\.)?(?:localStorage|sessionStorage)\.getItem\([\s\S]*?\)/g, 'null');
   return code;
 }
 
 for (const file of walk(srcRoot)) {
   const before = fs.readFileSync(file, 'utf8');
-  const after = stripBrowserStorage(before);
+  let after = stripBrowserStorage(before);
+  // Never fall back to bundled/mock employee, attendance, or leave datasets.
+  after = after.replace(/return\s+INITIAL_EMPLOYEES\s*;/g, 'return [];');
+  after = after.replace(/return\s+INITIAL_ATTENDANCE\s*;/g, 'return [];');
+  after = after.replace(/return\s+INITIAL_LEAVES\s*;/g, 'return [];');
+  after = after.replace(/const\s+missingInitial\s*=\s*INITIAL_EMPLOYEES\.filter\([\s\S]*?\);\s*return\s*\[[\s\S]*?\.\.\.missingInitial[\s\S]*?\];/g, 'return parsed;');
   if (after !== before) fs.writeFileSync(file, after);
 }
 
@@ -45,4 +47,4 @@ if (fs.existsSync(serverFile)) {
   fs.writeFileSync(serverFile, code);
 }
 
-console.log('[enforce-neon-only] browser storage disabled; Neon API is authoritative');
+console.log('[enforce-neon-only] Neon is the only application data source');
