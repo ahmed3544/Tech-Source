@@ -38,11 +38,18 @@ for (const file of walk(srcRoot)) {
 const serverFile = path.join(root, 'server.ts');
 if (fs.existsSync(serverFile)) {
   let code = fs.readFileSync(serverFile, 'utf8');
-  code = code.replace(/import \{ recoverMissingLegacyData \} from "\.\/server\/legacy-data-recovery\.js";\n?/, '');
+  // Neon is the only application data source. Remove every legacy recovery
+  // import/registration shape emitted by older patch scripts so a missing
+  // optional helper can never survive into the production bundle.
+  code = code.replace(/import\s+\{\s*recoverMissingLegacyData\s*\}\s+from\s+["']\.\/server\/legacy-data-recovery\.js["'];\s*\n?/g, '');
   code = code.replace(/const DATA_FILE = path\.join\(process\.cwd\(\), "server_data\.json"\);\n/, '');
   code = code.replace(/const BACKUP_DIR = path\.join\(process\.cwd\(\), "backups"\);\n/, '');
   code = code.replace(/const USE_DATABASE = Boolean\(process\.env\.DATABASE_URL \|\| process\.env\.SUPABASE_DB_URL\);/, 'const USE_DATABASE = true;');
-  code = code.replace(/\napp\.use\(\(req:any,res:any,next:any\)=>\{\n  if \(process\.env\.DATABASE_URL && \(req\.path === '\/api\/data' \|\| req\.path === '\/api\/sync'\)\) \{\n    void recoverMissingLegacyData\(\)\.catch\(\(e:any\)=>console\.error\('\[legacy-recovery\]',e\)\);\n  \}\n  next\(\);\n\}\);\n/, '\n');
+  code = code.replace(/\n(?:\/\/[^\n]*legacy[^\n]*\n)?\s*app\.use\(async\s*\(\s*req:\s*any,\s*_res:\s*any,\s*next:\s*any\s*\)\s*=>\s*\{[\s\S]*?recoverMissingLegacyData\(\)[\s\S]*?^\s*\}\);\s*/gmi, '\n');
+  code = code.replace(/\n(?:\/\/[^\n]*legacy[^\n]*\n)?\s*app\.use\(\(req:\s*any,\s*res:\s*any,\s*next:\s*any\s*\)\s*=>\s*\{[\s\S]*?recoverMissingLegacyData\(\)[\s\S]*?^\s*\}\);\s*/gmi, '\n');
+  if (code.includes('recoverMissingLegacyData')) {
+    throw new Error('[enforce-neon-only] legacy recovery reference remained in server.ts');
+  }
   code = code.replace(/if \(!USE_DATABASE\) return res\.json\(emptyState\(\);\n/, '');
   fs.writeFileSync(serverFile, code);
 }
