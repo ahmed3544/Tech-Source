@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { and, eq } from 'drizzle-orm';
+import { sql, eq } from 'drizzle-orm';
 import { db } from '../src/db/index.js';
 import * as schema from '../src/db/schema.js';
 
@@ -30,7 +30,7 @@ async function verifyCollection(name:string, items:any[]) {
     found = ids.filter(id => set.has(id)).length;
   } else if (name === 'shifts') {
     const rows = await db.select({ id: schema.shifts.id }).from(schema.shifts);
-    const set = new Set(rows.map(x => String(x.id)));
+    const set = new Set(rows.map(x => String(x.id));
     found = ids.filter(id => set.has(id)).length;
   } else if (name === 'employeeShiftAssignments') {
     const rows = await db.select({ id: schema.employeeShiftAssignments.id }).from(schema.employeeShiftAssignments);
@@ -50,7 +50,7 @@ async function verifySchedule(items:any[]) {
 }
 
 async function verifyDbIdentity() {
-  const result:any = await db.execute(`select current_database() as database_name, current_schema() as schema_name, current_user as db_user, inet_server_addr()::text as server_addr`);
+  const result:any = await db.execute(sql`select current_database() as database_name, current_schema() as schema_name, current_user as db_user, inet_server_addr()::text as server_addr`);
   const row:any = result?.rows?.[0] || result?.[0] || {};
   return {
     database: row.database_name || null,
