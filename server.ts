@@ -14,6 +14,7 @@ import { registerAttendanceRealtime } from "./server/attendance-realtime.js";
 import { registerDeviceSyncV2 } from "./server/device-sync-v2.js";
 import { registerScheduleSyncGuard } from "./server/schedule-sync-guard.js";
 import { registerDirectScheduleSync } from "./server/schedule-sync-direct.js";
+import { registerDbWriteVerification } from "./server/db-write-verification.js";
 import { recoverMissingLegacyData } from "./server/legacy-data-recovery.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -122,6 +123,10 @@ app.use(async (req:any,res:any,next:any)=>{
   }
   return next();
 });
+
+// Verify that every requested mutation actually reached the same Neon database
+// before returning a successful sync response. This prevents silent local-only saves.
+registerDbWriteVerification(app);
 
 registerDirectScheduleSync(app);
 registerDeviceSyncV2(app);
