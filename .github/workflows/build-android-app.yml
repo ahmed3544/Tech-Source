@@ -41,6 +41,9 @@ jobs:
       - name: Install dependencies
         run: npm install --no-audit --no-fund
 
+      - name: Ensure Capacitor Android platform is installed
+        run: npm install @capacitor/android@^8.0.0 --save --no-audit --no-fund
+
       - name: Build web app
         run: npm run build
 
