@@ -43,7 +43,9 @@ export function registerDirectScheduleSync(app:any) {
   app.use(async(req:any,res:any,next:any)=>{const pathName=String(req.path||'').split('?')[0];if(req.method!=='POST'||!['/api/sync','/sync'].includes(pathName))return next();const body=req.body||{};const hasRotationPayload=Array.isArray(body.rotationPatterns)||Array.isArray(body.rotationPatternItems)||Array.isArray(body.deletedRotationPatternIds)||Array.isArray(body.deletedRotationPatternItemIds);if(!hasRotationPayload)return next();try{await persistRotationPatterns(body.rotationPatterns||[],body.rotationPatternItems||[]);await deleteRotationRows(body.deletedRotationPatternIds,body.deletedRotationPatternItemIds);return next();}catch(error){console.error('[rotation-sync] persistence failed',error);return res.status(500).json({success:false,error:'Rotation sync failed'});}});
 
   app.post('/api/schedule-sync',async(req:any,res:any)=>{
+    const requestId = `${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
     try {
+      console.log(`[schedule-sync] ${requestId} POST received`, { count: Array.isArray(req.body?.dailyShiftAssignments) ? req.body.dailyShiftAssignments.length : -1 });
       if(!Array.isArray(req.body?.dailyShiftAssignments)) return res.status(400).json({success:false,error:'dailyShiftAssignments must be an array'});
       const received=req.body.dailyShiftAssignments.map(normalizeAssignment).filter((x:any)=>x.employeeId&&/^\d{4}-\d{2}-\d{2}$/.test(x.date));
       const stamp=new Date().toISOString();
@@ -63,7 +65,8 @@ export function registerDirectScheduleSync(app:any) {
       if(existingRows[0]) await db.update(schema.settings).set({value:assignments} as any).where(eq(schema.settings.key,'dailyShiftAssignments')); else await db.insert(schema.settings).values({key:'dailyShiftAssignments',value:assignments} as any);
       const stampKey='__sync_updated_at:dailyShiftAssignments'; const stampRow=await db.select().from(schema.settings).where(eq(schema.settings.key,stampKey));
       if(stampRow[0]) await db.update(schema.settings).set({value:stamp} as any).where(eq(schema.settings.key,stampKey)); else await db.insert(schema.settings).values({key:stampKey,value:stamp} as any);
-      return res.json({success:true,dailyShiftAssignments:assignments,lastUpdated:Date.now(),updatedAt:stamp});
-    } catch(error){console.error('[direct-schedule-sync]',error);return res.status(500).json({success:false,error:'DIRECT_SCHEDULE_SYNC_FAILED'});}
+      console.log(`[schedule-sync] ${requestId} saved`, { received: received.length, total: assignments.length });
+      return res.json({success:true,dailyShiftAssignments:assignments,lastUpdated:Date.now(),updatedAt:stamp,syncRequestId:requestId});
+    } catch(error){console.error(`[direct-schedule-sync] ${requestId} failed`,error);return res.status(500).json({success:false,error:'DIRECT_SCHEDULE_SYNC_FAILED',syncRequestId:requestId});}
   });
 }
