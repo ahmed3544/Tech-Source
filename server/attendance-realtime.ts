@@ -20,29 +20,36 @@ function cairoParts() {
 }
 
 function normalizeAction(value: any) {
-  const x = String(value || '').trim().toLowerCase();
-  if (x === 'checkin' || x === 'check-in' || x === 'in') return 'check_in';
-  if (x === 'checkout' || x === 'check-out' || x === 'out') return 'check_out';
+  const x = String(value || '').trim().toLowerCase().replace(/[-\s]/g, '_');
+  if (x === 'checkin' || x === 'check_in' || x === 'in') return 'check_in';
+  if (x === 'checkout' || x === 'check_out' || x === 'out') return 'check_out';
+  if (x === 'breakstart' || x === 'break_start' || x === 'start_break') return 'break_start';
+  if (x === 'breakend' || x === 'break_end' || x === 'end_break') return 'break_end';
+  if (x === 'forcebreakend' || x === 'force_break_end' || x === 'force_break_end_break') return 'force_break_end';
   return x;
 }
 
 const norm = (value: any) => String(value ?? '').trim().toLowerCase();
+const allowedActions = ['check_in', 'check_out', 'break_start', 'break_end', 'force_break_end'];
 
 export function registerAttendanceRealtime(app: any) {
-  app.post('/api/punch', async (req: any, res: any, next: any) => {
+  app.post('/api/punch', async (req: any, res: any) => {
     try {
-      const requestedEmployeeId = String(req.body?.employeeId || '').trim();
-      const action = normalizeAction(req.body?.action);
-      if (!requestedEmployeeId || !['check_in', 'check_out', 'break_start', 'break_end', 'force_break_end'].includes(action)) return next();
+      const requestedEmployeeId = String(req.body?.employeeId || req.body?.employee_id || '').trim();
+      const action = normalizeAction(req.body?.action || req.body?.type);
+      if (!requestedEmployeeId) {
+        return res.status(400).json({ success: false, error: 'EMPLOYEE_ID_REQUIRED' });
+      }
+      if (!allowedActions.includes(action)) {
+        console.warn('[attendance-realtime] invalid punch action', { action, requestedEmployeeId });
+        return res.status(400).json({ success: false, error: 'INVALID_PUNCH_ACTION', action, allowedActions });
+      }
 
       const clock = cairoParts();
       const employeePayload = req.body?.employee || null;
       const allEmployees = await db.select().from(schema.employees);
       let employee: any = allEmployees.find((row: any) => norm(row.id) === norm(requestedEmployeeId));
 
-      // The browser can temporarily contain an employee loaded from its local state
-      // before the cross-device employee sync reaches Postgres. Resolve by code/email,
-      // and as a final fallback persist the employee supplied by the client.
       if (!employee) {
         employee = allEmployees.find((row: any) =>
           norm(row.code) === norm(requestedEmployeeId) ||
@@ -82,7 +89,7 @@ export function registerAttendanceRealtime(app: any) {
 
       if (!employee) {
         console.warn('[attendance-realtime] employee not found', { requestedEmployeeId, available: allEmployees.length });
-        return res.status(404).json({ success: false, error: 'Employee not found', employeeId: requestedEmployeeId });
+        return res.status(404).json({ success: false, error: 'EMPLOYEE_NOT_FOUND', employeeId: requestedEmployeeId });
       }
 
       const employeeId = String(employee.id);
