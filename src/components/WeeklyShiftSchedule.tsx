@@ -67,6 +67,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [selectedBreak, setSelectedBreak] = useState<{ name: string; startTime: string; endTime: string; durationMinutes: number } | null>(null);
 
   const isLeader = currentUser?.role === 'leader' || currentUser?.role === 'admin';
 
@@ -211,11 +212,14 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
                       title={lang === 'ar' ? `وقت العمل: ${shift.startTime} - ${shift.endTime}` : `Work: ${shift.startTime} - ${shift.endTime}`}
                     />
                     {(shift.breaks || []).map(item => (
-                      <span
+                      <button
+                        type="button"
                         key={item.id}
-                        className="absolute top-1/2 z-10 h-4 -translate-y-1/2 rounded-full bg-rose-500 shadow-sm ring-2 ring-rose-200"
+                        className="absolute top-1/2 z-10 h-5 min-w-[9px] -translate-y-1/2 cursor-pointer rounded-full border-2 border-white bg-rose-500 shadow-md ring-2 ring-rose-300 transition hover:bg-rose-700 hover:ring-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-700"
                         style={{ left: `${timePercent(item.startTime)}%`, width: `${durationPercent(item.startTime, item.endTime)}%` }}
                         title={lang === 'ar' ? `${item.nameAr}: ${item.startTime} - ${item.endTime}` : `${item.nameEn}: ${item.startTime} - ${item.endTime}`}
+                        onClick={() => setSelectedBreak({ name: lang === 'ar' ? item.nameAr : item.nameEn, startTime: item.startTime, endTime: item.endTime, durationMinutes: item.durationMinutes || 0 })}
+                        aria-label={lang === 'ar' ? `عرض وقت ${item.nameAr}` : `Show ${item.nameEn} time`}
                       />
                     ))}
                   </div>
@@ -232,6 +236,11 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
                       ))}
                     </div>
                   )}
+                  {(shift.breaks || []).length === 0 && (
+                    <div className="mt-2 border-t border-slate-200 pt-2 text-[9px] font-bold text-slate-400">
+                      {lang === 'ar' ? 'لا توجد بريكات مضافة لهذا الشفت' : 'No breaks configured for this shift'}
+                    </div>
+                  )}
                 </div>
               )}
               <div className={`mt-3 rounded-xl border p-3 ${value === OFF ? 'border-slate-300 bg-slate-100' : value === EMPTY ? 'border-dashed border-slate-300 bg-white' : 'border-emerald-200 bg-emerald-50'}`}>
@@ -246,6 +255,24 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
 
       {message && <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-black text-emerald-700">{message}</div>}
       {error && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-black text-red-700">{error}</div>}
+      {selectedBreak && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/40 p-4" role="presentation" onClick={() => setSelectedBreak(null)}>
+          <div className="w-full max-w-sm rounded-2xl border border-rose-200 bg-white p-5 shadow-2xl" dir={lang === 'ar' ? 'rtl' : 'ltr'} role="dialog" aria-modal="true" onClick={event => event.stopPropagation()}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-xs font-black text-rose-600">{lang === 'ar' ? 'تفاصيل البريك' : 'Break details'}</div>
+                <h3 className="mt-1 text-lg font-black text-slate-900">{selectedBreak.name}</h3>
+              </div>
+              <button type="button" onClick={() => setSelectedBreak(null)} className="rounded-lg px-2 py-1 text-xl font-bold text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label={lang === 'ar' ? 'إغلاق' : 'Close'}>×</button>
+            </div>
+            <div className="mt-4 grid grid-cols-3 gap-2">
+              <div className="rounded-xl bg-rose-50 p-3 text-center"><div className="text-[10px] font-bold text-rose-600">{lang === 'ar' ? 'من' : 'From'}</div><div className="mt-1 font-mono text-sm font-black text-slate-900">{selectedBreak.startTime}</div></div>
+              <div className="rounded-xl bg-rose-50 p-3 text-center"><div className="text-[10px] font-bold text-rose-600">{lang === 'ar' ? 'إلى' : 'To'}</div><div className="mt-1 font-mono text-sm font-black text-slate-900">{selectedBreak.endTime}</div></div>
+              <div className="rounded-xl bg-rose-50 p-3 text-center"><div className="text-[10px] font-bold text-rose-600">{lang === 'ar' ? 'المدة' : 'Duration'}</div><div className="mt-1 text-sm font-black text-slate-900">{selectedBreak.durationMinutes} {lang === 'ar' ? 'دقيقة' : 'min'}</div></div>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 };
