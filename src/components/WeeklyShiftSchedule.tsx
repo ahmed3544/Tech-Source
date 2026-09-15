@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { CalendarDays, ChevronLeft, ChevronRight, Save, Users, Clock3, Coffee } from 'lucide-react';
 import { Employee, Language, Shift, DailyShiftAssignment } from '../types';
+import { ShiftManager } from './ShiftManager';
 
 interface WeeklyShiftScheduleProps {
   employees?: Employee[];
@@ -9,6 +10,9 @@ interface WeeklyShiftScheduleProps {
   currentUser?: Employee | null;
   lang: Language;
   onSaveDailyShift?: (assignment: DailyShiftAssignment) => void;
+  onAddShift?: (shift: Shift) => void;
+  onUpdateShift?: (shift: Shift) => void;
+  onDeleteShift?: (shiftId: string) => void;
   onClose?: () => void;
 }
 
@@ -35,6 +39,13 @@ const normalizeShift = (raw: any): Shift => ({
 
 const isOff = (a: any) => Boolean(a?.isOffDay ?? a?.is_off_day) || String(a?.status ?? '').toUpperCase() === 'OFF';
 const shiftIdOf = (a: any) => String(a?.shiftId ?? a?.shift_id ?? '').trim();
+const timeToMinutes = (value: string) => {
+  const [hours, minutes] = String(value || '').split(':').map(Number);
+  return Math.max(0, Math.min(24 * 60, (hours || 0) * 60 + (minutes || 0)));
+};
+const timePercent = (value: string) => (timeToMinutes(value) / (24 * 60)) * 100;
+const durationPercent = (start: string, end: string) =>
+  Math.max(0, timePercent(end) - timePercent(start));
 
 export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
   employees: suppliedEmployees = [],
@@ -42,6 +53,9 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
   dailyShiftAssignments: suppliedAssignments = [],
   currentUser: suppliedUser = null,
   lang,
+  onAddShift,
+  onUpdateShift,
+  onDeleteShift,
 }) => {
   const [employees, setEmployees] = useState<Employee[]>(suppliedEmployees);
   const [shifts, setShifts] = useState<Shift[]>(suppliedShifts.map(normalizeShift));
@@ -152,6 +166,18 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
         </div>
       </header>
 
+      {isLeader && (
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <ShiftManager
+            shifts={shifts}
+            lang={lang}
+            onAddShift={onAddShift}
+            onUpdateShift={onUpdateShift}
+            onDeleteShift={onDeleteShift}
+          />
+        </div>
+      )}
+
       {isLeader && <div className="grid gap-3 md:grid-cols-[minmax(220px,1fr)_auto] md:items-end">
         <label className="block"><span className="mb-1.5 flex items-center gap-1.5 text-xs font-black text-slate-700"><Users className="h-4 w-4" />{lang === 'ar' ? 'الموظف' : 'Employee'}</span>
           <select value={employee?.id || ''} onChange={e => { setSelectedEmployeeId(e.target.value); setDraft({}); setMessage(null); setError(null); }} className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-bold text-slate-800 outline-none focus:border-emerald-500">
@@ -171,14 +197,41 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
                 <option value={EMPTY}>{lang === 'ar' ? 'غير مُعيّن' : 'Unassigned'}</option><option value={OFF}>{lang === 'ar' ? 'إجازة أسبوعية' : 'OFF'}</option>
                 {shifts.map(s => <option key={s.id} value={s.id}>{lang === 'ar' ? s.nameAr || s.name : s.nameEn || s.name} — {s.startTime || '--'}–{s.endTime || '--'}</option>)}
               </select>
+              {shift && (
+                <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-2.5">
+                  <div className="mb-2 flex items-center justify-between gap-2 text-[10px] font-black text-slate-600">
+                    <span>{lang === 'ar' ? 'مخطط ساعات اليوم' : 'Daily time map'}</span>
+                    <span className="font-mono text-slate-500">{shift.startTime}–{shift.endTime}</span>
+                  </div>
+                  <div className="relative h-7 overflow-hidden rounded-lg border border-slate-200 bg-white" dir="ltr">
+                    {[25, 50, 75].map(mark => <span key={mark} className="absolute inset-y-0 border-l border-dashed border-slate-200" style={{ left: `${mark}%` }} />)}
+                    <span
+                      className="absolute top-1/2 h-3 -translate-y-1/2 rounded-full bg-emerald-500 shadow-sm ring-2 ring-emerald-200"
+                      style={{ left: `${timePercent(shift.startTime)}%`, width: `${durationPercent(shift.startTime, shift.endTime)}%` }}
+                      title={lang === 'ar' ? `وقت العمل: ${shift.startTime} - ${shift.endTime}` : `Work: ${shift.startTime} - ${shift.endTime}`}
+                    />
+                    {(shift.breaks || []).map(item => (
+                      <span
+                        key={item.id}
+                        className="absolute top-1/2 z-10 h-4 -translate-y-1/2 rounded-full bg-rose-500 shadow-sm ring-2 ring-rose-200"
+                        style={{ left: `${timePercent(item.startTime)}%`, width: `${durationPercent(item.startTime, item.endTime)}%` }}
+                        title={lang === 'ar' ? `${item.nameAr}: ${item.startTime} - ${item.endTime}` : `${item.nameEn}: ${item.startTime} - ${item.endTime}`}
+                      />
+                    ))}
+                  </div>
+                  <div className="mt-1 flex justify-between font-mono text-[9px] text-slate-400" dir="ltr">
+                    <span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>24:00</span>
+                  </div>
+                </div>
+              )}
               <div className={`mt-3 rounded-xl border p-3 ${value === OFF ? 'border-slate-300 bg-slate-100' : value === EMPTY ? 'border-dashed border-slate-300 bg-white' : 'border-emerald-200 bg-emerald-50'}`}>
                 <div className="text-xs font-black text-slate-800">{value === OFF ? (lang === 'ar' ? 'إجازة أسبوعية' : 'OFF') : value === EMPTY ? (lang === 'ar' ? 'غير مُعيّن' : 'Unassigned') : (shift ? (lang === 'ar' ? shift.nameAr || shift.name : shift.nameEn || shift.name) : (lang === 'ar' ? 'شفت غير معروف' : 'Unknown shift'))}</div>
-                {shift && <><div className="mt-2 flex items-center gap-1.5 text-[11px] font-bold text-slate-600"><Clock3 className="h-3.5 w-3.5" />{shift.startTime || '--'} - {shift.endTime || '--'}</div>{Number(shift.breakMinutes || 0) > 0 && <div className="mt-1 flex items-center gap-1.5 text-[11px] font-bold text-slate-500"><Coffee className="h-3.5 w-3.5" />{shift.breakMinutes} {lang === 'ar' ? 'دقيقة راحة' : 'min break'}</div>}</>}
+                {shift && <><div className="mt-2 flex items-center gap-1.5 text-[11px] font-bold text-slate-600"><Clock3 className="h-3.5 w-3.5" />{shift.startTime || '--'} - {shift.endTime || '--'}</div>{(shift.breaks?.length || Number(shift.breakMinutes || 0) > 0) && <div className="mt-1 flex items-center gap-1.5 text-[11px] font-bold text-rose-600"><Coffee className="h-3.5 w-3.5" />{shift.breaks?.length || shift.breakMinutes} {lang === 'ar' ? 'بريك/دقيقة' : 'break min'}</div>}</>}
               </div>
             </div>;
           })}</div>
         </div></div>
-        <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold text-slate-500"><span className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-emerald-700">{lang === 'ar' ? 'شفت' : 'Shift'}</span><span className="rounded-lg border border-slate-300 bg-slate-100 px-2.5 py-1.5 text-slate-700">{lang === 'ar' ? 'إجازة أسبوعية' : 'OFF'}</span><span className="rounded-lg border border-dashed border-slate-300 bg-white px-2.5 py-1.5 text-slate-500">{lang === 'ar' ? 'غير مُعيّن' : 'Unassigned'}</span></div>
+        <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold text-slate-500"><span className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-emerald-700"><span className="h-2.5 w-7 rounded-full bg-emerald-500" />{lang === 'ar' ? 'وقت العمل' : 'Work time'}</span><span className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-rose-700"><span className="h-2.5 w-7 rounded-full bg-rose-500" />{lang === 'ar' ? 'البريك' : 'Break'}</span><span className="rounded-lg border border-slate-300 bg-slate-100 px-2.5 py-1.5 text-slate-700">{lang === 'ar' ? 'إجازة أسبوعية' : 'OFF'}</span><span className="rounded-lg border border-dashed border-slate-300 bg-white px-2.5 py-1.5 text-slate-500">{lang === 'ar' ? 'غير مُعيّن' : 'Unassigned'}</span></div>
       </>}
 
       {message && <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-black text-emerald-700">{message}</div>}
