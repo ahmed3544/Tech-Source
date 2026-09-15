@@ -143,8 +143,6 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ currentU
     setOpen(false);
     if (!notification.isRead) await markRead(notification.id);
     dispatchTarget(notification);
-    const actionUrl = actionUrlFor(notification);
-    if (actionUrl) { try { window.location.assign(actionUrl); } catch { /* navigation event fallback */ } }
   };
 
   const openNotificationsPage = () => {
