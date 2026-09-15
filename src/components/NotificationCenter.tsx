@@ -24,7 +24,9 @@ const normalize = (items: unknown, user?: string): Notification[] => {
     const recipientId = String(n.recipientId || '').trim();
     if (!id || recipientId !== uid || seen.has(id)) return false;
     seen.add(id);
-    return true;
+      (n as any).recipientId = recipientId;
+      (n as any).isRead = Boolean(n.isRead ?? n.is_read ?? false);
+      return true;
   }).sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
 };
 
@@ -83,6 +85,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ currentU
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
   const ref = useRef<HTMLDivElement | null>(null);
+  const readOverridesRef = useRef<Set<string>>(new Set());
 
   const load = async (silent = false) => {
     if (!currentUserId) { setItems([]); return; }
@@ -92,7 +95,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ currentU
       if (!response.ok) throw new Error('notifications request failed');
       const data = await response.json();
       if (!data?.success || !Array.isArray(data.notifications)) throw new Error('notifications response failed');
-      setItems(normalize(data.notifications, currentUserId));
+      setItems(normalize(data.notifications, currentUserId).map(item => readOverridesRef.current.has(item.id) ? { ...item, isRead: true } : item));
       setError(false);
     } catch { setError(true); }
     finally { if (!silent) setLoading(false); }
@@ -124,18 +127,20 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ currentU
       if (!response.ok) throw new Error('mark read failed');
       const data = await response.json();
       if (!data?.success) throw new Error('mark read was not persisted');
-      if (Array.isArray(data.notifications)) setItems(normalize(data.notifications, currentUserId)); else await load(true);
+      readOverridesRef.current.add(String(id));
+      if (Array.isArray(data.notifications)) setItems(normalize(data.notifications, currentUserId).map(item => readOverridesRef.current.has(item.id) ? { ...item, isRead: true } : item)); else await load(true);
     } catch { await load(true); }
   };
 
   const markAll = async () => {
     if (!currentUserId || !unreadCount) return;
+    items.filter(item => !item.isRead).forEach(item => readOverridesRef.current.add(String(item.id)));
     try {
       const response = await fetch('/api/notifications/mark-all-read', { method: 'PUT', headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' }, body: JSON.stringify({ userId: currentUserId }), cache: 'no-store' });
       if (!response.ok) throw new Error('mark all read failed');
       const data = await response.json();
       if (!data?.success) throw new Error('mark all read was not persisted');
-      if (Array.isArray(data.notifications)) setItems(normalize(data.notifications, currentUserId)); else await load(true);
+      if (Array.isArray(data.notifications)) setItems(normalize(data.notifications, currentUserId).map(item => readOverridesRef.current.has(item.id) ? { ...item, isRead: true } : item)); else await load(true);
     } catch { await load(true); }
   };
 
