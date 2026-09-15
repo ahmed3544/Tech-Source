@@ -586,6 +586,7 @@ const pushSync = async (
     deletedAttendanceIds?: string[];
     deletedEmployeeIds?: string[];
     deletedLeaveIds?: string[];
+    deletedShiftIds?: string[];
     replaceAttendance?: boolean;
   }
 ) => {
@@ -652,6 +653,11 @@ const pushSync = async (
   if (overrides?.deletedLeaveIds) {
     payload.deletedLeaveIds =
       overrides.deletedLeaveIds;
+  }
+
+  if (overrides?.deletedShiftIds) {
+    payload.deletedShiftIds =
+      overrides.deletedShiftIds;
   }
 
   if (overrides?.replaceAttendance) {
@@ -3194,9 +3200,12 @@ const pushSync = async (
   const handleDeleteShift = (shiftId: string) => {
     if (!canManageShifts) return;
     const next = shifts.filter(item => item.id !== shiftId);
+    const nextAssignments = dailyShiftAssignments.filter(item => String(item.shiftId ?? (item as any).shift_id ?? '') !== String(shiftId));
     setShifts(next);
+    setDailyShiftAssignments(nextAssignments);
     localStorage.setItem('attendance_shifts', JSON.stringify(next));
-    void pushSync({ shifts: next });
+    localStorage.setItem('daily_shift_assignments', JSON.stringify(nextAssignments));
+    void pushSync({ shifts: next, dailyShiftAssignments: nextAssignments, deletedShiftIds: [shiftId] });
   };
 
 
