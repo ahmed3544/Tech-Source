@@ -84,9 +84,13 @@ async function emitForSync(body:any) {
 export function registerRequestNotificationTriggers(app:any) {
   app.use((req:any, res:any, next:any) => {
     if (req.method !== 'POST' || !['/api/sync','/sync'].includes(String(req.path || '').replace(/\/+$/,''))) return next();
+    // The leave-sync bridge replaces req.body before the response is sent.
+    // Keep the original payload so notification generation still sees the
+    // newly submitted leave/overtime/swap records.
+    const syncBody = req.body;
     const originalJson = res.json.bind(res);
     res.json = async (body:any) => {
-      try { await emitForSync(req.body || {}); }
+      try { await emitForSync(syncBody || {}); }
       catch (error) { console.error('[request-notification-triggers]', error); }
       return originalJson(body);
     };
