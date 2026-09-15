@@ -41,12 +41,22 @@ async function verifyCollection(name:string, items:any[]) {
 }
 
 async function verifySchedule(items:any[]) {
-  if (!items.length) return { requested: 0, found: 0 };
+  if (!items.length) return { requested: 0, found: 0, cleared: 0 };
   const rows = await db.select().from(schema.settings).where(eq(schema.settings.key, 'dailyShiftAssignments'));
   const stored = Array.isArray(rows[0]?.value) ? rows[0].value : [];
-  const keys = new Set(stored.map((x:any) => `${clean(x?.employeeId)}|${clean(x?.date)}`));
-  const found = items.filter((x:any) => keys.has(`${clean(x?.employeeId || x?.employee_id)}|${clean(x?.date)}`)).length;
-  return { requested: items.length, found };
+  const keys = new Set(stored.map((x:any) => `${clean(x?.employeeId || x?.employee_id)}|${clean(x?.date)}`));
+  let found = 0;
+  let cleared = 0;
+  for (const item of items) {
+    const key = `${clean(item?.employeeId || item?.employee_id)}|${clean(item?.date)}`;
+    const isClear = Boolean(item?.clear) || String(item?.status || '').toUpperCase() === 'CLEAR';
+    if (isClear) {
+      if (!keys.has(key)) cleared += 1;
+    } else if (keys.has(key)) {
+      found += 1;
+    }
+  }
+  return { requested: items.length, found: found + cleared, cleared };
 }
 
 async function verifyDbIdentity() {
