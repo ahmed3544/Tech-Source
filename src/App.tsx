@@ -1880,6 +1880,15 @@ const pushSync = async (
         item => item.employeeId === emp.id && item.date === todayStr
       );
 
+      if (dailyAssignment?.isOffDay) {
+        alert(
+          lang === 'ar'
+            ? 'هذا اليوم إجازة أسبوعية حسب الجدول، ولا يمكن تسجيل الحضور.'
+            : 'This date is an OFF day in the schedule, so attendance cannot be recorded.'
+        );
+        return;
+      }
+
       const shift =
         shifts.find(
           s =>

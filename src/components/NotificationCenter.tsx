@@ -25,7 +25,7 @@ const normalize = (items: unknown, user?: string): Notification[] => {
     if (!id || recipientId !== uid || seen.has(id)) return false;
     seen.add(id);
       (n as any).recipientId = recipientId;
-      (n as any).isRead = Boolean(n.isRead ?? n.is_read ?? false);
+      (n as any).isRead = Boolean(n.isRead ?? false);
       return true;
   }).sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
 };
@@ -103,10 +103,22 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ currentU
 
   useEffect(() => {
     void load();
-    const timer = window.setInterval(() => void load(true), 5000);
+    if (!currentUserId) return;
+    let connected = false;
+    const mergeIncoming = (incoming: Notification) => {
+      if (String(incoming.recipientId).trim() !== String(currentUserId).trim()) return;
+      setItems((current) => normalize([incoming, ...current], currentUserId).map((item) => readOverridesRef.current.has(item.id) ? { ...item, isRead: true } : item));
+    };
+    const stream = new EventSource(`/api/notifications/stream?userId=${encodeURIComponent(String(currentUserId).trim())}`);
+    stream.onopen = () => { connected = true; };
+    stream.addEventListener('notification', (event) => {
+      try { mergeIncoming(JSON.parse((event as MessageEvent).data) as Notification); } catch { void load(true); }
+    });
+    stream.onerror = () => { connected = false; };
+    const timer = window.setInterval(() => { if (!connected) void load(true); }, 2000);
     const onFocus = () => void load(true);
     window.addEventListener('focus', onFocus);
-    return () => { window.clearInterval(timer); window.removeEventListener('focus', onFocus); };
+    return () => { window.clearInterval(timer); stream.close(); window.removeEventListener('focus', onFocus); };
   }, [currentUserId]);
 
   useEffect(() => {

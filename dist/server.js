@@ -6,12 +6,8 @@ var __export = (target, all) => {
 
 // server.ts
 import "dotenv/config";
-import crypto from "crypto";
 import express from "express";
-import path from "path";
-import fs from "fs";
-import { fileURLToPath } from "url";
-import { sql } from "drizzle-orm";
+import { eq as eq8 } from "drizzle-orm";
 
 // src/db/index.ts
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -21,9 +17,14 @@ import { Pool } from "pg";
 var schema_exports = {};
 __export(schema_exports, {
   attendanceRecords: () => attendanceRecords,
+  employeeShiftAssignments: () => employeeShiftAssignments,
   employees: () => employees,
   leaveRequests: () => leaveRequests,
+  loginAudit: () => loginAudit,
+  notifications: () => notifications,
   overtimeRequests: () => overtimeRequests,
+  rotationPatternItems: () => rotationPatternItems,
+  rotationPatterns: () => rotationPatterns,
   settings: () => settings,
   shifts: () => shifts
 });
@@ -56,7 +57,8 @@ var employees = pgTable("employees", {
   casualLeaveBalance: real("casual_leave_balance"),
   regularLeaveBalance: real("regular_leave_balance"),
   sickLeaveBalance: real("sick_leave_balance"),
-  isPhotoRemoved: boolean("is_photo_removed")
+  isPhotoRemoved: boolean("is_photo_removed"),
+  updatedAt: text("updated_at")
 });
 var attendanceRecords = pgTable("attendance_records", {
   id: text("id").primaryKey(),
@@ -85,9 +87,7 @@ var attendanceRecords = pgTable("attendance_records", {
   excusedReason: text("excused_reason"),
   updatedAt: text("updated_at"),
   isExplicitCancelCheckOut: boolean("is_explicit_cancel_check_out")
-}, (table) => [
-  uniqueIndex("employee_date_idx").on(table.employeeId, table.date)
-]);
+}, (table) => [uniqueIndex("employee_date_idx").on(table.employeeId, table.date)]);
 var leaveRequests = pgTable("leave_requests", {
   id: text("id").primaryKey(),
   employeeId: text("employee_id").notNull(),
@@ -109,121 +109,600 @@ var overtimeRequests = pgTable("overtime_requests", {
   employeeId: text("employee_id").notNull(),
   date: text("date").notNull(),
   type: text("type").notNull(),
-  // overtime or short_time
   durationSeconds: integer("duration_seconds").notNull(),
   reason: text("reason"),
   status: text("status").default("pending"),
-  // pending, approved, rejected
   reviewedBy: text("reviewed_by"),
   reviewNotes: text("review_notes"),
   createdAt: text("created_at"),
   updatedAt: text("updated_at")
 });
-var settings = pgTable("settings", {
-  key: text("key").primaryKey(),
-  value: jsonb("value")
-});
-var shifts = pgTable("shifts", {
-  id: text("id").primaryKey(),
-  name: text("name").notNull(),
-  startTime: text("start_time").notNull(),
-  endTime: text("end_time").notNull(),
-  durationMinutes: integer("duration_minutes").notNull(),
-  breakMinutes: integer("break_minutes").default(0),
-  gracePeriodMinutes: integer("grace_period_minutes").default(0),
-  overtimeEnabled: boolean("overtime_enabled").default(false),
-  isOvernight: boolean("is_overnight").default(false),
-  createdAt: text("created_at"),
-  updatedAt: text("updated_at")
-});
+var settings = pgTable("settings", { key: text("key").primaryKey(), value: jsonb("value") });
+var shifts = pgTable("shifts", { id: text("id").primaryKey(), name: text("name").notNull(), startTime: text("start_time").notNull(), endTime: text("end_time").notNull(), durationMinutes: integer("duration_minutes").notNull(), breakMinutes: integer("break_minutes").default(0), gracePeriodMinutes: integer("grace_period_minutes").default(0), overtimeEnabled: boolean("overtime_enabled").default(false), isOvernight: boolean("is_overnight").default(false), createdAt: text("created_at"), updatedAt: text("updated_at") });
+var employeeShiftAssignments = pgTable("employee_shift_assignments", { id: text("id").primaryKey(), employeeId: text("employee_id").notNull(), scheduleDate: text("schedule_date").notNull(), shiftTemplateId: text("shift_template_id"), customStartTime: text("custom_start_time"), customEndTime: text("custom_end_time"), durationMinutes: integer("duration_minutes").default(480), status: text("status").default("draft"), createdAt: text("created_at").notNull(), updatedAt: text("updated_at").notNull(), version: integer("version").default(1) }, (table) => [uniqueIndex("employee_shift_assignment_date_idx").on(table.employeeId, table.scheduleDate)]);
+var rotationPatterns = pgTable("rotation_patterns", { id: text("id").primaryKey(), name: text("name").notNull(), shiftIds: jsonb("shift_ids").notNull(), createdBy: text("created_by"), createdAt: text("created_at").notNull(), updatedAt: text("updated_at").notNull() });
+var rotationPatternItems = pgTable("rotation_pattern_items", { id: text("id").primaryKey(), patternId: text("pattern_id").notNull(), shiftId: text("shift_id").notNull(), sequence: integer("sequence").notNull() }, (table) => [uniqueIndex("rotation_pattern_sequence_idx").on(table.patternId, table.sequence)]);
+var notifications = pgTable("notifications", { id: text("id").primaryKey(), recipientId: text("recipient_id").notNull(), type: text("type").notNull(), title: text("title").notNull(), message: text("message").notNull(), relatedEmployeeId: text("related_employee_id"), relatedLeaveId: text("related_leave_id"), relatedOvertimeId: text("related_overtime_id"), relatedShiftSwapId: text("related_shift_swap_id"), isRead: boolean("is_read").default(false), createdAt: text("created_at").notNull(), updatedAt: text("updated_at").notNull() });
+var loginAudit = pgTable("login_audit", { id: text("id").primaryKey(), employeeId: text("employee_id"), loginIdentifier: text("login_identifier").notNull(), success: boolean("success").notNull().default(false), failureReason: text("failure_reason"), ipAddress: text("ip_address"), userAgent: text("user_agent"), createdAt: text("created_at").notNull() });
 
 // src/db/index.ts
 var createPool = () => {
   if (!global._postgresPool) {
-    const connectionString = process.env.SUPABASE_DB_URL;
+    const connectionString = process.env.DATABASE_URL || process.env.SUPABASE_DB_URL;
     if (!connectionString) {
       console.warn(
-        "SUPABASE_DB_URL is not set. Database operations will fail if invoked."
+        "DATABASE_URL/SUPABASE_DB_URL is not set. Database operations will fail."
       );
     }
+    const configuredPoolSize = Number(process.env.PG_POOL_MAX || 2);
+    const maxPoolSize = Number.isFinite(configuredPoolSize) ? Math.max(1, Math.min(configuredPoolSize, 4)) : 2;
     global._postgresPool = new Pool({
       connectionString,
-      max: 10,
-      connectionTimeoutMillis: 15e3
+      max: maxPoolSize,
+      idleTimeoutMillis: 1e4,
+      connectionTimeoutMillis: 1e4,
+      keepAlive: true
     });
-    global._postgresPool.on(
-      "error",
-      (err) => {
-        console.error(
-          "Unexpected error on idle SQL pool client:",
-          err
-        );
-      }
-    );
+    global._postgresPool.on("error", (err) => {
+      console.error("Unexpected error on idle SQL pool client:", err);
+    });
   }
   return global._postgresPool;
 };
 var pool = createPool();
 var db = drizzle(pool, { schema: schema_exports });
 
-// server.ts
-var __filename = fileURLToPath(import.meta.url);
-var __dirname = path.dirname(__filename);
-var app = express();
-var PORT = Number(process.env.PORT || 3e3);
-var TZ = process.env.SERVER_TIME_ZONE || "Africa/Cairo";
-var DATA_FILE = path.join(process.cwd(), "server_data.json");
-var BACKUP_DIR = path.join(process.cwd(), "backups");
-var USE_DATABASE = Boolean(process.env.SUPABASE_DB_URL);
-var emptyState = () => ({
-  employees: [],
-  attendanceRecords: [],
-  leaveRequests: [],
-  overtimeRequests: [],
-  shifts: [],
-  companyNameAr: null,
-  companyNameEn: null,
-  urgentNotice: null,
-  lastUpdated: Date.now()
-});
-function loadState() {
-  if (!fs.existsSync(DATA_FILE)) {
-    return emptyState();
+// server/fcm.ts
+import { sql } from "drizzle-orm";
+import { getApps, cert, initializeApp } from "firebase-admin/app";
+import { getMessaging } from "firebase-admin/messaging";
+var hasDatabase = () => Boolean(process.env.DATABASE_URL);
+function adminMessaging() {
+  if (!process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
+    console.warn("[FCM] FIREBASE_SERVICE_ACCOUNT_JSON is missing");
+    return null;
   }
   try {
-    const d = JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
-    return {
-      ...emptyState(),
-      ...d,
-      employees: Array.isArray(d.employees) ? d.employees : [],
-      attendanceRecords: Array.isArray(d.attendanceRecords) ? d.attendanceRecords : [],
-      leaveRequests: Array.isArray(d.leaveRequests) ? d.leaveRequests : [],
-      overtimeRequests: Array.isArray(d.overtimeRequests) ? d.overtimeRequests : [],
-      shifts: Array.isArray(d.shifts) ? d.shifts : []
+    if (!getApps().length) initializeApp({ credential: cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON)) });
+    return getMessaging();
+  } catch (error) {
+    console.error("[FCM] init failed", error);
+    return null;
+  }
+}
+async function readTokens() {
+  if (!hasDatabase()) return [];
+  try {
+    const rows = await db.select().from(settings).where(sql`key = 'fcm_tokens'`).limit(1);
+    const value = rows[0]?.value;
+    return Array.isArray(value) ? value : [];
+  } catch (error) {
+    console.error("[FCM] token read failed", error);
+    return [];
+  }
+}
+async function tokensFor(employeeId) {
+  const tokens = await readTokens();
+  return tokens.filter((x) => String(x?.employeeId) === employeeId).map((x) => String(x?.token || "")).filter(Boolean);
+}
+async function saveToken(employeeId, token, platform) {
+  if (!hasDatabase()) {
+    console.warn("[FCM] token not saved: Neon database is unavailable");
+    return false;
+  }
+  const current = await readTokens();
+  const next = current.filter((x) => x?.token !== token);
+  next.push({ employeeId, token, platform, updatedAt: (/* @__PURE__ */ new Date()).toISOString() });
+  await db.insert(settings).values({ key: "fcm_tokens", value: next }).onConflictDoUpdate({ target: settings.key, set: { value: next } });
+  console.info("[FCM] token registered", { employeeId, platform });
+  return true;
+}
+async function sendPushToEmployee(employeeId, title, body, data = {}) {
+  const messaging = adminMessaging();
+  if (!messaging) return { sent: 0, configured: false };
+  const tokens = await tokensFor(employeeId);
+  if (!tokens.length) return { sent: 0, configured: true };
+  const response = await messaging.sendEachForMulticast({
+    tokens,
+    notification: { title, body },
+    data,
+    android: { priority: "high", notification: { channelId: "tech-source-notifications", sound: "default" } },
+    webpush: { headers: { Urgency: "high" }, notification: { title, body, icon: "/icon-192.png" } }
+  });
+  const invalidTokens = /* @__PURE__ */ new Set();
+  response.responses.forEach((result, index) => {
+    const code = result.error?.code;
+    if (code === "messaging/registration-token-not-registered" || code === "messaging/invalid-registration-token") invalidTokens.add(tokens[index]);
+  });
+  if (invalidTokens.size && hasDatabase()) {
+    const current = await readTokens();
+    const cleaned = current.filter((x) => !invalidTokens.has(String(x?.token || "")));
+    try {
+      await db.insert(settings).values({ key: "fcm_tokens", value: cleaned }).onConflictDoUpdate({ target: settings.key, set: { value: cleaned } });
+    } catch (error) {
+      console.warn("[FCM] invalid token cleanup failed", error);
+    }
+  }
+  return { sent: response.successCount, failed: response.failureCount, configured: true };
+}
+function registerFcmRoutes(app2) {
+  app2.post("/api/push/register", async (req, res) => {
+    try {
+      const { employeeId, token, platform = "unknown" } = req.body || {};
+      if (!employeeId || !token) return res.status(400).json({ success: false });
+      return res.json({ success: await saveToken(String(employeeId), String(token), String(platform)) });
+    } catch (error) {
+      console.error("[FCM] register", error);
+      return res.status(500).json({ success: false });
+    }
+  });
+  app2.post("/api/push/send", async (req, res) => {
+    try {
+      const { employeeId, title, body, data = {} } = req.body || {};
+      if (!employeeId || !title || !body) return res.status(400).json({ success: false });
+      return res.json({ success: true, ...await sendPushToEmployee(String(employeeId), String(title), String(body), data) });
+    } catch (error) {
+      console.error("[FCM] send", error);
+      return res.status(500).json({ success: false });
+    }
+  });
+}
+
+// server/notification-system-v2.ts
+import fs from "fs";
+import path from "path";
+import crypto from "crypto";
+import { eq, sql as sql2 } from "drizzle-orm";
+
+// server/notification-sse.ts
+var subscribers = /* @__PURE__ */ new Map();
+var clean = (value) => String(value ?? "").trim();
+function publishNotification(notification) {
+  const recipientId = clean(notification.recipientId);
+  if (!recipientId) return;
+  const clients = subscribers.get(recipientId);
+  if (!clients?.size) return;
+  const payload = `event: notification
+data: ${JSON.stringify(notification)}
+
+`;
+  for (const response of clients) {
+    try {
+      response.write(payload);
+    } catch {
+      removeSubscriber(recipientId, response);
+    }
+  }
+}
+function removeSubscriber(userId, response) {
+  const clients = subscribers.get(userId);
+  if (!clients) return;
+  clients.delete(response);
+  if (!clients.size) subscribers.delete(userId);
+}
+function registerNotificationSse(app2) {
+  app2.get("/api/notifications/stream", (req, res) => {
+    const userId = clean(req.query.userId);
+    if (!userId) {
+      res.status(400).end();
+      return;
+    }
+    res.status(200);
+    res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+    res.setHeader("Cache-Control", "no-cache, no-transform");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
+    res.flushHeaders?.();
+    res.write(`event: ready
+data: ${JSON.stringify({ connectedAt: (/* @__PURE__ */ new Date()).toISOString() })}
+
+`);
+    const clients = subscribers.get(userId) || /* @__PURE__ */ new Set();
+    clients.add(res);
+    subscribers.set(userId, clients);
+    const heartbeat = setInterval(() => {
+      try {
+        res.write(": heartbeat\\n\\n");
+      } catch {
+        removeSubscriber(userId, res);
+      }
+    }, 25e3);
+    const cleanup = () => {
+      clearInterval(heartbeat);
+      removeSubscriber(userId, res);
     };
-  } catch {
-    return emptyState();
-  }
+    req.on("close", cleanup);
+    res.on("error", cleanup);
+  });
 }
-var localState = loadState();
-function saveLocalState() {
+
+// server/notification-system-v2.ts
+var USE_DATABASE = Boolean(process.env.DATABASE_URL || process.env.SUPABASE_DB_URL);
+var LOCAL_FILE = path.join(process.cwd(), "notifications_v2.json");
+var VERSION = "10-notifications-bootstrap-safe";
+var readyPromise = null;
+var clean2 = (value) => String(value ?? "").trim();
+var nowIso = () => (/* @__PURE__ */ new Date()).toISOString();
+function stableId(input) {
+  if (clean2(input.id)) return clean2(input.id);
+  const basis = [input.recipientId, input.type, input.relatedEmployeeId || "", input.relatedLeaveId || "", input.relatedOvertimeId || "", input.relatedShiftSwapId || "", input.title, input.message].join("|");
+  return `n2_${crypto.createHash("sha256").update(basis).digest("hex").slice(0, 40)}`;
+}
+function semanticKey(raw) {
+  const recipientId = clean2(raw?.recipientId);
+  const type = clean2(raw?.type);
+  const relatedId = clean2(raw?.relatedLeaveId) || clean2(raw?.relatedOvertimeId) || clean2(raw?.relatedShiftSwapId);
+  if (relatedId) return `${recipientId}|${type}|${relatedId}`;
+  return `${recipientId}|${type}|${clean2(raw?.title)}|${clean2(raw?.message)}`;
+}
+function targetFor(raw) {
+  const explicit = clean2(raw?.link || raw?.targetUrl);
+  if (explicit) return explicit;
+  const type = clean2(raw?.type);
+  if (clean2(raw?.relatedLeaveId)) return `/leaves?leaveId=${encodeURIComponent(clean2(raw.relatedLeaveId))}`;
+  if (clean2(raw?.relatedOvertimeId)) return `/overtime?overtimeId=${encodeURIComponent(clean2(raw.relatedOvertimeId))}`;
+  if (clean2(raw?.relatedShiftSwapId)) return `/schedule?shiftSwapId=${encodeURIComponent(clean2(raw.relatedShiftSwapId))}`;
+  if (type.startsWith("leave_")) return "/leaves";
+  if (type.startsWith("overtime_")) return "/leaves";
+  if (type.startsWith("shift_")) return "/schedule";
+  return "/notifications";
+}
+function withTarget(item) {
+  const link = targetFor(item);
+  return link ? { ...item, link, targetUrl: link } : item;
+}
+function normalize(raw) {
+  const recipientId = clean2(raw?.recipientId);
+  const type = clean2(raw?.type);
+  if (!recipientId || !type) return null;
+  if (type === "leave_rejected" && !clean2(raw?.relatedLeaveId)) return null;
+  const createdAt = clean2(raw?.createdAt) || nowIso();
+  const updatedAt = clean2(raw?.updatedAt) || createdAt;
+  const item = { id: clean2(raw?.id) || void 0, recipientId, type, title: clean2(raw?.title) || "\u0625\u0634\u0639\u0627\u0631 \u062C\u062F\u064A\u062F", message: clean2(raw?.message) || "\u0644\u062F\u064A\u0643 \u0625\u0634\u0639\u0627\u0631 \u062C\u062F\u064A\u062F.", relatedEmployeeId: clean2(raw?.relatedEmployeeId) || void 0, relatedLeaveId: clean2(raw?.relatedLeaveId) || void 0, relatedOvertimeId: clean2(raw?.relatedOvertimeId) || void 0, relatedShiftSwapId: clean2(raw?.relatedShiftSwapId) || void 0, isRead: Boolean(raw?.isRead), createdAt, updatedAt };
+  return withTarget({ id: stableId(item), ...item });
+}
+function mergeDuplicates(items) {
+  const map = /* @__PURE__ */ new Map();
+  for (const raw of items) {
+    const item = withTarget(raw);
+    const key = semanticKey(item);
+    const old = map.get(key);
+    if (!old) {
+      map.set(key, item);
+      continue;
+    }
+    const oldTime = new Date(old.updatedAt || old.createdAt || 0).getTime();
+    const newTime = new Date(item.updatedAt || item.createdAt || 0).getTime();
+    const newer = newTime >= oldTime ? item : old;
+    map.set(key, { ...newer, isRead: Boolean(old.isRead || item.isRead), createdAt: new Date(old.createdAt || item.createdAt || 0).getTime() <= new Date(item.createdAt || old.createdAt || 0).getTime() ? old.createdAt : item.createdAt });
+  }
+  return Array.from(map.values()).sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+}
+function readLocal() {
   try {
-    fs.mkdirSync(BACKUP_DIR, { recursive: true });
-    fs.writeFileSync(
-      DATA_FILE,
-      JSON.stringify(localState, null, 2)
-    );
-    fs.writeFileSync(
-      path.join(BACKUP_DIR, "server_data_auto_backup.json"),
-      JSON.stringify(localState, null, 2)
-    );
-  } catch (e) {
-    console.error("Failed to save local state:", e);
+    if (!fs.existsSync(LOCAL_FILE)) return [];
+    const parsed = JSON.parse(fs.readFileSync(LOCAL_FILE, "utf8"));
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
   }
 }
-function clock() {
-  const now = /* @__PURE__ */ new Date();
-  const p = new Intl.DateTimeFormat("en-CA", {
+function writeLocal(items) {
+  try {
+    fs.writeFileSync(LOCAL_FILE, JSON.stringify(items, null, 2));
+  } catch (error) {
+    console.warn("[Notifications v2] local persistence failed", error);
+  }
+}
+async function ensureReady() {
+  if (!readyPromise) readyPromise = (async () => {
+    if (USE_DATABASE) {
+      await db.execute(sql2`CREATE TABLE IF NOT EXISTS notifications (
+        id text PRIMARY KEY,
+        recipient_id text NOT NULL,
+        type text NOT NULL,
+        title text NOT NULL,
+        message text NOT NULL,
+        related_employee_id text,
+        related_leave_id text,
+        related_overtime_id text,
+        related_shift_swap_id text,
+        is_read boolean DEFAULT false,
+        created_at text NOT NULL,
+        updated_at text NOT NULL
+      )`);
+      await db.execute(sql2`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS related_employee_id text`);
+      await db.execute(sql2`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS related_leave_id text`);
+      await db.execute(sql2`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS related_overtime_id text`);
+      await db.execute(sql2`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS related_shift_swap_id text`);
+      await db.execute(sql2`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS is_read boolean DEFAULT false`);
+      await db.execute(sql2`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS created_at text`);
+      await db.execute(sql2`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS updated_at text`);
+      await db.execute(sql2`CREATE TABLE IF NOT EXISTS notification_system_meta (key text PRIMARY KEY, value text NOT NULL)`);
+      await db.execute(sql2`INSERT INTO notification_system_meta (key, value) VALUES ('version', ${VERSION}) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`);
+      try {
+        await db.execute(sql2`DELETE FROM notifications n WHERE (n.type = 'leave_rejected' AND (n.related_leave_id IS NULL OR NOT EXISTS (SELECT 1 FROM leave_requests l WHERE l.id = n.related_leave_id AND LOWER(COALESCE(l.status,'')) = 'rejected')))`);
+      } catch (error) {
+        console.warn("[Notifications v2] cleanup skipped:", error);
+      }
+    } else if (!fs.existsSync(LOCAL_FILE)) writeLocal([]);
+  })().catch((error) => {
+    readyPromise = null;
+    throw error;
+  });
+  return readyPromise;
+}
+async function ensureNotificationStorage() {
+  await ensureReady();
+}
+async function listForUser(userId) {
+  await ensureReady();
+  const id = clean2(userId);
+  if (!id) return [];
+  if (USE_DATABASE) {
+    const rows = await db.select().from(notifications).where(eq(notifications.recipientId, id));
+    let leaveRows = [];
+    try {
+      leaveRows = await db.select({ id: leaveRequests.id, status: leaveRequests.status }).from(leaveRequests);
+    } catch (error) {
+      console.warn("[Notifications v2] leave validation skipped:", error);
+    }
+    const validRejectedLeaveIds = new Set(leaveRows.filter((row) => String(row.status || "").toLowerCase() === "rejected").map((row) => String(row.id)));
+    const validLeaveIds = new Set(leaveRows.map((row) => String(row.id)));
+    const normalized = rows.map((row) => withTarget({ ...row, id: String(row.id), recipientId: String(row.recipientId) })).filter((item) => leaveRows.length === 0 || (item.type === "leave_rejected" ? Boolean(item.relatedLeaveId && validRejectedLeaveIds.has(String(item.relatedLeaveId))) : !(item.type.startsWith("leave_") && item.relatedLeaveId && !validLeaveIds.has(String(item.relatedLeaveId)))));
+    return mergeDuplicates(normalized);
+  }
+  return mergeDuplicates(readLocal().filter((item) => item.recipientId === id).map((item) => normalize(item)).filter((item) => Boolean(item)));
+}
+async function saveOne(input) {
+  const item = normalize(input);
+  if (!item) return null;
+  await ensureReady();
+  if (!USE_DATABASE) {
+    const items = readLocal();
+    const key2 = semanticKey(item);
+    const index = items.findIndex((existing2) => semanticKey(existing2) === key2 || existing2.id === item.id);
+    if (index >= 0) {
+      const existing2 = items[index];
+      items[index] = { ...existing2, ...item, id: existing2.id, isRead: Boolean(existing2.isRead || item.isRead), updatedAt: nowIso() };
+    } else items.push(item);
+    writeLocal(mergeDuplicates(items));
+    return withTarget(items.find((existing2) => semanticKey(existing2) === key2) || item);
+  }
+  const key = semanticKey(item);
+  const allRows = await db.select().from(notifications).where(eq(notifications.recipientId, item.recipientId));
+  const existing = allRows.find((row) => String(row.id) === item.id) || allRows.find((row) => semanticKey(row) === key);
+  if (existing) {
+    const existingTime = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
+    const incomingTime = new Date(item.updatedAt || item.createdAt || 0).getTime();
+    if (existing.isRead && !item.isRead) return withTarget({ ...existing, id: String(existing.id), recipientId: String(existing.recipientId) });
+    if (Number.isFinite(existingTime) && Number.isFinite(incomingTime) && incomingTime < existingTime) return withTarget({ ...existing, id: String(existing.id), recipientId: String(existing.recipientId) });
+    const merged = { ...item, id: String(existing.id), isRead: Boolean(existing.isRead || item.isRead), updatedAt: nowIso() };
+    const { id: _ignoredId, link: _link2, targetUrl: _targetUrl2, ...changes } = merged;
+    await db.update(notifications).set(changes).where(eq(notifications.id, String(existing.id)));
+    return withTarget(merged);
+  }
+  const { link: _link, targetUrl: _targetUrl, ...dbItem } = item;
+  await db.insert(notifications).values(dbItem).onConflictDoNothing({ target: notifications.id });
+  const persisted = await db.select().from(notifications).where(eq(notifications.id, item.id));
+  return persisted[0] ? withTarget({ ...persisted[0], id: String(persisted[0].id), recipientId: String(persisted[0].recipientId) }) : item;
+}
+async function markRead(id, recipientId) {
+  await ensureReady();
+  const notificationId = clean2(id);
+  const userId = clean2(recipientId);
+  if (!notificationId || !userId) return false;
+  if (!USE_DATABASE) {
+    const items = readLocal();
+    const target2 = items.find((item) => item.id === notificationId && item.recipientId === userId);
+    if (!target2) return false;
+    const key2 = semanticKey(target2);
+    const updated = items.map((item) => semanticKey(item) === key2 ? { ...item, isRead: true, updatedAt: nowIso() } : item);
+    writeLocal(updated);
+    return true;
+  }
+  const rows = await db.select().from(notifications).where(eq(notifications.recipientId, userId));
+  let target = rows.find((row) => String(row.id) === notificationId);
+  if (!target) {
+    const byId = await db.select().from(notifications).where(eq(notifications.id, notificationId));
+    target = byId[0];
+  }
+  if (!target || String(target.recipientId) !== userId) return false;
+  const key = semanticKey(target);
+  const matches = rows.filter((row) => semanticKey(row) === key);
+  const ids = new Set(matches.map((row) => String(row.id)));
+  ids.add(String(target.id));
+  await Promise.all(Array.from(ids).map((notificationIdToUpdate) => db.update(notifications).set({ isRead: true, updatedAt: nowIso() }).where(eq(notifications.id, notificationIdToUpdate))));
+  return true;
+}
+async function markAllRead(recipientId) {
+  await ensureReady();
+  const userId = clean2(recipientId);
+  if (!userId) return 0;
+  if (!USE_DATABASE) {
+    const items = readLocal();
+    let count = 0;
+    const updated = items.map((item) => {
+      if (item.recipientId === userId && !item.isRead) {
+        count++;
+        return { ...item, isRead: true, updatedAt: nowIso() };
+      }
+      return item;
+    });
+    writeLocal(updated);
+    return count;
+  }
+  const rows = await db.select({ isRead: notifications.isRead }).from(notifications).where(eq(notifications.recipientId, userId));
+  const unreadCount = rows.filter((row) => !Boolean(row.isRead)).length;
+  await db.update(notifications).set({ isRead: true, updatedAt: nowIso() }).where(eq(notifications.recipientId, userId));
+  return unreadCount;
+}
+function bodyOf(req) {
+  return req.body && typeof req.body === "object" ? req.body : {};
+}
+function registerNotificationSystemV2(app2) {
+  app2.get("/api/notifications", async (req, res) => {
+    try {
+      const notifications2 = await listForUser(clean2(req.query.userId));
+      res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+      res.setHeader("Pragma", "no-cache");
+      res.json({ success: true, notifications: notifications2 });
+    } catch (error) {
+      console.error("[Notifications v2] GET failed", error);
+      res.status(500).json({ success: false, notifications: [], error: "notifications_unavailable" });
+    }
+  });
+  app2.put("/api/notifications/mark-all-read", async (req, res) => {
+    try {
+      const userId = clean2(bodyOf(req).userId || req.query.userId);
+      const count = await markAllRead(userId);
+      const notifications2 = await listForUser(userId);
+      res.setHeader("Cache-Control", "no-store");
+      res.json({ success: true, count, notifications: notifications2 });
+    } catch (error) {
+      console.error("[Notifications v2] mark-all-read failed", error);
+      res.status(500).json({ success: false, count: 0 });
+    }
+  });
+  app2.put("/api/notifications/:id/mark-read", async (req, res) => {
+    try {
+      const userId = clean2(bodyOf(req).userId || req.query.userId);
+      const updated = await markRead(req.params.id, userId);
+      const notifications2 = await listForUser(userId);
+      res.setHeader("Cache-Control", "no-store");
+      res.json({ success: updated, updated, notifications: notifications2 });
+    } catch (error) {
+      console.error("[Notifications v2] mark-read failed", error);
+      res.status(500).json({ success: false, updated: false });
+    }
+  });
+  app2.post("/api/notifications/emit", async (req, res) => {
+    try {
+      const notification = await saveOne(bodyOf(req).notification || bodyOf(req));
+      if (!notification) return res.status(400).json({ success: false, error: "invalid_notification" });
+      publishNotification(notification);
+      res.setHeader("Cache-Control", "no-store");
+      res.json({ success: true, notification });
+    } catch (error) {
+      console.error("[Notifications v2] emit failed", error);
+      res.status(500).json({ success: false });
+    }
+  });
+  void ensureReady().catch((error) => console.error("[Notifications v2] startup failed", error));
+}
+
+// server/request-notification-triggers.ts
+import crypto2 from "crypto";
+import { eq as eq2 } from "drizzle-orm";
+var hasDatabase2 = () => Boolean(process.env.DATABASE_URL || process.env.SUPABASE_DB_URL);
+var clean3 = (v) => String(v ?? "").trim();
+var hashId = (recipientId, type, relatedId) => `n2_${crypto2.createHash("sha256").update(`${recipientId}|${type}|${relatedId}`).digest("hex").slice(0, 40)}`;
+async function insertNotification(recipientId, type, title, message, relatedEmployeeId, relatedLeaveId, relatedOvertimeId, relatedShiftSwapId) {
+  if (!recipientId) return;
+  const relatedId = clean3(relatedLeaveId || relatedOvertimeId || relatedShiftSwapId);
+  const id = hashId(recipientId, type, relatedId || `${title}|${message}`);
+  const now = (/* @__PURE__ */ new Date()).toISOString();
+  const inserted = await db.insert(notifications).values({ id, recipientId, type, title, message, relatedEmployeeId: relatedEmployeeId || null, relatedLeaveId: relatedLeaveId || null, relatedOvertimeId: relatedOvertimeId || null, relatedShiftSwapId: relatedShiftSwapId || null, isRead: false, createdAt: now, updatedAt: now }).onConflictDoNothing({ target: notifications.id }).returning({ id: notifications.id });
+  if (!inserted.length) return;
+  try {
+    await sendPushToEmployee(recipientId, title, message, { type, relatedId });
+  } catch (e) {
+    console.warn("[FCM] request notification push failed", e);
+  }
+}
+async function emitForSync(body) {
+  if (!hasDatabase2()) return;
+  await ensureNotificationStorage();
+  const requestedLeaves = Array.isArray(body?.leaveRequests) ? body.leaveRequests : [];
+  const requestedOvertimes = Array.isArray(body?.overtimeRequests) ? body.overtimeRequests : [];
+  const requestedSwaps = Array.isArray(body?.shiftSwapRequests) ? body.shiftSwapRequests : [];
+  if (!requestedLeaves.length && !requestedOvertimes.length && !requestedSwaps.length) return;
+  const employees2 = await db.select().from(employees);
+  const leaders = employees2.filter((e) => e.role === "leader" || e.role === "admin").map((e) => String(e.id));
+  const employeeName = (id) => {
+    const e = employees2.find((x) => String(x.id) === id);
+    return clean3(e?.nameAr) || clean3(e?.nameEn) || id;
+  };
+  for (const requested of requestedLeaves) {
+    const id = clean3(requested?.id);
+    if (!id) continue;
+    const rows = await db.select().from(leaveRequests).where(eq2(leaveRequests.id, id));
+    const r = rows[0];
+    if (!r) continue;
+    const employeeId = clean3(r.employeeId), status = clean3(r.status).toLowerCase();
+    if (!employeeId) continue;
+    const start = clean3(r.startDate), end = clean3(r.endDate), kind = clean3(r.type) || "leave";
+    if (status === "pending") {
+      for (const recipientId of leaders) if (recipientId !== employeeId) await insertNotification(recipientId, "leave_requested", "\u0637\u0644\u0628 \u0625\u062C\u0627\u0632\u0629 \u062C\u062F\u064A\u062F", `${employeeName(employeeId)} \u0623\u0631\u0633\u0644 \u0637\u0644\u0628 ${kind} \u0645\u0646 ${start} \u0625\u0644\u0649 ${end}.`, employeeId, id);
+    } else if (status === "approved" || status === "rejected") {
+      const approved = status === "approved";
+      await insertNotification(employeeId, approved ? "leave_approved" : "leave_rejected", approved ? "\u062A\u0645 \u0627\u0639\u062A\u0645\u0627\u062F \u0637\u0644\u0628 \u0627\u0644\u0625\u062C\u0627\u0632\u0629" : "\u062A\u0645 \u0631\u0641\u0636 \u0637\u0644\u0628 \u0627\u0644\u0625\u062C\u0627\u0632\u0629", approved ? `\u062A\u0645 \u0627\u0639\u062A\u0645\u0627\u062F \u0637\u0644\u0628 ${kind} \u0645\u0646 ${start} \u0625\u0644\u0649 ${end}.` : `\u062A\u0645 \u0631\u0641\u0636 \u0637\u0644\u0628 ${kind} \u0645\u0646 ${start} \u0625\u0644\u0649 ${end}.${clean3(r.reviewNotes) ? ` \u0627\u0644\u0633\u0628\u0628: ${clean3(r.reviewNotes)}` : ""}`, employeeId, id);
+    }
+  }
+  for (const requested of requestedOvertimes) {
+    const id = clean3(requested?.id);
+    if (!id) continue;
+    const rows = await db.select().from(overtimeRequests).where(eq2(overtimeRequests.id, id));
+    const r = rows[0];
+    if (!r) continue;
+    const employeeId = clean3(r.employeeId), status = clean3(r.status).toLowerCase();
+    if (!employeeId) continue;
+    const date = clean3(r.date), seconds = Number(r.durationSeconds || 0);
+    const duration = Number.isFinite(seconds) && seconds > 0 ? `${Math.round(seconds / 3600 * 100) / 100} \u0633\u0627\u0639\u0629` : "";
+    if (status === "pending") {
+      for (const recipientId of leaders) if (recipientId !== employeeId) await insertNotification(recipientId, "overtime_requested", "\u0637\u0644\u0628 \u0648\u0642\u062A \u0625\u0636\u0627\u0641\u064A \u062C\u062F\u064A\u062F", `${employeeName(employeeId)} \u0623\u0631\u0633\u0644 \u0637\u0644\u0628 \u0648\u0642\u062A \u0625\u0636\u0627\u0641\u064A \u0644\u064A\u0648\u0645 ${date}${duration ? ` \u0644\u0645\u062F\u0629 ${duration}` : ""}.`, employeeId, void 0, id);
+    } else if (status === "approved" || status === "rejected") {
+      const approved = status === "approved";
+      await insertNotification(employeeId, approved ? "overtime_approved" : "overtime_rejected", approved ? "\u062A\u0645 \u0627\u0639\u062A\u0645\u0627\u062F \u0627\u0644\u0648\u0642\u062A \u0627\u0644\u0625\u0636\u0627\u0641\u064A" : "\u062A\u0645 \u0631\u0641\u0636 \u0627\u0644\u0648\u0642\u062A \u0627\u0644\u0625\u0636\u0627\u0641\u064A", approved ? `\u062A\u0645 \u0627\u0639\u062A\u0645\u0627\u062F \u0637\u0644\u0628 \u0627\u0644\u0648\u0642\u062A \u0627\u0644\u0625\u0636\u0627\u0641\u064A \u0644\u064A\u0648\u0645 ${date}${duration ? ` \u0644\u0645\u062F\u0629 ${duration}` : ""}.` : `\u062A\u0645 \u0631\u0641\u0636 \u0637\u0644\u0628 \u0627\u0644\u0648\u0642\u062A \u0627\u0644\u0625\u0636\u0627\u0641\u064A \u0644\u064A\u0648\u0645 ${date}.${clean3(r.reviewNotes) ? ` \u0627\u0644\u0633\u0628\u0628: ${clean3(r.reviewNotes)}` : ""}`, employeeId, void 0, id);
+    }
+  }
+  if (requestedSwaps.length) {
+    const settings2 = await db.select().from(settings).where(eq2(settings.key, "shiftSwapRequests"));
+    const persistedSwaps = requestedSwaps.length ? requestedSwaps : Array.isArray(settings2[0]?.value) ? settings2[0].value : [];
+    for (const requested of requestedSwaps) {
+      const id = clean3(requested?.id);
+      const r = persistedSwaps.find((x) => clean3(x?.id) === id);
+      if (!r) continue;
+      const requesterId = clean3(r.requesterId), targetId = clean3(r.targetEmployeeId), status = clean3(r.status).toLowerCase();
+      if (!requesterId || !targetId) continue;
+      const date = clean3(r.date);
+      if (status === "awaiting_target") await insertNotification(targetId, "shift_swap_requested", "\u0637\u0644\u0628 \u062A\u0628\u062F\u064A\u0644 \u0634\u0641\u062A \u062C\u062F\u064A\u062F", `${employeeName(requesterId)} \u0623\u0631\u0633\u0644 \u0644\u0643 \u0637\u0644\u0628 \u062A\u0628\u062F\u064A\u0644 \u0634\u0641\u062A \u0644\u064A\u0648\u0645 ${date}. \u0631\u0627\u062C\u0639 \u0627\u0644\u0637\u0644\u0628 \u0648\u0627\u0636\u063A\u0637 \u0645\u0648\u0627\u0641\u0642\u0629 \u0623\u0648 \u0631\u0641\u0636.`, requesterId, void 0, void 0, id);
+      else if (status === "pending") {
+        const leaderId = clean3(employees2.find((e) => String(e.id) === requesterId)?.teamLeaderId);
+        const recipients = leaderId ? [leaderId] : leaders;
+        for (const recipientId of recipients) if (recipientId !== requesterId && recipientId !== targetId) await insertNotification(recipientId, "shift_swap_accepted", "\u062A\u0645\u062A \u0627\u0644\u0645\u0648\u0627\u0641\u0642\u0629 \u0639\u0644\u0649 Swap", `${employeeName(targetId)} \u0648\u0627\u0641\u0642 \u0639\u0644\u0649 \u062A\u0628\u062F\u064A\u0644 \u0627\u0644\u0634\u0641\u062A \u0645\u0639 ${employeeName(requesterId)} \u0644\u064A\u0648\u0645 ${date}. \u0623\u0635\u0628\u062D \u0627\u0644\u0637\u0644\u0628 \u062C\u0627\u0647\u0632\u064B\u0627 \u0644\u0645\u0631\u0627\u062C\u0639\u0629 \u0627\u0644\u0644\u064A\u062F\u0631.`, requesterId, void 0, void 0, id);
+      } else if (status === "approved") {
+        await insertNotification(requesterId, "shift_changed", "\u062A\u0645 \u0627\u0639\u062A\u0645\u0627\u062F \u062A\u0628\u062F\u064A\u0644 \u0627\u0644\u0634\u0641\u062A", `\u062A\u0645 \u0627\u0639\u062A\u0645\u0627\u062F \u062A\u0628\u062F\u064A\u0644 \u0627\u0644\u0634\u0641\u062A \u0645\u0639 ${employeeName(targetId)} \u0644\u064A\u0648\u0645 ${date}.`, requesterId, void 0, void 0, id);
+        await insertNotification(targetId, "shift_changed", "\u062A\u0645 \u0627\u0639\u062A\u0645\u0627\u062F \u062A\u0628\u062F\u064A\u0644 \u0627\u0644\u0634\u0641\u062A", `\u062A\u0645 \u0627\u0639\u062A\u0645\u0627\u062F \u062A\u0628\u062F\u064A\u0644 \u0627\u0644\u0634\u0641\u062A \u0645\u0639 ${employeeName(requesterId)} \u0644\u064A\u0648\u0645 ${date}.`, targetId, void 0, void 0, id);
+      } else if (status === "rejected") {
+        await insertNotification(requesterId, "shift_swap_rejected", "\u062A\u0645 \u0631\u0641\u0636 \u0637\u0644\u0628 \u062A\u0628\u062F\u064A\u0644 \u0627\u0644\u0634\u0641\u062A", `\u062A\u0645 \u0631\u0641\u0636 \u0637\u0644\u0628 \u062A\u0628\u062F\u064A\u0644 \u0627\u0644\u0634\u0641\u062A \u0644\u064A\u0648\u0645 ${date}.`, requesterId, void 0, void 0, id);
+        await insertNotification(targetId, "shift_swap_rejected", "\u062A\u0645 \u0631\u0641\u0636 \u0637\u0644\u0628 \u062A\u0628\u062F\u064A\u0644 \u0627\u0644\u0634\u0641\u062A", `\u062A\u0645 \u0631\u0641\u0636 \u0637\u0644\u0628 \u062A\u0628\u062F\u064A\u0644 \u0627\u0644\u0634\u0641\u062A \u0644\u064A\u0648\u0645 ${date}.`, targetId, void 0, void 0, id);
+      }
+    }
+  }
+}
+function registerRequestNotificationTriggers(app2) {
+  app2.use((req, res, next) => {
+    if (req.method !== "POST" || !["/api/sync", "/sync"].includes(String(req.path || "").replace(/\/+$/, ""))) return next();
+    const syncBody = req.body;
+    const originalJson = res.json.bind(res);
+    res.json = async (body) => {
+      try {
+        await emitForSync(syncBody || {});
+      } catch (error) {
+        console.error("[request-notification-triggers]", error);
+      }
+      return originalJson(body);
+    };
+    next();
+  });
+}
+
+// server/attendance-realtime.ts
+import { and, eq as eq3 } from "drizzle-orm";
+var TZ = process.env.SERVER_TIME_ZONE || "Africa/Cairo";
+function cairoParts() {
+  const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: TZ,
     year: "numeric",
     month: "2-digit",
@@ -232,2133 +711,804 @@ function clock() {
     minute: "2-digit",
     second: "2-digit",
     hourCycle: "h23"
-  }).formatToParts(now).reduce((a, x) => {
-    if (x.type !== "literal") {
-      a[x.type] = x.value;
-    }
-    return a;
-  }, {});
+  }).formatToParts(/* @__PURE__ */ new Date());
+  const p = {};
+  for (const x of parts) if (x.type !== "literal") p[x.type] = x.value;
   return {
     date: `${p.year}-${p.month}-${p.day}`,
     time: `${p.hour}:${p.minute}:${p.second}`,
-    iso: now.toISOString(),
-    timeZone: TZ
+    iso: (/* @__PURE__ */ new Date()).toISOString()
   };
 }
-var norm = (x) => String(x ?? "").trim().toLowerCase();
-function mins(x) {
-  if (!x) return 0;
-  const t = String(x).trim();
-  const a = t.split(":");
-  let h = Number(a[0] || 0);
-  const m = Number(a[1] || 0);
-  if (/PM/i.test(t) && h < 12) {
-    h += 12;
-  }
-  if (/AM/i.test(t) && h === 12) {
-    h = 0;
-  }
-  return h * 60 + m;
+function normalizeAction(value) {
+  const x = String(value || "").trim().toLowerCase().replace(/[-\s]/g, "_");
+  if (x === "checkin" || x === "check_in" || x === "in") return "check_in";
+  if (x === "checkout" || x === "check_out" || x === "out") return "check_out";
+  if (x === "breakstart" || x === "break_start" || x === "start_break") return "break_start";
+  if (x === "breakend" || x === "break_end" || x === "end_break") return "break_end";
+  if (x === "forcebreakend" || x === "force_break_end" || x === "force_break_end_break") return "force_break_end";
+  if (x === "update" || x === "edit" || x === "manual_update") return "update";
+  return x;
 }
-function shiftFor(e) {
-  return localState.shifts.find(
-    (s) => String(s.id) === String(e?.shiftId)
-  ) || {
-    startTime: "09:00",
-    endTime: "17:00",
-    durationMinutes: 480,
-    gracePeriodMinutes: 10
-  };
-}
-function sanitize(r) {
-  const e = localState.employees.find(
-    (x) => norm(x.id) === norm(r.employeeId)
-  );
-  const sh = shiftFor(e);
-  let work = 0;
-  if (r.checkIn && r.checkOut) {
-    let a = mins(r.checkIn);
-    let b = mins(r.checkOut);
-    if (b < a) {
-      b += 1440;
-    }
-    work = Math.max(0, b - a);
-    if (r.breakStart) {
-      let c = mins(r.breakStart);
-      let d = r.breakEnd ? mins(r.breakEnd) : b;
-      if (d < c) {
-        d += 1440;
+var norm = (value) => String(value ?? "").trim().toLowerCase();
+var allowedActions = ["check_in", "check_out", "break_start", "break_end", "force_break_end", "update"];
+function registerAttendanceRealtime(app2) {
+  app2.post("/api/punch", async (req, res) => {
+    try {
+      const requestedEmployeeId = String(req.body?.employeeId || req.body?.employee_id || "").trim();
+      const action = normalizeAction(req.body?.action || req.body?.type);
+      const bodyRecord = req.body?.record || {};
+      if (!requestedEmployeeId) {
+        return res.status(400).json({ success: false, error: "EMPLOYEE_ID_REQUIRED" });
       }
-      work = Math.max(
-        0,
-        work - (d - c)
-      );
-    }
-  }
-  const duration = Number(
-    sh.durationMinutes || 480
-  );
-  const start2 = mins(
-    sh.startTime || "09:00"
-  );
-  const end = mins(
-    sh.endTime || "17:00"
-  );
-  const grace = Number(
-    sh.gracePeriodMinutes ?? 10
-  );
-  let late = 0;
-  let early = 0;
-  if (r.checkIn) {
-    late = Math.max(
-      0,
-      mins(r.checkIn) - start2 - grace
-    );
-  }
-  if (r.checkOut && !r.isExplicitCancelCheckOut) {
-    early = Math.max(
-      0,
-      end - mins(r.checkOut)
-    );
-  }
-  let status = r.status || "in_progress";
-  if (r.checkIn && r.checkOut) {
-    status = late > 0 ? "late" : early > 0 ? "early_leave" : "on_time";
-  } else if (r.checkIn) {
-    status = late > 0 ? "late" : "in_progress";
-  }
-  return {
-    ...r,
-    lateMinutes: late,
-    earlyLeaveMinutes: early,
-    workHours: r.isExplicitCancelCheckOut ? 0 : Math.round(work / 60 * 100) / 100,
-    overtimeHours: r.isExplicitCancelCheckOut ? 0 : Math.round(
-      Math.max(
-        0,
-        work - duration
-      ) / 60 * 100
-    ) / 100,
-    minusHours: r.isExcused ? 0 : Math.round(
-      Math.max(
-        0,
-        duration - work
-      ) / 60 * 100
-    ) / 100,
-    status,
-    updatedAt: r.updatedAt || (/* @__PURE__ */ new Date()).toISOString()
-  };
-}
-function mergeAttendance(a = [], b = []) {
-  const m = /* @__PURE__ */ new Map();
-  for (const r of a) {
-    if (r?.employeeId && r?.date) {
-      m.set(
-        `${norm(r.employeeId)}_${r.date}`,
-        sanitize(r)
-      );
-    }
-  }
-  for (const r of b) {
-    if (r?.employeeId && r?.date) {
-      const k = `${norm(r.employeeId)}_${r.date}`;
-      const old = m.get(k);
-      m.set(
-        k,
-        sanitize({
-          ...old,
-          ...r,
-          checkIn: r.checkIn || old?.checkIn,
-          checkOut: r.checkOut === void 0 ? old?.checkOut : r.checkOut
-        })
-      );
-    }
-  }
-  return [...m.values()];
-}
-function normalizeLeave(x) {
-  const now = (/* @__PURE__ */ new Date()).toISOString();
-  return {
-    ...x,
-    id: String(x?.id ?? ""),
-    employeeId: String(x?.employeeId ?? ""),
-    type: x?.type ?? null,
-    startDate: x?.startDate ? String(x.startDate).slice(0, 10) : null,
-    endDate: x?.endDate ? String(x.endDate).slice(0, 10) : null,
-    reason: x?.reason ?? null,
-    status: x?.status ? String(x.status).toLowerCase() : "pending",
-    createdAt: x?.createdAt ?? now,
-    updatedAt: x?.updatedAt ?? x?.createdAt ?? now,
-    hours: x?.hours == null ? null : Number(x.hours),
-    permissionSlot: x?.permissionSlot ?? null,
-    attachmentUrl: x?.attachmentUrl ?? null,
-    attachmentName: x?.attachmentName ?? null,
-    reviewedBy: x?.reviewedBy ?? null,
-    reviewNotes: x?.reviewNotes ?? null
-  };
-}
-function isEmployeeOnLeave(leave, date) {
-  if (!leave) {
-    return false;
-  }
-  if (String(leave.status || "").toLowerCase() !== "approved") {
-    return false;
-  }
-  if (!leave.startDate) {
-    return false;
-  }
-  const start2 = String(leave.startDate).slice(0, 10);
-  const end = String(
-    leave.endDate || leave.startDate
-  ).slice(0, 10);
-  return date >= start2 && date <= end;
-}
-function getActiveLeaves(leaves, date) {
-  return leaves.map(normalizeLeave).filter(
-    (x) => isEmployeeOnLeave(x, date)
-  );
-}
-async function setting(key, value) {
-  await db.insert(settings).values({
-    key,
-    value
-  }).onConflictDoUpdate({
-    target: settings.key,
-    set: {
-      value
+      if (!allowedActions.includes(action)) {
+        console.warn("[attendance-realtime] invalid punch action", { action, requestedEmployeeId });
+        return res.status(400).json({ success: false, error: "INVALID_PUNCH_ACTION", action, allowedActions });
+      }
+      if (action === "update" && !/^\d{4}-\d{2}-\d{2}$/.test(String(bodyRecord.date || "").slice(0, 10))) {
+        return res.status(400).json({ success: false, error: "RECORD_DATE_REQUIRED" });
+      }
+      const clock = cairoParts();
+      const employeePayload = req.body?.employee || null;
+      const allEmployees = await db.select().from(employees);
+      let employee = allEmployees.find((row) => norm(row.id) === norm(requestedEmployeeId));
+      if (!employee) {
+        employee = allEmployees.find(
+          (row) => norm(row.code) === norm(requestedEmployeeId) || norm(row.email) === norm(requestedEmployeeId)
+        );
+      }
+      if (!employee && employeePayload?.id) {
+        const id = String(employeePayload.id).trim();
+        const values = {
+          id,
+          code: employeePayload.code ?? null,
+          nameAr: String(employeePayload.nameAr || employeePayload.nameEn || id),
+          nameEn: String(employeePayload.nameEn || employeePayload.nameAr || id),
+          avatar: employeePayload.avatar ?? null,
+          email: employeePayload.email ?? null,
+          phone: employeePayload.phone ?? null,
+          department: employeePayload.department ?? null,
+          jobTitleAr: employeePayload.jobTitleAr ?? null,
+          jobTitleEn: employeePayload.jobTitleEn ?? null,
+          shiftId: employeePayload.shiftId ?? null,
+          pin: employeePayload.pin ?? null,
+          role: employeePayload.role ?? "employee",
+          joinedDate: employeePayload.joinedDate ?? null,
+          status: employeePayload.status ?? "active",
+          annualLeaveBalance: employeePayload.annualLeaveBalance ?? 15,
+          casualLeaveBalance: employeePayload.casualLeaveBalance ?? 7,
+          regularLeaveBalance: employeePayload.regularLeaveBalance ?? 8,
+          sickLeaveBalance: employeePayload.sickLeaveBalance ?? 30,
+          isPhotoRemoved: Boolean(employeePayload.isPhotoRemoved),
+          updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+        };
+        await db.insert(employees).values(values).onConflictDoNothing({ target: employees.id });
+        const inserted = await db.select().from(employees).where(eq3(employees.id, id));
+        employee = inserted[0];
+      }
+      if (!employee) {
+        console.warn("[attendance-realtime] employee not found", { requestedEmployeeId, available: allEmployees.length });
+        return res.status(404).json({ success: false, error: "EMPLOYEE_NOT_FOUND", employeeId: requestedEmployeeId });
+      }
+      const employeeId = String(employee.id);
+      const recordDate = action === "update" ? String(bodyRecord.date).slice(0, 10) : clock.date;
+      const rows = bodyRecord.id ? await db.select().from(attendanceRecords).where(eq3(attendanceRecords.id, String(bodyRecord.id))) : await db.select().from(attendanceRecords).where(and(
+        eq3(attendanceRecords.employeeId, employeeId),
+        eq3(attendanceRecords.date, recordDate)
+      ));
+      const existing = rows[0];
+      if (existing && norm(existing.employeeId) !== norm(employeeId)) {
+        return res.status(409).json({ success: false, error: "RECORD_EMPLOYEE_MISMATCH" });
+      }
+      const nowIso2 = (/* @__PURE__ */ new Date()).toISOString();
+      const updatedRecord = {
+        ...existing || {},
+        ...bodyRecord,
+        id: existing?.id || bodyRecord.id || `${employeeId}-${recordDate}`,
+        employeeId,
+        date: recordDate,
+        updatedAt: nowIso2
+      };
+      if (action === "check_in") updatedRecord.checkIn = clock.time;
+      if (action === "check_out") updatedRecord.checkOut = clock.time;
+      if (action === "break_start") updatedRecord.breakStart = clock.time;
+      if (action === "break_end" || action === "force_break_end") updatedRecord.breakEnd = clock.time;
+      if (!existing) await db.insert(attendanceRecords).values(updatedRecord);
+      else await db.update(attendanceRecords).set(updatedRecord).where(eq3(attendanceRecords.id, existing.id));
+      const attendanceRecords2 = await db.select().from(attendanceRecords);
+      return res.json({ success: true, record: updatedRecord, attendanceRecords: attendanceRecords2, employee, lastUpdated: Date.now() });
+    } catch (error) {
+      console.error("[attendance-realtime]", error);
+      return res.status(500).json({ success: false, error: "Attendance update failed" });
     }
   });
 }
-async function employeeUpsert(e) {
-  const id = String(e.id);
-  const existingRows = await db.select().from(employees).where(
-    sql`${employees.id} = ${id}`
-  );
-  const existing = existingRows[0];
-  const v = {
-    id,
-    code: e.code ?? null,
-    nameAr: String(e.nameAr ?? ""),
-    nameEn: String(e.nameEn ?? ""),
-    avatar: e.avatar ?? null,
-    email: e.email ?? null,
-    phone: e.phone ?? null,
-    department: e.department ?? null,
-    jobTitleAr: e.jobTitleAr ?? null,
-    jobTitleEn: e.jobTitleEn ?? null,
-    shiftId: e.shiftId ?? null,
-    pin: e.pin ?? null,
-    role: e.role ?? null,
-    joinedDate: e.joinedDate ?? null,
-    status: e.status ?? null,
-    annualLeaveBalance: e.annualLeaveBalance ?? null,
-    casualLeaveBalance: e.casualLeaveBalance ?? null,
-    regularLeaveBalance: e.regularLeaveBalance ?? null,
-    sickLeaveBalance: e.sickLeaveBalance ?? null,
-    isPhotoRemoved: Boolean(e.isPhotoRemoved)
-  };
-  if (existing) {
-    const incomingUpdated = new Date(
-      e.updatedAt || e.lastUpdated || 0
-    ).getTime();
-    const existingUpdated = new Date(
-      existing.updatedAt || 0
-    ).getTime();
-    if (Number.isFinite(incomingUpdated) && Number.isFinite(existingUpdated) && incomingUpdated < existingUpdated) {
-      console.log(
-        "BLOCKED OLD EMPLOYEE:",
-        id
-      );
-      return existing;
+
+// server/device-sync-v2.ts
+import { and as and2, eq as eq4 } from "drizzle-orm";
+var hasDatabase3 = () => Boolean(process.env.DATABASE_URL || process.env.SUPABASE_DB_URL);
+var pick = (s, k) => {
+  const o = {};
+  for (const x of k) if (s?.[x] !== void 0) o[x] = s[x];
+  return o;
+};
+var ms = (v) => {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string" && /^\d{10,}$/.test(v.trim())) {
+    const n = Number(v.trim());
+    return Number.isFinite(n) ? n : 0;
+  }
+  const t = new Date(String(v || "")).getTime();
+  return Number.isFinite(t) ? t : 0;
+};
+var stamp = (v) => {
+  const t = ms(v);
+  return t ? new Date(t).toISOString() : (/* @__PURE__ */ new Date()).toISOString();
+};
+var newestStamp = (item, syncTime) => {
+  const itemTime = ms(item?.updatedAt);
+  return itemTime ? stamp(itemTime) : stamp(syncTime);
+};
+var apiPath = (req) => String(req.path || req.url || "").split("?")[0].replace(/\/+$/, "") || "/";
+var isDataPath = (req) => ["/api/data", "/data"].includes(apiPath(req));
+var isSyncPath = (req) => ["/api/sync", "/sync"].includes(apiPath(req));
+var tombstoneKey = (kind) => `__sync_deleted_ids:${kind}`;
+async function getTombstones(kind) {
+  const rows = await db.select().from(settings).where(eq4(settings.key, tombstoneKey(kind)));
+  const v = rows[0]?.value;
+  return new Set(Array.isArray(v) ? v.map(String) : []);
+}
+async function addTombstones(kind, ids) {
+  if (!Array.isArray(ids) || !ids.length) return;
+  const key = tombstoneKey(kind);
+  const rows = await db.select().from(settings).where(eq4(settings.key, key));
+  const old = Array.isArray(rows[0]?.value) ? rows[0].value.map(String) : [];
+  const next = Array.from(/* @__PURE__ */ new Set([...old, ...ids.map((x) => String(x || "").trim()).filter(Boolean)])).slice(-5e3);
+  if (rows[0]) await db.update(settings).set({ value: next }).where(eq4(settings.key, key));
+  else await db.insert(settings).values({ key, value: next });
+}
+async function resolveShiftId(value) {
+  const requested = String(value ?? "").trim();
+  if (requested) {
+    const exact = await db.select().from(shifts).where(eq4(shifts.id, requested));
+    if (exact[0]) return exact[0].id;
+  }
+  if (!requested || requested === "shift-1") {
+    const standard = await db.select().from(shifts).where(and2(eq4(shifts.startTime, "09:00"), eq4(shifts.endTime, "17:00")));
+    if (standard[0]) return standard[0].id;
+  }
+  return requested || null;
+}
+async function upsert(table, id, values, existing) {
+  if (!existing) return db.insert(table).values(values);
+  const incoming = ms(values.updatedAt), current = ms(existing.updatedAt || existing.createdAt);
+  if (!incoming) return;
+  if (!current || incoming >= current) return db.update(table).set(values).where(eq4(table.id, id));
+}
+async function upsertEmployee(e, syncTime) {
+  if (!e?.id) return;
+  const id = String(e.id), v = pick(e, ["id", "code", "nameAr", "nameEn", "avatar", "email", "phone", "department", "jobTitleAr", "jobTitleEn", "shiftId", "pin", "role", "joinedDate", "status", "annualLeaveBalance", "casualLeaveBalance", "regularLeaveBalance", "sickLeaveBalance", "isPhotoRemoved", "updatedAt"]);
+  v.shiftId = await resolveShiftId(v.shiftId);
+  v.updatedAt = newestStamp(e, syncTime);
+  const a = await db.select().from(employees).where(eq4(employees.id, id));
+  if (!a[0]) {
+    await db.insert(employees).values(v);
+    return;
+  }
+  await upsert(employees, id, v, a[0]);
+}
+async function upsertAttendance(r, syncTime, tombs) {
+  if (!r?.employeeId || !r?.date) return;
+  const employeeId = String(r.employeeId), date = String(r.date).slice(0, 10), v = pick(r, ["id", "employeeId", "date", "checkIn", "checkOut", "breakStart", "breakEnd", "breaks", "totalBreakSeconds", "location", "deviceInfo", "lateMinutes", "lateSeconds", "earlyLeaveMinutes", "workHours", "overtimeHours", "minusHours", "status", "leaveType", "notes", "verifiedByFace", "isExcused", "excusedBy", "excusedReason", "updatedAt", "isExplicitCancelCheckOut"]);
+  if (v.id && tombs.has(String(v.id))) return;
+  v.employeeId = employeeId;
+  v.date = date;
+  v.updatedAt = newestStamp(r, syncTime);
+  const a = await db.select().from(attendanceRecords).where(and2(eq4(attendanceRecords.employeeId, employeeId), eq4(attendanceRecords.date, date)));
+  if (!a[0]) {
+    await db.insert(attendanceRecords).values(v);
+    return;
+  }
+  const incoming = ms(v.updatedAt), current = ms(a[0].updatedAt || a[0].createdAt);
+  if (current && incoming < current) return;
+  await db.update(attendanceRecords).set(v).where(eq4(attendanceRecords.id, a[0].id));
+}
+async function upsertLeave(r, syncTime, tombs) {
+  if (!r?.id || !r?.employeeId) return;
+  const id = String(r.id);
+  if (tombs.has(id)) return;
+  const v = pick(r, ["id", "employeeId", "type", "startDate", "endDate", "reason", "status", "createdAt", "updatedAt", "hours", "permissionSlot", "attachmentUrl", "attachmentName", "reviewedBy", "reviewNotes"]);
+  v.updatedAt = newestStamp(r, syncTime);
+  const a = await db.select().from(leaveRequests).where(eq4(leaveRequests.id, id));
+  if (!a[0]) {
+    await db.insert(leaveRequests).values(v);
+    return;
+  }
+  await upsert(leaveRequests, id, v, a[0]);
+}
+async function upsertOvertime(r, syncTime) {
+  if (!r?.id || !r?.employeeId) return;
+  const id = String(r.id), v = pick(r, ["id", "employeeId", "date", "type", "durationSeconds", "reason", "status", "reviewedBy", "reviewNotes", "createdAt", "updatedAt"]);
+  v.updatedAt = newestStamp(r, syncTime);
+  const a = await db.select().from(overtimeRequests).where(eq4(overtimeRequests.id, id));
+  if (!a[0]) {
+    await db.insert(overtimeRequests).values(v);
+    return;
+  }
+  await upsert(overtimeRequests, id, v, a[0]);
+}
+async function upsertShift(r, syncTime, tombs) {
+  if (!r?.id || !r?.name && !r?.nameAr && !r?.nameEn || !r?.startTime || !r?.endTime) return;
+  const id = String(r.id);
+  if (tombs?.has(id)) return;
+  const v = pick(r, ["id", "name", "nameAr", "nameEn", "startTime", "endTime", "durationMinutes", "breakMinutes", "gracePeriodMinutes", "overtimeEnabled", "isOvernight", "createdAt", "updatedAt"]);
+  v.name = String(r.name || r.nameEn || r.nameAr || id);
+  v.durationMinutes = Number(v.durationMinutes || 480);
+  v.breakMinutes = Number(v.breakMinutes || 0);
+  v.gracePeriodMinutes = Number(v.gracePeriodMinutes || 0);
+  v.overtimeEnabled = Boolean(v.overtimeEnabled);
+  v.isOvernight = Boolean(v.isOvernight || String(v.startTime) > String(v.endTime));
+  v.updatedAt = newestStamp(r, syncTime);
+  delete v.nameAr;
+  delete v.nameEn;
+  const a = await db.select().from(shifts).where(eq4(shifts.id, id));
+  if (!a[0]) await db.insert(shifts).values(v);
+  else await upsert(shifts, id, v, a[0]);
+  if (r.breaks !== void 0) {
+    const rows = await db.select().from(settings).where(eq4(settings.key, "shiftBreaks"));
+    const map = rows[0]?.value && typeof rows[0].value === "object" && !Array.isArray(rows[0].value) ? { ...rows[0].value } : {};
+    map[id] = Array.isArray(r.breaks) ? r.breaks : [];
+    await setting("shiftBreaks", map, syncTime);
+  }
+}
+async function upsertAssignment(r, syncTime) {
+  if (!r?.id || !r?.employeeId || !r?.scheduleDate) return;
+  const id = String(r.id), v = pick(r, ["id", "employeeId", "scheduleDate", "shiftTemplateId", "customStartTime", "customEndTime", "durationMinutes", "status", "createdAt", "updatedAt", "version"]);
+  v.updatedAt = newestStamp(r, syncTime);
+  const a = await db.select().from(employeeShiftAssignments).where(eq4(employeeShiftAssignments.id, id));
+  if (!a[0]) {
+    await db.insert(employeeShiftAssignments).values(v);
+    return;
+  }
+  await upsert(employeeShiftAssignments, id, v, a[0]);
+}
+function collectionKey(x, index) {
+  if (x?.id != null) return `id:${String(x.id)}`;
+  if (x?.employeeId != null && x?.date != null) return `employee-date:${String(x.employeeId)}:${String(x.date)}`;
+  if (x?.employeeId != null && x?.scheduleDate != null) return `employee-schedule:${String(x.employeeId)}:${String(x.scheduleDate)}`;
+  return `index:${index}`;
+}
+function mergeCollection(existing, incoming) {
+  const oldItems = Array.isArray(existing) ? existing : [], newItems = Array.isArray(incoming) ? incoming : [], map = /* @__PURE__ */ new Map();
+  oldItems.forEach((x, i) => map.set(collectionKey(x, i), x));
+  newItems.forEach((x, i) => {
+    const key = collectionKey(x, i), old = map.get(key);
+    if (!old) {
+      map.set(key, x);
+      return;
     }
-    if (!e.updatedAt && !e.lastUpdated) {
-      return existing;
-    }
-  }
-  const now = e.updatedAt || (/* @__PURE__ */ new Date()).toISOString();
-  const finalValue = {
-    ...v,
-    updatedAt: now
-  };
-  if (!existing) {
-    const [inserted] = await db.insert(employees).values(finalValue).returning();
-    return inserted;
-  }
-  const [updated] = await db.update(employees).set(finalValue).where(
-    sql`${employees.id} = ${id}`
-  ).returning();
-  return updated;
-}
-async function findAttendance(employeeId, date) {
-  const rows = await db.select().from(
-    attendanceRecords
-  ).where(
-    sql`
-          ${attendanceRecords.employeeId}
-          = ${employeeId}
-          AND
-          ${attendanceRecords.date}
-          = ${date}
-        `
-  );
-  return rows[0] || null;
-}
-async function attendanceUpsert(r) {
-  const hasIncomingUpdatedAt = Boolean(
-    r?.updatedAt && String(r.updatedAt).trim()
-  );
-  const employeeId = String(r.employeeId);
-  const date = String(r.date);
-  const existing = await findAttendance(
-    employeeId,
-    date
-  );
-  if (existing && !hasIncomingUpdatedAt) {
-    console.log(
-      "BLOCKED ATTENDANCE WITHOUT TIMESTAMP:",
-      employeeId,
-      date
-    );
-    return existing;
-  }
-  const source = {
-    ...r,
-    updatedAt: hasIncomingUpdatedAt ? r.updatedAt : (/* @__PURE__ */ new Date()).toISOString()
-  };
-  r = sanitize(source);
-  const v = {
-    id: String(
-      r.id || `rec-${norm(employeeId)}-${date}`
-    ),
-    employeeId,
-    date,
-    checkIn: r.checkIn ?? null,
-    checkOut: r.checkOut ?? null,
-    breakStart: r.breakStart ?? null,
-    breakEnd: r.breakEnd ?? null,
-    breaks: r.breaks ?? null,
-    totalBreakSeconds: Number(
-      r.totalBreakSeconds ?? 0
-    ),
-    location: r.location ?? null,
-    deviceInfo: r.deviceInfo ?? null,
-    lateMinutes: Number(
-      r.lateMinutes ?? 0
-    ),
-    lateSeconds: Number(
-      r.lateSeconds ?? 0
-    ),
-    earlyLeaveMinutes: Number(
-      r.earlyLeaveMinutes ?? 0
-    ),
-    workHours: Number(
-      r.workHours ?? 0
-    ),
-    overtimeHours: Number(
-      r.overtimeHours ?? 0
-    ),
-    minusHours: Number(
-      r.minusHours ?? 0
-    ),
-    status: r.status ?? null,
-    leaveType: r.leaveType ?? null,
-    notes: r.notes ?? null,
-    verifiedByFace: Boolean(
-      r.verifiedByFace
-    ),
-    isExcused: Boolean(
-      r.isExcused
-    ),
-    excusedBy: r.excusedBy ?? null,
-    excusedReason: r.excusedReason ?? null,
-    updatedAt: r.updatedAt,
-    isExplicitCancelCheckOut: Boolean(
-      r.isExplicitCancelCheckOut
-    )
-  };
-  if (!existing) {
-    const [inserted] = await db.insert(
-      attendanceRecords
-    ).values(v).returning();
-    return inserted;
-  }
-  const incomingTime = new Date(
-    v.updatedAt
-  ).getTime();
-  const existingTime = new Date(
-    existing.updatedAt || 0
-  ).getTime();
-  if (Number.isFinite(existingTime) && Number.isFinite(incomingTime) && incomingTime <= existingTime) {
-    console.log(
-      "BLOCKED OLD ATTENDANCE:",
-      employeeId,
-      date,
-      "existing:",
-      existing.updatedAt,
-      "incoming:",
-      v.updatedAt
-    );
-    return existing;
-  }
-  const [updated] = await db.update(
-    attendanceRecords
-  ).set({
-    ...v,
-    id: existing.id
-  }).where(
-    sql`
-          ${attendanceRecords.id}
-          = ${existing.id}
-        `
-  ).returning();
-  return updated;
-}
-async function leaveUpsert(x) {
-  const hasIncomingUpdatedAt = Boolean(
-    x?.updatedAt && String(x.updatedAt).trim()
-  );
-  const incoming = normalizeLeave({
-    ...x,
-    updatedAt: hasIncomingUpdatedAt ? x.updatedAt : x.createdAt || (/* @__PURE__ */ new Date()).toISOString()
+    const incomingTs = ms(x?.updatedAt || x?.createdAt), oldTs = ms(old?.updatedAt || old?.createdAt);
+    if (!incomingTs || !oldTs || incomingTs >= oldTs) map.set(key, x);
   });
-  const id = String(incoming.id);
-  const existingRows = await db.select().from(
-    leaveRequests
-  ).where(
-    sql`
-          ${leaveRequests.id}
-          = ${id}
-        `
-  );
-  const existing = existingRows[0];
-  if (!existing) {
-    await db.insert(
-      leaveRequests
-    ).values(
-      incoming
-    );
-    return;
-  }
-  if (!hasIncomingUpdatedAt) {
-    console.log(
-      "BLOCKED LEAVE WITHOUT TIMESTAMP:",
-      id
-    );
-    return;
-  }
-  const currentStatus = String(
-    existing.status || "pending"
-  ).toLowerCase();
-  const incomingStatus = String(
-    incoming.status || "pending"
-  ).toLowerCase();
-  if (incomingStatus === "pending" && (currentStatus === "approved" || currentStatus === "rejected")) {
-    console.log(
-      "BLOCKED OLD PENDING LEAVE:",
-      id,
-      "current:",
-      currentStatus,
-      "incoming:",
-      incomingStatus
-    );
-    return;
-  }
-  const incomingTime = new Date(
-    incoming.updatedAt
-  ).getTime();
-  const existingTime = new Date(
-    existing.updatedAt || existing.createdAt || 0
-  ).getTime();
-  if (Number.isFinite(existingTime) && Number.isFinite(incomingTime) && incomingTime <= existingTime) {
-    console.log(
-      "BLOCKED OLD LEAVE:",
-      id,
-      "existing:",
-      existing.updatedAt,
-      "incoming:",
-      incoming.updatedAt
-    );
-    return;
-  }
-  await db.update(
-    leaveRequests
-  ).set(
-    incoming
-  ).where(
-    sql`
-        ${leaveRequests.id}
-        = ${id}
-      `
-  );
+  return Array.from(map.values());
 }
-async function overtimeUpsert(x) {
-  const hasIncomingUpdatedAt = Boolean(
-    x?.updatedAt && String(x.updatedAt).trim()
-  );
-  const id = String(x.id);
-  const employeeId = String(x.employeeId);
-  const date = String(x.date);
-  const existingRows = await db.select().from(
-    overtimeRequests
-  ).where(
-    sql`
-          ${overtimeRequests.id}
-          = ${id}
-        `
-  );
-  const existing = existingRows[0];
-  const v = {
-    id,
-    employeeId,
-    date,
-    type: String(
-      x.type || "overtime"
-    ),
-    durationSeconds: Number(
-      x.durationSeconds || 0
-    ),
-    reason: x.reason ?? null,
-    status: x.status ?? "pending",
-    reviewedBy: x.reviewedBy ?? null,
-    reviewNotes: x.reviewNotes ?? null,
-    createdAt: x.createdAt || (/* @__PURE__ */ new Date()).toISOString(),
-    updatedAt: hasIncomingUpdatedAt ? x.updatedAt : (/* @__PURE__ */ new Date()).toISOString()
-  };
-  if (existing && !hasIncomingUpdatedAt) {
-    console.log(
-      "BLOCKED OLD OVERTIME WITHOUT TIMESTAMP:",
-      id
-    );
-    return existing;
-  }
-  if (existing) {
-    const incomingTime = new Date(
-      v.updatedAt
-    ).getTime();
-    const existingTime = new Date(
-      existing.updatedAt || existing.createdAt || 0
-    ).getTime();
-    if (Number.isFinite(
-      existingTime
-    ) && Number.isFinite(
-      incomingTime
-    ) && incomingTime <= existingTime) {
-      console.log(
-        "BLOCKED OLD OVERTIME:",
-        id,
-        "existing:",
-        existing.updatedAt,
-        "incoming:",
-        v.updatedAt
-      );
-      return existing;
+async function setting(k, v, updatedAt) {
+  const a = await db.select().from(settings).where(eq4(settings.key, k)), isCollection = k === "dailyShiftAssignments" || k === "shiftSwapRequests";
+  if (!a[0]) {
+    await db.insert(settings).values({ key: k, value: v });
+    if (isCollection) {
+      const stampKey2 = `__sync_updated_at:${k}`, next2 = stamp(updatedAt);
+      await db.insert(settings).values({ key: stampKey2, value: next2 });
     }
+    return;
   }
-  if (!existing) {
-    const [inserted] = await db.insert(
-      overtimeRequests
-    ).values(
-      v
-    ).returning();
-    return inserted;
+  const stampKey = `__sync_updated_at:${k}`, ts = ms(updatedAt);
+  if (isCollection) {
+    await db.update(settings).set({ value: mergeCollection(a[0].value, v) }).where(eq4(settings.key, k));
+    const next2 = stamp(updatedAt);
+    const t2 = await db.select().from(settings).where(eq4(settings.key, stampKey));
+    if (!t2[0]) await db.insert(settings).values({ key: stampKey, value: next2 });
+    else await db.update(settings).set({ value: next2 }).where(eq4(settings.key, stampKey));
+    return;
   }
-  const [updated] = await db.update(
-    overtimeRequests
-  ).set(
-    v
-  ).where(
-    sql`
-          ${overtimeRequests.id}
-          = ${id}
-        `
-  ).returning();
-  return updated;
+  if (!ts) return;
+  const t = await db.select().from(settings).where(eq4(settings.key, stampKey)), current = ms(t[0]?.value);
+  if (current && ts < current) return;
+  await db.update(settings).set({ value: v }).where(eq4(settings.key, k));
+  const next = stamp(updatedAt);
+  if (!t[0]) await db.insert(settings).values({ key: stampKey, value: next });
+  else await db.update(settings).set({ value: next }).where(eq4(settings.key, stampKey));
 }
-async function data() {
-  const [
-    employees2,
-    attendanceRecords2,
-    leaveRequests2,
-    overtimeRequests2,
-    shifts2,
-    settings2
-  ] = await Promise.all([
-    db.select().from(employees),
-    db.select().from(
-      attendanceRecords
-    ),
-    db.select().from(
-      leaveRequests
-    ),
-    db.select().from(
-      overtimeRequests
-    ),
-    db.select().from(shifts),
-    db.select().from(settings)
-  ]);
-  localState.employees = employees2;
-  localState.shifts = shifts2;
-  localState.leaveRequests = leaveRequests2.map(
-    normalizeLeave
-  );
-  localState.overtimeRequests = overtimeRequests2;
-  localState.attendanceRecords = attendanceRecords2.map(
-    sanitize
-  );
-  for (const s of settings2) {
-    if (s.key === "companyNameAr") {
-      localState.companyNameAr = s.value;
+async function del(t, ids, kind) {
+  if (!Array.isArray(ids)) return;
+  const clean5 = ids.map((x) => String(x || "").trim()).filter(Boolean);
+  if (!clean5.length) return;
+  await addTombstones(kind, clean5);
+  for (const id of clean5) await db.delete(t).where(eq4(t.id, id));
+}
+async function snapshot() {
+  const [employees2, attendanceRecords2, leaveRequests2, overtimeRequests2, shifts2, settings2] = await Promise.all([db.select().from(employees), db.select().from(attendanceRecords), db.select().from(leaveRequests), db.select().from(overtimeRequests), db.select().from(shifts), db.select().from(settings)]);
+  let employeeShiftAssignments2 = [];
+  try {
+    employeeShiftAssignments2 = await db.select().from(employeeShiftAssignments);
+  } catch (e) {
+    console.warn("[device-sync-v2] employee_shift_assignments table unavailable; continuing with settings-based schedule sync", e);
+  }
+  const m = new Map(settings2.filter((s) => !String(s.key).startsWith("__sync_updated_at:") && !String(s.key).startsWith("__sync_deleted_ids:")).map((s) => [s.key, s.value]));
+  const breakMap = m.get("shiftBreaks") && typeof m.get("shiftBreaks") === "object" && !Array.isArray(m.get("shiftBreaks")) ? m.get("shiftBreaks") : {};
+  const decorate = (x) => ({ ...x, breaks: Array.isArray(x?.breaks) ? x.breaks : Array.isArray(breakMap[String(x?.id)]) ? breakMap[String(x?.id)] : [] });
+  const rawTemplates = m.get("shiftTemplates");
+  const templateValue = Array.isArray(rawTemplates) && rawTemplates.length === 1 && rawTemplates[0] && typeof rawTemplates[0] === "object" && rawTemplates[0].value ? rawTemplates[0].value : rawTemplates;
+  const effectiveShifts = (shifts2.length ? shifts2 : (Array.isArray(templateValue) ? templateValue : []).map((x) => ({ ...x, name: String(x?.name || x?.nameEn || x?.nameAr || x?.id || ""), durationMinutes: Number(x?.durationMinutes || 480), gracePeriodMinutes: Number(x?.gracePeriodMinutes || 0) }))).map(decorate);
+  const shiftIds = new Set(effectiveShifts.map((s) => String(s.id)));
+  const fallbackShift = effectiveShifts[0]?.id || null;
+  const normalizedEmployees = employees2.map((e) => ({ ...e, shiftId: e.shiftId && shiftIds.has(String(e.shiftId)) ? e.shiftId : fallbackShift }));
+  const all = [...employees2, ...attendanceRecords2, ...leaveRequests2, ...overtimeRequests2, ...shifts2, ...employeeShiftAssignments2];
+  const syncSettingTimes = settings2.filter((s) => String(s.key).startsWith("__sync_updated_at:")).map((s) => ms(s.value));
+  const lastUpdated = Math.max(0, ...all.map((x) => ms(x?.updatedAt || x?.createdAt)), ...syncSettingTimes);
+  return { success: true, employees: normalizedEmployees, attendanceRecords: attendanceRecords2, leaveRequests: leaveRequests2, overtimeRequests: overtimeRequests2, shifts: effectiveShifts, dailyShiftAssignments: Array.isArray(m.get("dailyShiftAssignments")) ? m.get("dailyShiftAssignments") : [], shiftSwapRequests: Array.isArray(m.get("shiftSwapRequests")) ? m.get("shiftSwapRequests") : [], companyNameAr: m.get("companyNameAr") ?? null, companyNameEn: m.get("companyNameEn") ?? null, urgentNotice: m.get("urgentNotice") ?? null, employeeShiftAssignments: employeeShiftAssignments2, lastUpdated };
+}
+function registerDeviceSyncV2(app2) {
+  app2.use(async (req, res, next) => {
+    if (!hasDatabase3()) return next();
+    if (req.method !== "GET" && req.method !== "POST") return next();
+    const dataPath = isDataPath(req), syncPath = isSyncPath(req);
+    if (!dataPath && !syncPath) return next();
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+    try {
+      if (req.method === "GET" && dataPath) return res.json(await snapshot());
+      if (req.method !== "POST" || !syncPath) return next();
+      const b = req.body || {}, has = ["employees", "attendanceRecords", "leaveRequests", "overtimeRequests", "shifts", "employeeShiftAssignments", "dailyShiftAssignments", "shiftSwapRequests", "companyNameAr", "companyNameEn", "urgentNotice", "deletedAttendanceIds", "deletedEmployeeIds", "deletedLeaveIds", "deletedShiftIds"].some((k) => b[k] !== void 0);
+      if (!has) return res.json(await snapshot());
+      const syncTime = stamp(b.lastUpdated || Date.now());
+      const attendanceTombs = await getTombstones("attendance"), leaveTombs = await getTombstones("leave"), shiftTombs = await getTombstones("shift");
+      for (const e of Array.isArray(b.employees) ? b.employees : []) await upsertEmployee(e, syncTime);
+      for (const r of Array.isArray(b.attendanceRecords) ? b.attendanceRecords : []) await upsertAttendance(r, syncTime, attendanceTombs);
+      for (const r of Array.isArray(b.leaveRequests) ? b.leaveRequests : []) await upsertLeave(r, syncTime, leaveTombs);
+      for (const r of Array.isArray(b.overtimeRequests) ? b.overtimeRequests : []) await upsertOvertime(r, syncTime);
+      for (const s of Array.isArray(b.shifts) ? b.shifts : []) await upsertShift(s, syncTime, shiftTombs);
+      for (const a of Array.isArray(b.employeeShiftAssignments) ? b.employeeShiftAssignments : []) await upsertAssignment(a, syncTime);
+      if (Array.isArray(b.dailyShiftAssignments)) await setting("dailyShiftAssignments", b.dailyShiftAssignments, syncTime);
+      if (Array.isArray(b.shiftSwapRequests)) await setting("shiftSwapRequests", b.shiftSwapRequests, syncTime);
+      if (b.companyNameAr !== void 0) await setting("companyNameAr", b.companyNameAr, syncTime);
+      if (b.companyNameEn !== void 0) await setting("companyNameEn", b.companyNameEn, syncTime);
+      if (b.urgentNotice !== void 0) await setting("urgentNotice", b.urgentNotice, syncTime);
+      await del(attendanceRecords, b.deletedAttendanceIds, "attendance");
+      await del(employees, b.deletedEmployeeIds, "employee");
+      await del(shifts, b.deletedShiftIds, "shift");
+      if (Array.isArray(b.deletedShiftIds) && b.deletedShiftIds.length) {
+        const rows = await db.select().from(settings).where(eq4(settings.key, "shiftBreaks"));
+        const map = rows[0]?.value && typeof rows[0].value === "object" && !Array.isArray(rows[0].value) ? { ...rows[0].value } : {};
+        for (const id of b.deletedShiftIds.map((x) => String(x))) delete map[id];
+        await setting("shiftBreaks", map, syncTime);
+      }
+      await del(employees, b.deletedEmployeeIds, "employee");
+      await del(leaveRequests, b.deletedLeaveIds, "leave");
+      return res.json(await snapshot());
+    } catch (e) {
+      console.error("[device-sync-v2]", e);
+      return res.status(500).json({ success: false, error: "Cross-device sync failed" });
     }
-    if (s.key === "companyNameEn") {
-      localState.companyNameEn = s.value;
+  });
+}
+
+// server/schedule-sync-guard.ts
+import { eq as eq5 } from "drizzle-orm";
+var apiPath2 = (req) => String(req.path || req.originalUrl || req.url || "").split("?")[0].replace(/\/+$/, "") || "/";
+var isSyncPath2 = (req) => ["/api/sync", "/sync"].includes(apiPath2(req));
+var isSchedulePayload = (body) => Array.isArray(body?.dailyShiftAssignments);
+var asBoolean = (value) => {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value !== 0;
+  const normalized = String(value ?? "").trim().toLowerCase();
+  return normalized === "true" || normalized === "1" || normalized === "yes" || normalized === "off";
+};
+var dateKey = (value) => {
+  const raw = String(value ?? "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toISOString().slice(0, 10);
+};
+var timeMs = (value) => {
+  const t = new Date(String(value ?? "")).getTime();
+  return Number.isFinite(t) ? t : 0;
+};
+function normalizeAssignment(item, assignedBy, fallbackUpdatedAt) {
+  const employeeId = String(item?.employeeId ?? item?.employee_id ?? "").trim();
+  const date = dateKey(item?.date ?? item?.scheduleDate ?? item?.schedule_date);
+  const rawShift = String(item?.shiftId ?? item?.shift_id ?? "").trim();
+  const status = String(item?.status ?? "").trim().toUpperCase();
+  const clear = Boolean(item?.clear || item?.isClear || item?.is_clear || status === "CLEAR");
+  const isOffDay = !clear && !rawShift && (asBoolean(item?.isOffDay ?? item?.is_off_day) || status === "OFF");
+  const shiftId = clear || isOffDay ? null : rawShift || null;
+  const rawUpdatedAt = item?.updatedAt ?? item?.updated_at ?? fallbackUpdatedAt ?? "";
+  return { employeeId, date, shiftId, isOffDay, clear, assignedBy: String(item?.assignedBy ?? item?.assigned_by ?? assignedBy ?? "").trim() || void 0, updatedAt: rawUpdatedAt ? String(rawUpdatedAt) : "" };
+}
+function mergeAssignments(existing, incoming) {
+  const map = /* @__PURE__ */ new Map();
+  for (const item of Array.isArray(existing) ? existing : []) {
+    const normalized = normalizeAssignment(item);
+    if (normalized.employeeId && normalized.date) map.set(`${normalized.employeeId}:${normalized.date}`, normalized);
+  }
+  let ignoredStale = 0;
+  for (const item of incoming) {
+    const normalized = normalizeAssignment(item);
+    if (!normalized.employeeId || !normalized.date) continue;
+    const key = `${normalized.employeeId}:${normalized.date}`;
+    const current = map.get(key);
+    if (current && !normalized.updatedAt) {
+      ignoredStale += 1;
+      continue;
     }
-    if (s.key === "urgentNotice") {
-      localState.urgentNotice = s.value;
+    if (current?.updatedAt && normalized.updatedAt && timeMs(normalized.updatedAt) < timeMs(current.updatedAt)) {
+      ignoredStale += 1;
+      continue;
+    }
+    if (normalized.clear) map.delete(key);
+    else map.set(key, normalized);
+  }
+  return { assignments: Array.from(map.values()), ignoredStale };
+}
+function registerScheduleSyncGuard(app2) {
+  app2.use(async (req, res, next) => {
+    const scheduleRequest = req.method === "POST" && isSyncPath2(req) && isSchedulePayload(req.body);
+    if (!scheduleRequest) return next();
+    try {
+      const incoming = req.body.dailyShiftAssignments.map((item) => normalizeAssignment(item, req.body?.assignedBy, item?.updatedAt ?? item?.updated_at));
+      const invalid = incoming.find((item) => !item.employeeId || !/^\d{4}-\d{2}-\d{2}$/.test(item.date) || !item.isOffDay && !item.shiftId && !item.clear);
+      if (invalid) return res.status(400).json({ success: false, code: "INVALID_SCHEDULE_PAYLOAD", message: "Each schedule assignment requires employee_id, YYYY-MM-DD date, shift_id, OFF, or CLEAR." });
+      const settingsRows = await db.select().from(settings).where(eq5(settings.key, "dailyShiftAssignments"));
+      const { assignments: merged } = mergeAssignments(settingsRows[0]?.value, incoming);
+      req.body = { ...req.body, dailyShiftAssignments: void 0, __authoritativeScheduleSnapshot: merged };
+      return next();
+    } catch (error) {
+      console.error("[schedule-sync] DATABASE PREPROCESS FAILED:", error);
+      return res.status(500).json({ success: false, code: "SCHEDULE_DATABASE_PREPROCESS_FAILED", message: error?.message || "Schedule database preprocessing failed." });
+    }
+  });
+}
+
+// server/schedule-sync-direct.ts
+import { eq as eq6 } from "drizzle-orm";
+var asBoolean2 = (value) => {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value !== 0;
+  const normalized = String(value ?? "").trim().toLowerCase();
+  return normalized === "true" || normalized === "1" || normalized === "yes" || normalized === "off";
+};
+var normalizeAssignment2 = (item) => {
+  const employeeId = String(item?.employeeId ?? item?.employee_id ?? "").trim();
+  const date = String(item?.date ?? item?.scheduleDate ?? item?.schedule_date ?? "").slice(0, 10);
+  const rawShiftId = String(item?.shiftId ?? item?.shift_id ?? "").trim();
+  const status = String(item?.status ?? "").trim().toUpperCase();
+  const clear = Boolean(item?.clear || item?.isClear || item?.is_clear || status === "CLEAR");
+  const isOffDay = !clear && !rawShiftId && (asBoolean2(item?.isOffDay ?? item?.is_off_day) || status === "OFF");
+  const shiftId = clear || isOffDay ? "" : rawShiftId;
+  return { employeeId, date, shiftId, isOffDay, clear, assignedBy: item?.assignedBy ?? item?.assigned_by, updatedAt: item?.updatedAt ?? item?.updated_at };
+};
+var normalizePattern = (item) => ({
+  id: String(item?.id ?? "").trim(),
+  name: String(item?.name ?? "").trim(),
+  shiftIds: Array.isArray(item?.shiftIds) ? item.shiftIds.map((x) => String(x)).filter(Boolean) : [],
+  createdAt: String(item?.createdAt ?? item?.created_at ?? (/* @__PURE__ */ new Date()).toISOString()),
+  updatedAt: String(item?.updatedAt ?? item?.updated_at ?? (/* @__PURE__ */ new Date()).toISOString())
+});
+var normalizePatternItem = (item) => ({ id: String(item?.id ?? "").trim(), patternId: String(item?.patternId ?? item?.pattern_id ?? "").trim(), shiftId: String(item?.shiftId ?? item?.shift_id ?? "").trim(), sequence: Number(item?.sequence ?? 0) });
+async function persistRotationPatterns(patterns, items) {
+  for (const raw of patterns) {
+    const p = normalizePattern(raw);
+    if (!p.id || !p.name) continue;
+    const existing = await db.select().from(rotationPatterns).where(eq6(rotationPatterns.id, p.id));
+    if (existing[0]) await db.update(rotationPatterns).set(p).where(eq6(rotationPatterns.id, p.id));
+    else await db.insert(rotationPatterns).values(p);
+  }
+  for (const raw of items) {
+    const item = normalizePatternItem(raw);
+    if (!item.id || !item.patternId || !item.shiftId) continue;
+    const existing = await db.select().from(rotationPatternItems).where(eq6(rotationPatternItems.id, item.id));
+    if (existing[0]) await db.update(rotationPatternItems).set(item).where(eq6(rotationPatternItems.id, item.id));
+    else await db.insert(rotationPatternItems).values(item);
+  }
+}
+async function deleteRotationRows(patternIds, itemIds) {
+  for (const id of (Array.isArray(itemIds) ? itemIds : []).map(String).filter(Boolean)) await db.delete(rotationPatternItems).where(eq6(rotationPatternItems.id, id));
+  for (const id of (Array.isArray(patternIds) ? patternIds : []).map(String).filter(Boolean)) {
+    await db.delete(rotationPatternItems).where(eq6(rotationPatternItems.patternId, id));
+    await db.delete(rotationPatterns).where(eq6(rotationPatterns.id, id));
+  }
+}
+async function rotationSnapshot() {
+  const [patterns, items] = await Promise.all([db.select().from(rotationPatterns), db.select().from(rotationPatternItems)]);
+  return { rotationPatterns: patterns, rotationPatternItems: items };
+}
+function registerDirectScheduleSync(app2) {
+  app2.get("/api/rotation-patterns", async (_req, res) => {
+    try {
+      return res.json({ success: true, ...await rotationSnapshot() });
+    } catch (error) {
+      console.error("[rotation-patterns] GET failed", error);
+      return res.status(500).json({ success: false, error: "ROTATION_PATTERNS_READ_FAILED" });
+    }
+  });
+  app2.post("/api/rotation-patterns", async (req, res) => {
+    try {
+      await persistRotationPatterns(Array.isArray(req.body?.rotationPatterns) ? req.body.rotationPatterns : req.body?.pattern ? [req.body.pattern] : [], Array.isArray(req.body?.rotationPatternItems) ? req.body.rotationPatternItems : []);
+      await deleteRotationRows(req.body?.deletedRotationPatternIds, req.body?.deletedRotationPatternItemIds);
+      return res.json({ success: true, ...await rotationSnapshot() });
+    } catch (error) {
+      console.error("[rotation-patterns] POST failed", error);
+      return res.status(500).json({ success: false, error: "ROTATION_PATTERNS_SAVE_FAILED" });
+    }
+  });
+  app2.use(async (req, res, next) => {
+    const pathName = String(req.path || "").split("?")[0];
+    if (req.method !== "POST" || !["/api/sync", "/sync"].includes(pathName)) return next();
+    const body = req.body || {};
+    const hasRotationPayload = Array.isArray(body.rotationPatterns) || Array.isArray(body.rotationPatternItems) || Array.isArray(body.deletedRotationPatternIds) || Array.isArray(body.deletedRotationPatternItemIds);
+    if (!hasRotationPayload) return next();
+    try {
+      await persistRotationPatterns(body.rotationPatterns || [], body.rotationPatternItems || []);
+      await deleteRotationRows(body.deletedRotationPatternIds, body.deletedRotationPatternItemIds);
+      return next();
+    } catch (error) {
+      console.error("[rotation-sync] persistence failed", error);
+      return res.status(500).json({ success: false, error: "Rotation sync failed" });
+    }
+  });
+  app2.post("/api/schedule-sync", async (req, res) => {
+    const requestId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    try {
+      console.log(`[schedule-sync] ${requestId} POST received`, { count: Array.isArray(req.body?.dailyShiftAssignments) ? req.body.dailyShiftAssignments.length : -1 });
+      if (!Array.isArray(req.body?.dailyShiftAssignments)) return res.status(400).json({ success: false, error: "dailyShiftAssignments must be an array" });
+      const received = req.body.dailyShiftAssignments.map(normalizeAssignment2).filter((x) => x.employeeId && /^\d{4}-\d{2}-\d{2}$/.test(x.date));
+      const stamp2 = (/* @__PURE__ */ new Date()).toISOString();
+      const incoming = received.map((x) => ({ ...x, updatedAt: x.updatedAt || stamp2 }));
+      const existingRows = await db.select().from(settings).where(eq6(settings.key, "dailyShiftAssignments"));
+      const existing = Array.isArray(existingRows[0]?.value) ? existingRows[0].value.map(normalizeAssignment2) : [];
+      const merged = /* @__PURE__ */ new Map();
+      for (const row of existing) if (row.employeeId && row.date) merged.set(`${row.employeeId}|${row.date}`, row);
+      for (const row of incoming) {
+        const key = `${row.employeeId}|${row.date}`;
+        const previous = merged.get(key);
+        const previousTime = Date.parse(String(previous?.updatedAt || ""));
+        const incomingTime = Date.parse(String(row.updatedAt || stamp2));
+        if (!previous || !Number.isFinite(previousTime) || !Number.isFinite(incomingTime) || incomingTime >= previousTime) {
+          if (row.clear) merged.delete(key);
+          else merged.set(key, row);
+        }
+      }
+      const assignments = Array.from(merged.values()).map((row) => ({ employeeId: row.employeeId, date: row.date, shiftId: row.shiftId || "", isOffDay: Boolean(row.isOffDay), assignedBy: row.assignedBy, updatedAt: row.updatedAt || stamp2 }));
+      if (existingRows[0]) await db.update(settings).set({ value: assignments }).where(eq6(settings.key, "dailyShiftAssignments"));
+      else await db.insert(settings).values({ key: "dailyShiftAssignments", value: assignments });
+      const stampKey = "__sync_updated_at:dailyShiftAssignments";
+      const stampRow = await db.select().from(settings).where(eq6(settings.key, stampKey));
+      if (stampRow[0]) await db.update(settings).set({ value: stamp2 }).where(eq6(settings.key, stampKey));
+      else await db.insert(settings).values({ key: stampKey, value: stamp2 });
+      console.log(`[schedule-sync] ${requestId} saved`, { received: received.length, total: assignments.length });
+      return res.json({ success: true, dailyShiftAssignments: assignments, lastUpdated: Date.now(), updatedAt: stamp2, syncRequestId: requestId });
+    } catch (error) {
+      console.error(`[direct-schedule-sync] ${requestId} failed`, error);
+      return res.status(500).json({ success: false, error: "DIRECT_SCHEDULE_SYNC_FAILED", syncRequestId: requestId });
+    }
+  });
+}
+
+// server/db-write-verification.ts
+import crypto3 from "crypto";
+import { sql as sql3, eq as eq7 } from "drizzle-orm";
+var pathOf = (req) => String(req.path || req.url || "").split("?")[0].replace(/\/+$/, "") || "/";
+var clean4 = (v) => String(v ?? "").trim();
+var idHash = (v) => crypto3.createHash("sha256").update(clean4(v)).digest("hex").slice(0, 12);
+async function verifyCollection(name, items) {
+  if (!items.length) return { requested: 0, found: 0 };
+  const ids = items.map((x) => clean4(x?.id)).filter(Boolean);
+  if (!ids.length) return { requested: items.length, found: 0 };
+  let found = 0;
+  if (name === "employees") {
+    const rows = await db.select({ id: employees.id }).from(employees);
+    const set = new Set(rows.map((x) => String(x.id)));
+    found = ids.filter((id) => set.has(id)).length;
+  } else if (name === "attendanceRecords") {
+    const rows = await db.select({ id: attendanceRecords.id }).from(attendanceRecords);
+    const set = new Set(rows.map((x) => String(x.id)));
+    found = ids.filter((id) => set.has(id)).length;
+  } else if (name === "leaveRequests") {
+    const rows = await db.select({ id: leaveRequests.id }).from(leaveRequests);
+    const set = new Set(rows.map((x) => String(x.id)));
+    found = ids.filter((id) => set.has(id)).length;
+  } else if (name === "notifications") {
+    const rows = await db.select({ id: notifications.id }).from(notifications);
+    const set = new Set(rows.map((x) => String(x.id)));
+    found = ids.filter((id) => set.has(id)).length;
+  } else if (name === "shifts") {
+    const rows = await db.select({ id: shifts.id }).from(shifts);
+    const set = new Set(rows.map((x) => String(x.id)));
+    found = ids.filter((id) => set.has(id)).length;
+  } else if (name === "employeeShiftAssignments") {
+    const rows = await db.select({ id: employeeShiftAssignments.id }).from(employeeShiftAssignments);
+    const set = new Set(rows.map((x) => String(x.id)));
+    found = ids.filter((id) => set.has(id)).length;
+  }
+  return { requested: items.length, found };
+}
+async function verifySchedule(items) {
+  if (!items.length) return { requested: 0, found: 0, cleared: 0 };
+  const rows = await db.select().from(settings).where(eq7(settings.key, "dailyShiftAssignments"));
+  const stored = Array.isArray(rows[0]?.value) ? rows[0].value : [];
+  const keys = new Set(stored.map((x) => `${clean4(x?.employeeId || x?.employee_id)}|${clean4(x?.date)}`));
+  let found = 0;
+  let cleared = 0;
+  for (const item of items) {
+    const key = `${clean4(item?.employeeId || item?.employee_id)}|${clean4(item?.date)}`;
+    const isClear = Boolean(item?.clear) || String(item?.status || "").toUpperCase() === "CLEAR";
+    if (isClear) {
+      if (!keys.has(key)) cleared += 1;
+    } else if (keys.has(key)) {
+      found += 1;
     }
   }
-  localState.lastUpdated = Date.now();
-  const today = clock().date;
-  const activeLeaves = getActiveLeaves(
-    localState.leaveRequests,
-    today
-  );
+  return { requested: items.length, found: found + cleared, cleared };
+}
+async function verifyDbIdentity() {
+  const result = await db.execute(sql3`select current_database() as database_name, current_schema() as schema_name, current_user as db_user, inet_server_addr()::text as server_addr`);
+  const row = result?.rows?.[0] || result?.[0] || {};
   return {
-    ...localState,
-    /*
-    كل الأجهزة هتستقبل نفس
-    leaveRequests من Supabase.
-    */
-    leaveRequests: localState.leaveRequests,
-    /*
-    الإجازات الفعالة اليوم.
-    */
-    activeLeaves,
-    lastUpdated: localState.lastUpdated
+    database: row.database_name || null,
+    schema: row.schema_name || null,
+    user: row.db_user || null,
+    serverHash: row.server_addr ? idHash(row.server_addr) : null
   };
 }
-app.disable(
-  "x-powered-by"
-);
+function registerDbWriteVerification(app2) {
+  app2.use((req, res, next) => {
+    const p = pathOf(req);
+    const isSync = req.method === "POST" && (p === "/api/sync" || p === "/sync");
+    const isSchedule = req.method === "POST" && p === "/api/schedule-sync";
+    if (!isSync && !isSchedule) return next();
+    const originalJson = res.json.bind(res);
+    res.json = async (body) => {
+      try {
+        const b = req.body || {};
+        const verification = { database: await verifyDbIdentity() };
+        if (isSync) {
+          verification.employees = await verifyCollection("employees", Array.isArray(b.employees) ? b.employees : []);
+          verification.attendanceRecords = await verifyCollection("attendanceRecords", Array.isArray(b.attendanceRecords) ? b.attendanceRecords : []);
+          verification.leaveRequests = await verifyCollection("leaveRequests", Array.isArray(b.leaveRequests) ? b.leaveRequests : []);
+          verification.notifications = await verifyCollection("notifications", Array.isArray(b.notifications) ? b.notifications : []);
+          verification.shifts = await verifyCollection("shifts", Array.isArray(b.shifts) ? b.shifts : []);
+          verification.employeeShiftAssignments = await verifyCollection("employeeShiftAssignments", Array.isArray(b.employeeShiftAssignments) ? b.employeeShiftAssignments : []);
+          verification.dailyShiftAssignments = await verifySchedule(Array.isArray(b.dailyShiftAssignments) ? b.dailyShiftAssignments : []);
+        } else {
+          verification.dailyShiftAssignments = await verifySchedule(Array.isArray(b.dailyShiftAssignments) ? b.dailyShiftAssignments : []);
+        }
+        const failed = Object.entries(verification).some(([key, value]) => key !== "database" && Number(value?.requested || 0) > Number(value?.found || 0));
+        if (failed) {
+          console.error("[db-write-verification] persistence mismatch", JSON.stringify(verification));
+          return originalJson({ success: false, error: "NEON_WRITE_VERIFICATION_FAILED", verification });
+        }
+        if (body && typeof body === "object" && !Array.isArray(body)) {
+          body = { ...body, neonWriteVerified: true, neonVerification: verification };
+        }
+      } catch (error) {
+        console.error("[db-write-verification] verification error:", error);
+        return originalJson({ success: false, error: "NEON_WRITE_VERIFICATION_ERROR" });
+      }
+      return originalJson(body);
+    };
+    next();
+  });
+}
+
+// server.ts
+var app = express();
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
-app.use(
-  "/api",
-  (_req, res, next) => {
-    res.setHeader(
-      "Cache-Control",
-      "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0"
-    );
-    res.setHeader(
-      "Pragma",
-      "no-cache"
-    );
-    res.setHeader(
-      "Expires",
-      "0"
-    );
-    next();
+registerFcmRoutes(app);
+var PORT = Number(process.env.PORT || 3e3);
+var TZ2 = process.env.SERVER_TIME_ZONE || "Africa/Cairo";
+var emptyState = () => ({ employees: [], attendanceRecords: [], leaveRequests: [], overtimeRequests: [], shifts: [], notifications: [], dailyShiftAssignments: [], shiftSwapRequests: [], companyNameAr: null, companyNameEn: null, urgentNotice: null, lastUpdated: Date.now() });
+var localState = emptyState();
+async function setting2(key, value) {
+  await db.insert(settings).values({ key, value }).onConflictDoUpdate({ target: settings.key, set: { value } });
+}
+async function dbSnapshot() {
+  const [employees2, attendanceRecords2, leaveRequests2, overtimeRequests2, shifts2, notifications2, settings2, employeeShiftAssignments2] = await Promise.all([db.select().from(employees), db.select().from(attendanceRecords), db.select().from(leaveRequests), db.select().from(overtimeRequests), db.select().from(shifts), db.select().from(notifications), db.select().from(settings), db.select().from(employeeShiftAssignments)]);
+  const m = new Map(settings2.map((s) => [String(s.key), s.value]));
+  const dailyShiftAssignments = Array.isArray(m.get("dailyShiftAssignments")) ? m.get("dailyShiftAssignments") : [];
+  localState.employees = employees2;
+  localState.attendanceRecords = attendanceRecords2;
+  localState.leaveRequests = leaveRequests2;
+  localState.overtimeRequests = overtimeRequests2;
+  localState.shifts = shifts2;
+  localState.notifications = notifications2;
+  localState.dailyShiftAssignments = dailyShiftAssignments;
+  localState.shiftSwapRequests = Array.isArray(m.get("shiftSwapRequests")) ? m.get("shiftSwapRequests") : [];
+  return { success: true, employees: employees2, attendanceRecords: attendanceRecords2, leaveRequests: leaveRequests2, overtimeRequests: overtimeRequests2, shifts: shifts2, notifications: notifications2, employeeShiftAssignments: employeeShiftAssignments2, dailyShiftAssignments, shiftSwapRequests: localState.shiftSwapRequests, companyNameAr: m.get("companyNameAr") ?? null, companyNameEn: m.get("companyNameEn") ?? null, urgentNotice: m.get("urgentNotice") ?? null, lastUpdated: Date.now() };
+}
+registerNotificationSystemV2(app);
+registerNotificationSse(app);
+app.get("/api/data", async (_req, res) => {
+  try {
+    const result = await dbSnapshot();
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    return res.json(result);
+  } catch (error) {
+    console.error("[api/data] database snapshot failed:", error);
+    return res.status(500).json({ success: false, error: "database_snapshot_failed" });
   }
-);
-app.get(
-  "/api/health",
-  async (_req, res) => {
-    let database = false;
-    try {
-      if (USE_DATABASE) {
-        await db.execute(
-          sql`select 1`
-        );
-        database = true;
-      }
-    } catch (e) {
-      console.error(
-        "Health database check failed:",
-        e
-      );
-    }
-    res.json({
-      success: true,
-      status: "ok",
-      database,
-      serverTime: clock()
-    });
-  }
-);
-app.get(
-  "/api/data",
-  async (_req, res) => {
-    try {
-      const result = USE_DATABASE ? await data() : {
-        ...localState,
-        activeLeaves: getActiveLeaves(
-          localState.leaveRequests,
-          clock().date
-        )
-      };
-      res.json({
-        success: true,
-        ...result
-      });
-    } catch (e) {
-      console.error(
-        "GET /api/data:",
-        e
-      );
-      res.status(500).json({
-        success: false,
-        error: "Failed to load application data"
-      });
-    }
-  }
-);
-app.use((req, res, next) => {
-  console.log("VERCEL REQUEST:", req.method, req.originalUrl, req.url);
-  next();
 });
-app.get(
-  "/api/leaves",
-  async (req, res) => {
-    try {
-      const requestedDate = String(
-        req.query.date || clock().date
-      );
-      if (USE_DATABASE) {
-        const rows = await db.select().from(
-          leaveRequests
-        );
-        const normalized2 = rows.map(
-          normalizeLeave
-        );
-        const active = getActiveLeaves(
-          normalized2,
-          requestedDate
-        );
-        return res.json({
-          success: true,
-          leaveRequests: normalized2,
-          activeLeaves: active,
-          date: requestedDate,
-          lastUpdated: Date.now()
-        });
-      }
-      const normalized = localState.leaveRequests.map(
-        normalizeLeave
-      );
-      res.json({
-        success: true,
-        leaveRequests: normalized,
-        activeLeaves: getActiveLeaves(
-          normalized,
-          requestedDate
-        ),
-        date: requestedDate,
-        lastUpdated: Date.now()
-      });
-    } catch (e) {
-      console.error(
-        "GET /api/leaves:",
-        e
-      );
-      res.status(500).json({
-        success: false,
-        error: "Failed to load leaves"
-      });
+registerRequestNotificationTriggers(app);
+registerAttendanceRealtime(app);
+registerScheduleSyncGuard(app);
+app.use(async (req, res, next) => {
+  const pathName = String(req.path || "").split("?")[0];
+  if (req.method !== "POST" || !["/api/sync", "/sync"].includes(pathName)) return next();
+  const body = req.body || {};
+  const incoming = Array.isArray(body.leaveRequests) ? body.leaveRequests : [];
+  const deleted = Array.isArray(body.deletedLeaveIds) ? body.deletedLeaveIds : [];
+  if (!incoming.length && !deleted.length) return next();
+  try {
+    for (const item of incoming) {
+      if (!item?.id || !item?.employeeId) continue;
+      const id = String(item.id);
+      const values = {};
+      for (const key of ["id", "employeeId", "type", "startDate", "endDate", "reason", "status", "createdAt", "hours", "permissionSlot", "attachmentUrl", "attachmentName", "reviewedBy", "reviewNotes"]) if (item[key] !== void 0) values[key] = item[key];
+      const existing = await db.select().from(leaveRequests).where(eq8(leaveRequests.id, id));
+      if (!existing[0]) await db.insert(leaveRequests).values(values);
+      else await db.update(leaveRequests).set(values).where(eq8(leaveRequests.id, id));
+      await setting2(`__sync_updated_at:leave:${id}`, Date.now());
     }
+    for (const rawId of deleted) {
+      const id = String(rawId || "").trim();
+      if (!id) continue;
+      await db.delete(leaveRequests).where(eq8(leaveRequests.id, id));
+      const rows = await db.select().from(settings).where(eq8(settings.key, "__sync_deleted_ids:leave"));
+      const oldIds = Array.isArray(rows[0]?.value) ? rows[0].value.map(String) : [];
+      await setting2("__sync_deleted_ids:leave", Array.from(/* @__PURE__ */ new Set([...oldIds, id])).slice(-5e3));
+    }
+    req.body = { ...body, leaveRequests: void 0, deletedLeaveIds: void 0 };
+    return next();
+  } catch (error) {
+    console.error("[leave-sync-bridge] persistence failed:", error);
+    return res.status(500).json({ success: false, error: "Leave sync failed" });
   }
-);
-app.post(
-  "/api/login",
-  async (req, res) => {
-    try {
-      const {
-        code,
-        password
-      } = req.body || {};
-      if (!code || !password) {
-        return res.status(400).json({
-          success: false,
-          error: "Missing credentials"
-        });
+});
+app.use(async (req, res, next) => {
+  if (req.method !== "POST" || !["/api/sync", "/sync"].includes(String(req.path || "").split("?")[0])) return next();
+  const items = Array.isArray(req.body?.notifications) ? req.body.notifications : [];
+  if (!items.length) return next();
+  try {
+    await ensureNotificationStorage();
+    for (const item of items) {
+      if (!item?.id || !item?.recipientId) continue;
+      const id = String(item.id);
+      const values = {};
+      for (const key of ["id", "recipientId", "type", "title", "message", "relatedEmployeeId", "relatedLeaveId", "relatedOvertimeId", "relatedShiftSwapId", "isRead", "createdAt", "updatedAt"]) if (item[key] !== void 0) values[key] = item[key];
+      const existing = await db.select().from(notifications).where(eq8(notifications.id, id));
+      if (!existing[0]) await db.insert(notifications).values(values);
+      else {
+        const incoming = new Date(String(values.updatedAt || values.createdAt || "")).getTime();
+        const current = new Date(String(existing[0].updatedAt || existing[0].createdAt || "")).getTime();
+        if (Number.isFinite(incoming) && (!Number.isFinite(current) || incoming >= current)) await db.update(notifications).set(values).where(eq8(notifications.id, id));
       }
-      const input = String(code).trim().toLowerCase();
-      const pass = String(password).trim().toLowerCase();
-      const employees2 = USE_DATABASE ? await db.select().from(
-        employees
-      ) : localState.employees;
-      let e;
-      if (input === "leader") {
-        e = employees2.find(
-          (x) => x.role === "leader" || x.code === "EMP011"
-        ) || employees2[0];
-      } else {
-        e = employees2.find(
-          (x) => String(
-            x.code || ""
-          ).toLowerCase() === input || String(
-            x.email || ""
-          ).toLowerCase() === input || String(
-            x.phone || ""
-          ).replace(
-            /\D/g,
-            ""
-          ) === input.replace(
-            /\D/g,
-            ""
-          ) || String(
-            x.code || ""
-          ).replace(
-            /\D/g,
-            ""
-          ) === input.replace(
-            /\D/g,
-            ""
-          )
-        );
-      }
-      if (!e) {
-        return res.status(401).json({
-          success: false,
-          error: "Invalid login credentials"
-        });
-      }
-      const n = String(
-        e.code || ""
-      ).replace(
-        /\D/g,
-        ""
-      );
-      const hash = e.pin && String(e.pin).length === 64 ? crypto.createHash(
-        "sha256"
-      ).update(pass).digest(
-        "hex"
-      ) === String(
-        e.pin
-      ).toLowerCase() : false;
-      const valid = hash || pass === String(
-        e.pin || ""
-      ).toLowerCase() || e.role === "leader" && pass === "leader123" || pass === `emp${n}` || pass === `emp${n.padStart(
-        3,
-        "0"
-      )}` || pass === "1234" || pass === "tech_123";
-      if (!valid) {
-        return res.status(401).json({
-          success: false,
-          error: "Invalid login credentials"
-        });
-      }
-      if (e.status === "inactive") {
-        return res.status(403).json({
-          success: false,
-          error: "ACCOUNT_INACTIVE"
-        });
-      }
-      res.json({
-        success: true,
-        employee: {
-          ...e,
-          pin: "***"
-        }
-      });
-    } catch (e) {
-      console.error(
-        "POST /api/login:",
-        e
-      );
-      res.status(500).json({
-        success: false,
-        error: "Login failed"
-      });
     }
+  } catch (error) {
+    console.error("[sync-bridge] notification persistence failed:", error);
+    return res.status(500).json({ success: false, error: "Notification sync failed" });
   }
-);
-app.post(
-  "/api/punch",
-  async (req, res) => {
-    try {
-      const {
-        employeeId,
-        record,
-        action
-      } = req.body || {};
-      if (!employeeId) {
-        return res.status(400).json({
-          success: false,
-          error: "Employee ID is required"
-        });
-      }
-      const eid = String(employeeId).trim();
-      const c = clock();
-      const date = action === "update" && record?.date ? String(record.date) : c.date;
-      if (date > c.date) {
-        return res.status(400).json({
-          success: false,
-          error: "Future attendance dates are not allowed"
-        });
-      }
-      const e = USE_DATABASE ? (await db.select().from(
-        employees
-      ).where(
-        sql`
-                    ${employees.id}
-                    = ${eid}
-                  `
-      ))[0] : localState.employees.find(
-        (x) => norm(x.id) === norm(eid)
-      );
-      if (!e) {
-        return res.status(404).json({
-          success: false,
-          error: "Employee not found"
-        });
-      }
-      const old = USE_DATABASE ? await findAttendance(
-        eid,
-        date
-      ) : localState.attendanceRecords.find(
-        (x) => norm(
-          x.employeeId
-        ) === norm(eid) && String(x.date) === date
-      );
-      let r = {
-        ...old || {},
-        ...record || {},
-        id: old?.id || record?.id || `rec-${norm(
-          eid
-        )}-${date}`,
-        employeeId: eid,
-        date,
-        updatedAt: (/* @__PURE__ */ new Date()).toISOString()
-      };
-      if (action === "check_in" && !r.checkIn) {
-        r.checkIn = c.time;
-      }
-      if (action === "check_out") {
-        r.checkOut = c.time;
-        r.isExplicitCancelCheckOut = false;
-      }
-      if (action === "break_start") {
-        r.breakStart = c.time;
-      }
-      if (action === "break_end" || action === "force_break_end") {
-        r.breakEnd = c.time;
-      }
-      if (r.isExplicitCancelCheckOut) {
-        r.checkOut = null;
-        r.workHours = 0;
-        r.overtimeHours = 0;
-      }
-      r = sanitize(r);
-      if (USE_DATABASE) {
-        await attendanceUpsert(
-          r
-        );
-        return res.json({
-          success: true,
-          record: await findAttendance(
-            eid,
-            date
-          ),
-          serverTime: c,
-          lastUpdated: Date.now()
-        });
-      }
-      localState.attendanceRecords = mergeAttendance(
-        localState.attendanceRecords,
-        [r]
-      );
-      localState.lastUpdated = Date.now();
-      saveLocalState();
-      res.json({
-        success: true,
-        record: r,
-        attendanceRecords: localState.attendanceRecords,
-        serverTime: c,
-        lastUpdated: localState.lastUpdated
-      });
-    } catch (e) {
-      console.error(
-        "POST /api/punch:",
-        e
-      );
-      res.status(500).json({
-        success: false,
-        error: e instanceof Error ? e.message : "Punch failed"
-      });
-    }
-  }
-);
-app.post(
-  "/api/attendance",
-  async (req, res) => {
-    try {
-      const r = req.body;
-      if (!r?.employeeId || !r?.date) {
-        return res.status(400).json({
-          success: false,
-          error: "Invalid attendance record"
-        });
-      }
-      if (String(r.date) > clock().date) {
-        return res.status(400).json({
-          success: false,
-          error: "Future attendance dates are not allowed"
-        });
-      }
-      const s = sanitize({
-        ...r,
-        id: r.id || `rec-${norm(
-          r.employeeId
-        )}-${r.date}`
-      });
-      if (USE_DATABASE) {
-        await attendanceUpsert(
-          s
-        );
-        const freshData = await data();
-        return res.json({
-          success: true,
-          record: await findAttendance(
-            String(
-              r.employeeId
-            ),
-            String(r.date)
-          ),
-          attendanceRecords: freshData.attendanceRecords,
-          employees: freshData.employees,
-          shifts: freshData.shifts,
-          /*
-          مهم:
-          رجوع الإجازات مع الحضور
-          */
-          leaveRequests: freshData.leaveRequests,
-          activeLeaves: freshData.activeLeaves,
-          lastUpdated: Date.now()
-        });
-      }
-      localState.attendanceRecords = mergeAttendance(
-        localState.attendanceRecords,
-        [s]
-      );
-      localState.lastUpdated = Date.now();
-      saveLocalState();
-      res.json({
-        success: true,
-        attendanceRecords: localState.attendanceRecords,
-        leaveRequests: localState.leaveRequests,
-        lastUpdated: Date.now()
-      });
-    } catch (e) {
-      console.error(
-        "POST /api/attendance:",
-        e
-      );
-      res.status(500).json({
-        success: false,
-        error: e instanceof Error ? e.message : "Failed to save attendance"
-      });
-    }
-  }
-);
-app.post(
-  "/api/sync",
-  async (req, res) => {
-    try {
-      const b = req.body || {};
-      if (USE_DATABASE) {
-        for (const e of Array.isArray(
-          b.employees
-        ) ? b.employees : []) {
-          if (e?.id) {
-            await employeeUpsert(
-              e
-            );
-          }
-        }
-        for (const r of Array.isArray(
-          b.attendanceRecords
-        ) ? b.attendanceRecords : []) {
-          if (r?.employeeId && r?.date && String(r.date) <= clock().date) {
-            await attendanceUpsert(
-              r
-            );
-          }
-        }
-        for (const x of Array.isArray(b.leaveRequests) ? b.leaveRequests : []) {
-          if (!x?.id || !x?.employeeId) {
-            continue;
-          }
-          const incoming = normalizeLeave({
-            ...x,
-            updatedAt: x.updatedAt || x.createdAt || (/* @__PURE__ */ new Date()).toISOString()
-          });
-          await leaveUpsert(
-            incoming
-          );
-        }
-        if (b.urgentNotice !== void 0) {
-          await setting(
-            "urgentNotice",
-            b.urgentNotice
-          );
-        }
-        const fresh = await data();
-        return res.json({
-          success: true,
-          ...fresh
-        });
-      }
-      if (Array.isArray(
-        b.employees
-      )) {
-        localState.employees = b.employees;
-      }
-      if (Array.isArray(
-        b.attendanceRecords
-      )) {
-        localState.attendanceRecords = mergeAttendance(
-          localState.attendanceRecords,
-          b.attendanceRecords.filter(
-            (x) => String(x.date) <= clock().date
-          )
-        );
-      }
-      if (Array.isArray(
-        b.leaveRequests
-      )) {
-        localState.leaveRequests = b.leaveRequests.map(
-          normalizeLeave
-        );
-      }
-      if (Array.isArray(
-        b.overtimeRequests
-      )) {
-        localState.overtimeRequests = b.overtimeRequests;
-      }
-      if (b.companyNameAr !== void 0) {
-        localState.companyNameAr = b.companyNameAr;
-      }
-      if (b.companyNameEn !== void 0) {
-        localState.companyNameEn = b.companyNameEn;
-      }
-      if (b.urgentNotice !== void 0) {
-        localState.urgentNotice = b.urgentNotice;
-      }
-      if (Array.isArray(
-        b.deletedAttendanceIds
-      )) {
-        const s = new Set(
-          b.deletedAttendanceIds.map(
-            String
-          )
-        );
-        localState.attendanceRecords = localState.attendanceRecords.filter(
-          (x) => !s.has(
-            String(x.id)
-          )
-        );
-      }
-      localState.lastUpdated = Date.now();
-      saveLocalState();
-      res.json({
-        success: true,
-        ...localState,
-        activeLeaves: getActiveLeaves(
-          localState.leaveRequests,
-          clock().date
-        )
-      });
-    } catch (e) {
-      console.error(
-        "POST /api/sync:",
-        e
-      );
-      res.status(500).json({
-        success: false,
-        error: "Sync failed"
-      });
-    }
-  }
-);
-app.put(
-  "/api/employees/:id",
-  async (req, res) => {
-    try {
-      const id = String(
-        req.params.id
-      );
-      const changes = {
-        ...req.body
-      };
-      delete changes.id;
-      if (USE_DATABASE) {
-        const existingRows = await db.select().from(
-          employees
-        ).where(
-          sql`
-                ${employees.id}
-                = ${id}
-              `
-        );
-        const existing2 = existingRows[0];
-        if (!existing2) {
-          return res.status(404).json({
-            success: false,
-            error: "Employee not found"
-          });
-        }
-        const hasIncomingUpdatedAt2 = Boolean(
-          changes.updatedAt && String(
-            changes.updatedAt
-          ).trim()
-        );
-        if (!hasIncomingUpdatedAt2 && existing2.updatedAt) {
-          console.log(
-            "BLOCKED EMPLOYEE UPDATE WITHOUT TIMESTAMP:",
-            id
-          );
-          return res.status(409).json({
-            success: false,
-            error: "STALE_EMPLOYEE_UPDATE",
-            employee: existing2
-          });
-        }
-        if (hasIncomingUpdatedAt2 && existing2.updatedAt) {
-          const incomingTime = new Date(
-            changes.updatedAt
-          ).getTime();
-          const existingTime = new Date(
-            existing2.updatedAt
-          ).getTime();
-          if (Number.isFinite(
-            incomingTime
-          ) && Number.isFinite(
-            existingTime
-          ) && incomingTime <= existingTime) {
-            console.log(
-              "BLOCKED OLD EMPLOYEE UPDATE:",
-              id,
-              "existing:",
-              existing2.updatedAt,
-              "incoming:",
-              changes.updatedAt
-            );
-            return res.status(409).json({
-              success: false,
-              error: "STALE_EMPLOYEE_UPDATE",
-              employee: existing2
-            });
-          }
-        }
-        const finalChanges = {
-          ...changes,
-          updatedAt: hasIncomingUpdatedAt2 ? changes.updatedAt : (/* @__PURE__ */ new Date()).toISOString()
-        };
-        const [x] = await db.update(
-          employees
-        ).set(
-          finalChanges
-        ).where(
-          sql`
-                ${employees.id}
-                = ${id}
-              `
-        ).returning();
-        return x ? res.json({
-          success: true,
-          employee: x,
-          lastUpdated: Date.now()
-        }) : res.status(404).json({
-          success: false,
-          error: "Employee not found"
-        });
-      }
-      const i = localState.employees.findIndex(
-        (x) => norm(x.id) === norm(id)
-      );
-      if (i < 0) {
-        return res.status(404).json({
-          success: false,
-          error: "Employee not found"
-        });
-      }
-      const existing = localState.employees[i];
-      const hasIncomingUpdatedAt = Boolean(
-        changes.updatedAt && String(
-          changes.updatedAt
-        ).trim()
-      );
-      if (hasIncomingUpdatedAt && existing.updatedAt) {
-        const incomingTime = new Date(
-          changes.updatedAt
-        ).getTime();
-        const existingTime = new Date(
-          existing.updatedAt
-        ).getTime();
-        if (Number.isFinite(
-          incomingTime
-        ) && Number.isFinite(
-          existingTime
-        ) && incomingTime <= existingTime) {
-          console.log(
-            "BLOCKED OLD LOCAL EMPLOYEE UPDATE:",
-            id
-          );
-          return res.status(409).json({
-            success: false,
-            error: "STALE_EMPLOYEE_UPDATE",
-            employee: existing
-          });
-        }
-      }
-      localState.employees[i] = {
-        ...existing,
-        ...changes,
-        id: existing.id,
-        updatedAt: hasIncomingUpdatedAt ? changes.updatedAt : (/* @__PURE__ */ new Date()).toISOString()
-      };
-      localState.lastUpdated = Date.now();
-      saveLocalState();
-      return res.json({
-        success: true,
-        employee: localState.employees[i],
-        lastUpdated: localState.lastUpdated
-      });
-    } catch (e) {
-      console.error(
-        "PUT /api/employees:",
-        e
-      );
-      res.status(500).json({
-        success: false,
-        error: "Failed to update employee"
-      });
-    }
-  }
-);
-app.delete(
-  "/api/shifts/:id",
-  async (req, res) => {
-    try {
-      const id = String(
-        req.params.id
-      );
-      if (USE_DATABASE) {
-        await db.delete(
-          shifts
-        ).where(
-          sql`
-              ${shifts.id}
-              = ${id}
-            `
-        );
-      } else {
-        localState.shifts = localState.shifts.filter(
-          (x) => String(x.id) !== id
-        );
-        saveLocalState();
-      }
-      res.json({
-        success: true
-      });
-    } catch (e) {
-      console.error(
-        "DELETE /api/shifts:",
-        e
-      );
-      res.status(500).json({
-        success: false,
-        error: "Failed to delete shift"
-      });
-    }
-  }
-);
-app.delete(
-  "/api/leaves/:id",
-  async (req, res) => {
-    try {
-      const id = String(req.params.id);
-      if (USE_DATABASE) {
-        await db.delete(leaveRequests).where(
-          sql`
-              ${leaveRequests.id}
-              = ${id}
-            `
-        );
-        const rows = await db.select().from(leaveRequests);
-        return res.json({
-          success: true,
-          leaveRequests: rows,
-          lastUpdated: Date.now()
-        });
-      }
-      localState.leaveRequests = localState.leaveRequests.filter(
-        (x) => String(x.id) !== id
-      );
-      saveLocalState();
-      return res.json({
-        success: true,
-        leaveRequests: localState.leaveRequests,
-        lastUpdated: Date.now()
-      });
-    } catch (e) {
-      console.error(
-        "DELETE /api/leaves/:id:",
-        e
-      );
-      return res.status(500).json({
-        success: false,
-        error: "Failed to delete leave request"
-      });
-    }
-  }
-);
-app.post(
-  "/api/attendance/clear-today",
-  async (req, res) => {
-    try {
-      const d = String(
-        req.body?.date || clock().date
-      );
-      if (USE_DATABASE) {
-        await db.delete(
-          attendanceRecords
-        ).where(
-          sql`
-              ${attendanceRecords.date}
-              = ${d}
-            `
-        );
-        const rows = await db.select().from(
-          attendanceRecords
-        );
-        return res.json({
-          success: true,
-          attendanceRecords: rows.map(
-            sanitize
-          ),
-          lastUpdated: Date.now()
-        });
-      }
-      localState.attendanceRecords = localState.attendanceRecords.filter(
-        (x) => String(x.date) !== d
-      );
-      saveLocalState();
-      res.json({
-        success: true,
-        attendanceRecords: localState.attendanceRecords,
-        lastUpdated: Date.now()
-      });
-    } catch (e) {
-      console.error(
-        "clear-today:",
-        e
-      );
-      res.status(500).json({
-        success: false,
-        error: "Failed to clear attendance"
-      });
-    }
-  }
-);
-app.post(
-  "/api/attendance/delete-future",
-  async (req, res) => {
-    try {
-      const d = String(
-        req.body?.todayDate || clock().date
-      );
-      if (USE_DATABASE) {
-        const f2 = await db.select().from(
-          attendanceRecords
-        ).where(
-          sql`
-                ${attendanceRecords.date}
-                > ${d}
-              `
-        );
-        await db.delete(
-          attendanceRecords
-        ).where(
-          sql`
-              ${attendanceRecords.date}
-              > ${d}
-            `
-        );
-        return res.json({
-          success: true,
-          deletedCount: f2.length,
-          cutoffDate: d,
-          lastUpdated: Date.now()
-        });
-      }
-      const f = localState.attendanceRecords.filter(
-        (x) => x?.date && String(x.date) > d
-      );
-      localState.attendanceRecords = localState.attendanceRecords.filter(
-        (x) => !x?.date || String(x.date) <= d
-      );
-      saveLocalState();
-      res.json({
-        success: true,
-        deletedCount: f.length,
-        cutoffDate: d,
-        lastUpdated: Date.now()
-      });
-    } catch (e) {
-      console.error(
-        "delete-future:",
-        e
-      );
-      res.status(500).json({
-        success: false,
-        error: "Failed to delete future records"
-      });
-    }
-  }
-);
-app.post(
-  "/api/leaves",
-  async (req, res) => {
-    try {
-      const x = req.body;
-      if (!x?.id || !x?.employeeId) {
-        return res.status(400).json({
-          success: false,
-          error: "Invalid leave request"
-        });
-      }
-      const normalized = normalizeLeave({
-        ...x,
-        updatedAt: x.updatedAt || (/* @__PURE__ */ new Date()).toISOString()
-      });
-      if (USE_DATABASE) {
-        const existing = await db.select().from(
-          leaveRequests
-        ).where(
-          sql`
-        ${leaveRequests.id}
-        = ${String(normalized.id)}
-      `
-        );
-        if (existing.length > 0) {
-          const currentStatus = String(
-            existing[0].status || ""
-          ).toLowerCase();
-          const incomingStatus = String(
-            normalized.status || ""
-          ).toLowerCase();
-          if ((currentStatus === "approved" || currentStatus === "rejected") && incomingStatus === "pending") {
-            normalized.status = existing[0].status;
-            normalized.reviewedBy = existing[0].reviewedBy;
-            normalized.reviewNotes = existing[0].reviewNotes;
-          }
-        }
-        await leaveUpsert(
-          normalized
-        );
-        const fresh = await data();
-        return res.json({
-          success: true,
-          /*
-          الإجازة التي تم حفظها
-          */
-          leaveRequest: fresh.leaveRequests.find(
-            (a) => String(a.id) === String(
-              normalized.id
-            )
-          ) || null,
-          /*
-          كل الإجازات
-          */
-          leaveRequests: fresh.leaveRequests,
-          /*
-          إجازات اليوم
-          */
-          activeLeaves: fresh.activeLeaves,
-          /*
-          باقي البيانات المهمة
-          */
-          employees: fresh.employees,
-          attendanceRecords: fresh.attendanceRecords,
-          shifts: fresh.shifts,
-          overtimeRequests: fresh.overtimeRequests,
-          lastUpdated: Date.now()
-        });
-      }
-      localState.leaveRequests = [
-        ...localState.leaveRequests.filter(
-          (a) => String(a.id) !== String(
-            normalized.id
-          )
-        ),
-        normalized
-      ];
-      localState.lastUpdated = Date.now();
-      saveLocalState();
-      res.json({
-        success: true,
-        leaveRequest: normalized,
-        leaveRequests: localState.leaveRequests,
-        activeLeaves: getActiveLeaves(
-          localState.leaveRequests,
-          clock().date
-        ),
-        lastUpdated: Date.now()
-      });
-    } catch (e) {
-      console.error(
-        "POST /api/leaves:",
-        e
-      );
-      res.status(500).json({
-        success: false,
-        error: e instanceof Error ? e.message : "Failed to save leave"
-      });
-    }
-  }
-);
-app.put(
-  "/api/leaves/:id/status",
-  async (req, res) => {
-    try {
-      const id = String(
-        req.params.id
-      );
-      const b = req.body || {};
-      if (USE_DATABASE) {
-        const newStatus2 = String(
-          b.status || ""
-        ).trim().toLowerCase();
-        if (newStatus2 !== "approved" && newStatus2 !== "rejected" && newStatus2 !== "pending") {
-          return res.status(400).json({
-            success: false,
-            error: "Invalid leave status"
-          });
-        }
-        const existingRows = await db.select().from(
-          leaveRequests
-        ).where(
-          sql`
-                ${leaveRequests.id}
-                = ${id}
-              `
-        );
-        const existing = existingRows[0];
-        if (!existing) {
-          return res.status(404).json({
-            success: false,
-            error: "Leave request not found"
-          });
-        }
-        const currentStatus2 = String(
-          existing.status || "pending"
-        ).toLowerCase();
-        if ((currentStatus2 === "approved" || currentStatus2 === "rejected") && newStatus2 === "pending") {
-          console.log(
-            "BLOCKED FINAL LEAVE -> PENDING:",
-            id
-          );
-          const fresh2 = await data();
-          return res.json({
-            success: true,
-            blocked: true,
-            reason: "FINAL_STATUS_CANNOT_RETURN_TO_PENDING",
-            leaveRequest: fresh2.leaveRequests.find(
-              (a) => String(a.id) === id
-            ) || null,
-            leaveRequests: fresh2.leaveRequests,
-            activeLeaves: fresh2.activeLeaves,
-            employees: fresh2.employees,
-            attendanceRecords: fresh2.attendanceRecords,
-            shifts: fresh2.shifts,
-            overtimeRequests: fresh2.overtimeRequests,
-            lastUpdated: Date.now()
-          });
-        }
-        const now = (/* @__PURE__ */ new Date()).toISOString();
-        const [x] = await db.update(
-          leaveRequests
-        ).set({
-          status: newStatus2,
-          reviewNotes: b.reviewNotes ?? null,
-          reviewedBy: b.reviewedBy ?? null,
-          updatedAt: now
-        }).where(
-          sql`
-                ${leaveRequests.id}
-                = ${id}
-              `
-        ).returning();
-        if (!x) {
-          return res.status(404).json({
-            success: false,
-            error: "Leave request not found"
-          });
-        }
-        const fresh = await data();
-        return res.json({
-          success: true,
-          leaveRequest: fresh.leaveRequests.find(
-            (a) => String(a.id) === id
-          ) || null,
-          leaveRequests: fresh.leaveRequests,
-          activeLeaves: fresh.activeLeaves,
-          employees: fresh.employees,
-          attendanceRecords: fresh.attendanceRecords,
-          shifts: fresh.shifts,
-          overtimeRequests: fresh.overtimeRequests,
-          lastUpdated: Date.now()
-        });
-      }
-      const i = localState.leaveRequests.findIndex(
-        (x) => String(x.id) === id
-      );
-      if (i < 0) {
-        return res.status(404).json({
-          success: false,
-          error: "Leave request not found"
-        });
-      }
-      const current = localState.leaveRequests[i];
-      const currentStatus = String(
-        current.status || "pending"
-      ).toLowerCase();
-      const newStatus = String(
-        b.status || ""
-      ).trim().toLowerCase();
-      if (newStatus !== "approved" && newStatus !== "rejected" && newStatus !== "pending") {
-        return res.status(400).json({
-          success: false,
-          error: "Invalid leave status"
-        });
-      }
-      if ((currentStatus === "approved" || currentStatus === "rejected") && newStatus === "pending") {
-        return res.json({
-          success: true,
-          blocked: true,
-          reason: "FINAL_STATUS_CANNOT_RETURN_TO_PENDING",
-          leaveRequest: current,
-          leaveRequests: localState.leaveRequests,
-          activeLeaves: getActiveLeaves(
-            localState.leaveRequests,
-            clock().date
-          ),
-          lastUpdated: Date.now()
-        });
-      }
-      localState.leaveRequests[i] = normalizeLeave({
-        ...current,
-        ...b,
-        status: newStatus,
-        updatedAt: (/* @__PURE__ */ new Date()).toISOString()
-      });
-      localState.lastUpdated = Date.now();
-      saveLocalState();
-      return res.json({
-        success: true,
-        leaveRequest: localState.leaveRequests[i],
-        leaveRequests: localState.leaveRequests,
-        activeLeaves: getActiveLeaves(
-          localState.leaveRequests,
-          clock().date
-        ),
-        lastUpdated: Date.now()
-      });
-    } catch (e) {
-      console.error(
-        "leave status:",
-        e
-      );
-      return res.status(500).json({
-        success: false,
-        error: "Failed to update leave status"
-      });
-    }
-  }
-);
-app.post(
-  "/api/overtime",
-  async (req, res) => {
-    try {
-      const x = req.body;
-      if (!x?.id || !x?.employeeId || !x?.date) {
-        return res.status(400).json({
-          success: false,
-          error: "Invalid overtime request"
-        });
-      }
-      if (USE_DATABASE) {
-        await overtimeUpsert(
-          x
-        );
-        return res.json({
-          success: true,
-          overtimeRequests: await db.select().from(
-            overtimeRequests
-          ),
-          lastUpdated: Date.now()
-        });
-      }
-      localState.overtimeRequests = [
-        ...localState.overtimeRequests.filter(
-          (a) => String(a.id) !== String(x.id)
-        ),
-        x
-      ];
-      saveLocalState();
-      res.json({
-        success: true,
-        overtimeRequests: localState.overtimeRequests,
-        lastUpdated: Date.now()
-      });
-    } catch (e) {
-      console.error(
-        "POST /api/overtime:",
-        e
-      );
-      res.status(500).json({
-        success: false,
-        error: "Failed to save overtime"
-      });
-    }
-  }
-);
-app.put(
-  "/api/overtime/:id/status",
-  async (req, res) => {
-    try {
-      const id = String(
-        req.params.id
-      );
-      const b = req.body || {};
-      if (USE_DATABASE) {
-        const [x] = await db.update(
-          overtimeRequests
-        ).set({
-          ...b,
-          updatedAt: (/* @__PURE__ */ new Date()).toISOString()
-        }).where(
-          sql`
-                ${overtimeRequests.id}
-                = ${id}
-              `
-        ).returning();
-        return x ? res.json({
-          success: true,
-          overtimeRequest: x,
-          overtimeRequests: await db.select().from(
-            overtimeRequests
-          ),
-          lastUpdated: Date.now()
-        }) : res.status(404).json({
-          success: false,
-          error: "Overtime request not found"
-        });
-      }
-      const i = localState.overtimeRequests.findIndex(
-        (x) => String(x.id) === id
-      );
-      if (i < 0) {
-        return res.status(404).json({
-          success: false,
-          error: "Overtime request not found"
-        });
-      }
-      localState.overtimeRequests[i] = {
-        ...localState.overtimeRequests[i],
-        ...b,
-        updatedAt: (/* @__PURE__ */ new Date()).toISOString()
-      };
-      saveLocalState();
-      res.json({
-        success: true,
-        overtimeRequest: localState.overtimeRequests[i],
-        overtimeRequests: localState.overtimeRequests,
-        lastUpdated: Date.now()
-      });
-    } catch (e) {
-      console.error(
-        "overtime status:",
-        e
-      );
-      res.status(500).json({
-        success: false,
-        error: "Failed to update overtime status"
-      });
-    }
-  }
-);
-app.get(
-  "/api/backup",
-  async (_req, res) => {
-    try {
-      const d = USE_DATABASE ? await data() : localState;
-      const b = {
-        ...d,
-        backupTimestamp: (/* @__PURE__ */ new Date()).toISOString(),
-        version: "3.0"
-      };
-      fs.mkdirSync(
-        BACKUP_DIR,
-        {
-          recursive: true
-        }
-      );
-      const name = `server_data_backup_${Date.now()}.json`;
-      fs.writeFileSync(
-        path.join(
-          BACKUP_DIR,
-          name
-        ),
-        JSON.stringify(
-          b,
-          null,
-          2
-        )
-      );
-      res.setHeader(
-        "Content-Type",
-        "application/json"
-      );
-      res.setHeader(
-        "Content-Disposition",
-        `attachment; filename="${name}"`
-      );
-      res.send(
-        JSON.stringify(
-          b,
-          null,
-          2
-        )
-      );
-    } catch (e) {
-      console.error(
-        "backup:",
-        e
-      );
-      res.status(500).json({
-        success: false,
-        error: "Failed to create backup"
-      });
-    }
-  }
-);
-app.post(
-  "/api/backup/restore",
-  async (req, res) => {
-    try {
-      const b = req.body;
-      if (!b || !Array.isArray(
-        b.employees
-      )) {
-        return res.status(400).json({
-          success: false,
-          error: "Invalid backup payload"
-        });
-      }
-      if (USE_DATABASE) {
-        for (const x of b.employees) {
-          if (x?.id) {
-            await employeeUpsert(
-              x
-            );
-          }
-        }
-        for (const x of Array.isArray(
-          b.leaveRequests
-        ) ? b.leaveRequests : []) {
-          if (!x?.id || !x?.employeeId) {
-            continue;
-          }
-          const incoming = normalizeLeave({
-            ...x,
-            updatedAt: x.updatedAt || x.createdAt || (/* @__PURE__ */ new Date()).toISOString()
-          });
-          await leaveUpsert(
-            incoming
-          );
-        }
-        for (const x of Array.isArray(
-          b.overtimeRequests
-        ) ? b.overtimeRequests : []) {
-          if (x?.id && x?.employeeId && x?.date) {
-            await overtimeUpsert(
-              x
-            );
-          }
-        }
-        if (b.companyNameAr !== void 0) {
-          await setting(
-            "companyNameAr",
-            b.companyNameAr
-          );
-        }
-        if (b.companyNameEn !== void 0) {
-          await setting(
-            "companyNameEn",
-            b.companyNameEn
-          );
-        }
-        if (b.urgentNotice !== void 0) {
-          await setting(
-            "urgentNotice",
-            b.urgentNotice
-          );
-        }
-        for (const r of Array.isArray(
-          b.attendanceRecords
-        ) ? b.attendanceRecords : []) {
-          if (r?.employeeId && r?.date && String(r.date) <= clock().date) {
-            await attendanceUpsert(
-              r
-            );
-          }
-        }
-        const fresh = await data();
-        return res.json({
-          success: true,
-          ...fresh
-        });
-      }
-      localState = {
-        ...emptyState(),
-        ...b,
-        employees: Array.isArray(
-          b.employees
-        ) ? b.employees : [],
-        attendanceRecords: (Array.isArray(
-          b.attendanceRecords
-        ) ? b.attendanceRecords : []).filter(
-          (x) => x?.date && String(x.date) <= clock().date
-        ),
-        leaveRequests: (Array.isArray(
-          b.leaveRequests
-        ) ? b.leaveRequests : []).map(
-          normalizeLeave
-        ),
-        overtimeRequests: Array.isArray(
-          b.overtimeRequests
-        ) ? b.overtimeRequests : [],
-        shifts: Array.isArray(
-          b.shifts
-        ) ? b.shifts : [],
-        companyNameAr: b.companyNameAr ?? null,
-        companyNameEn: b.companyNameEn ?? null,
-        urgentNotice: b.urgentNotice ?? null,
-        lastUpdated: Date.now()
-      };
-      saveLocalState();
-      return res.json({
-        success: true,
-        ...localState,
-        activeLeaves: getActiveLeaves(
-          localState.leaveRequests,
-          clock().date
-        )
-      });
-    } catch (e) {
-      console.error(
-        "restore:",
-        e
-      );
-      return res.status(500).json({
-        success: false,
-        error: e instanceof Error ? e.message : "Failed to restore backup"
-      });
-    }
-  }
-);
-async function start() {
-  if (USE_DATABASE) {
-    try {
-      await db.execute(
-        sql`select 1`
-      );
-      console.log(
-        "Database connection successful."
-      );
-    } catch (e) {
-      console.error(
-        "Database connection failed:",
-        e
-      );
-    }
-  } else {
-    console.warn(
-      "SUPABASE_DB_URL is not set. Local JSON storage is being used."
-    );
-  }
-  if (!process.env.VERCEL && process.env.NODE_ENV !== "production") {
-    const {
-      createServer: createViteServer
-    } = await import("vite");
-    const vite = await createViteServer({
-      server: {
-        middlewareMode: true
-      },
-      appType: "spa"
-    });
-    app.use(vite.middlewares);
-    return;
-  }
-  const dist = path.join(
-    process.cwd(),
-    "dist"
-  );
-  app.use(
-    express.static(dist)
-  );
-  app.get(
-    "/",
-    (_req, res) => {
-      res.sendFile(
-        path.join(
-          dist,
-          "index.html"
-        )
-      );
-    }
-  );
-  app.get(
-    "*",
-    (req, res) => {
-      if (req.path.startsWith("/api/")) {
-        return res.status(404).json({
-          error: "API endpoint not found"
-        });
-      }
-      res.sendFile(
-        path.join(
-          dist,
-          "index.html"
-        )
-      );
-    }
-  );
-}
-if (!process.env.VERCEL) {
-  start().then(() => {
-    app.listen(
-      PORT,
-      "0.0.0.0",
-      () => {
-        console.log(
-          `Server running on port ${PORT}`
-        );
-        console.log(
-          `Database: ${USE_DATABASE ? "SUPABASE" : "LOCAL JSON"}`
-        );
-      }
-    );
-  }).catch((e) => {
-    console.error(
-      "Server startup failed:",
-      e
-    );
-    process.exit(1);
-  });
-}
+  return next();
+});
+registerDbWriteVerification(app);
+registerDirectScheduleSync(app);
+registerDeviceSyncV2(app);
 var server_default = app;
+if (process.env.VERCEL !== "1") app.listen(PORT, () => console.log(`Server running on port ${PORT} | Database: NEON`));
 export {
+  app,
   server_default as default
 };
 //# sourceMappingURL=server.js.map

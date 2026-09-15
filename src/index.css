@@ -2,14 +2,17 @@
 @import "tailwindcss";
 
 :root {
-  --tech-source-navy: #0d2240;
-  --tech-source-blue: #1769aa;
-  --tech-source-teal: #0f766e;
-  --tech-source-surface: #f5f8fc;
-  --ui-radius-card: 16px;
-  --ui-radius-control: 10px;
-  --ui-page-gutter: clamp(10px, 2.5vw, 32px);
-  --ui-content-max: 1440px;
+  --tech-source-navy: #0b1f3a;
+  --tech-source-blue: #135ca8;
+  --tech-source-teal: #087f73;
+  --tech-source-surface: #f3f6fa;
+  --tech-source-ink: #10233f;
+  --tech-source-muted: #5d6b7e;
+  --tech-source-border: #d9e2ec;
+  --ui-radius-card: 14px;
+  --ui-radius-control: 9px;
+  --ui-page-gutter: clamp(14px, 2.5vw, 36px);
+  --ui-content-max: 1480px;
 }
 
 html,
@@ -91,6 +94,45 @@ textarea:focus-visible {
 
 #root .min-w-0 {
   min-width: 0;
+}
+
+/* Consistent application surfaces and readable hierarchy. */
+#root {
+  color: var(--tech-source-ink);
+}
+
+#root main {
+  min-height: calc(100vh - 112px);
+}
+
+#root [class*="shadow"] {
+  --tw-shadow-color: rgba(11, 31, 58, 0.08);
+}
+
+#root .bg-white {
+  border-color: var(--tech-source-border);
+}
+
+#root input,
+#root select,
+#root textarea {
+  border-color: var(--tech-source-border);
+}
+
+#root input::placeholder,
+#root textarea::placeholder {
+  color: #8a98aa;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 #root .overflow-x-auto {
