@@ -44,8 +44,7 @@ const timeToMinutes = (value: string) => {
   return Math.max(0, Math.min(24 * 60, (hours || 0) * 60 + (minutes || 0)));
 };
 const timePercent = (value: string) => (timeToMinutes(value) / (24 * 60)) * 100;
-const durationPercent = (start: string, end: string) =>
-  Math.max(0, timePercent(end) - timePercent(start));
+const durationPercent = (start: string, end: string) => Math.max(0, timePercent(end) - timePercent(start));
 
 export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
   employees: suppliedEmployees = [],
@@ -169,13 +168,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
 
       {isLeader && (
         <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-          <ShiftManager
-            shifts={shifts}
-            lang={lang}
-            onAddShift={onAddShift}
-            onUpdateShift={onUpdateShift}
-            onDeleteShift={onDeleteShift}
-          />
+          <ShiftManager shifts={shifts} lang={lang} onAddShift={onAddShift} onUpdateShift={onUpdateShift} onDeleteShift={onDeleteShift} />
         </div>
       )}
 
@@ -198,51 +191,53 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
                 <option value={EMPTY}>{lang === 'ar' ? 'غير مُعيّن' : 'Unassigned'}</option><option value={OFF}>{lang === 'ar' ? 'إجازة أسبوعية' : 'OFF'}</option>
                 {shifts.map(s => <option key={s.id} value={s.id}>{lang === 'ar' ? s.nameAr || s.name : s.nameEn || s.name} — {s.startTime || '--'}–{s.endTime || '--'}</option>)}
               </select>
-              {shift && (
-                <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-2.5">
-                  <div className="mb-2 flex items-center justify-between gap-2 text-[10px] font-black text-slate-600">
-                    <span>{lang === 'ar' ? 'مخطط ساعات اليوم' : 'Daily time map'}</span>
-                    <span className="font-mono text-slate-500">{shift.startTime}–{shift.endTime}</span>
-                  </div>
-                  <div className="relative h-7 overflow-hidden rounded-lg border border-slate-200 bg-white" dir="ltr">
-                    {[25, 50, 75].map(mark => <span key={mark} className="absolute inset-y-0 border-l border-dashed border-slate-200" style={{ left: `${mark}%` }} />)}
-                    <span
-                      className="absolute top-1/2 h-3 -translate-y-1/2 rounded-full bg-emerald-500 shadow-sm ring-2 ring-emerald-200"
-                      style={{ left: `${timePercent(shift.startTime)}%`, width: `${durationPercent(shift.startTime, shift.endTime)}%` }}
-                      title={lang === 'ar' ? `وقت العمل: ${shift.startTime} - ${shift.endTime}` : `Work: ${shift.startTime} - ${shift.endTime}`}
-                    />
-                    {(shift.breaks || []).map(item => (
-                      <button
-                        type="button"
-                        key={item.id}
-                        className="absolute top-1/2 z-10 h-5 min-w-[9px] -translate-y-1/2 cursor-pointer rounded-full border-2 border-white bg-rose-500 shadow-md ring-2 ring-rose-300 transition hover:bg-rose-700 hover:ring-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-700"
-                        style={{ left: `${timePercent(item.startTime)}%`, width: `${durationPercent(item.startTime, item.endTime)}%` }}
-                        title={lang === 'ar' ? `${item.nameAr}: ${item.startTime} - ${item.endTime}` : `${item.nameEn}: ${item.startTime} - ${item.endTime}`}
-                        onClick={() => setSelectedBreak({ name: lang === 'ar' ? item.nameAr : item.nameEn, startTime: item.startTime, endTime: item.endTime, durationMinutes: item.durationMinutes || 0 })}
-                        aria-label={lang === 'ar' ? `عرض وقت ${item.nameAr}` : `Show ${item.nameEn} time`}
-                      />
-                    ))}
-                  </div>
-                  <div className="mt-1 grid grid-cols-5 text-center font-mono text-[8px] font-bold text-slate-400" dir="ltr">
-                    <span>00</span><span>06</span><span>12</span><span>18</span><span>24</span>
-                  </div>
-                  {(shift.breaks || []).length > 0 && (
-                    <div className="mt-2 space-y-1 border-t border-slate-200 pt-2">
-                      {(shift.breaks || []).map(item => (
-                        <div key={`detail-${item.id}`} className="flex min-w-0 items-center justify-between gap-1 text-[9px] font-bold text-rose-700">
-                          <span className="min-w-0 truncate">{lang === 'ar' ? item.nameAr : item.nameEn}</span>
-                          <span className="shrink-0 font-mono">{item.startTime}–{item.endTime} · {item.durationMinutes || 0}m</span>
-                        </div>
-                      ))}
+              {shift && (() => {
+                const shiftStart = timeToMinutes(shift.startTime);
+                const shiftEnd = timeToMinutes(shift.endTime);
+                const shiftDuration = Math.max(1, shiftEnd - shiftStart);
+                const shiftLeft = timePercent(shift.startTime);
+                const shiftWidth = durationPercent(shift.startTime, shift.endTime);
+                return (
+                  <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-2.5">
+                    <div className="mb-2 flex items-center justify-between gap-2 text-[10px] font-black text-slate-600">
+                      <span>{lang === 'ar' ? 'مخطط ساعات اليوم' : 'Daily time map'}</span>
+                      <span className="font-mono text-slate-500">{shift.startTime}–{shift.endTime}</span>
                     </div>
-                  )}
-                  {(shift.breaks || []).length === 0 && (
-                    <div className="mt-2 border-t border-slate-200 pt-2 text-[9px] font-bold text-slate-400">
-                      {lang === 'ar' ? 'لا توجد بريكات مضافة لهذا الشفت' : 'No breaks configured for this shift'}
+                    <div className="relative h-7 overflow-hidden rounded-lg border border-slate-200 bg-white" dir="ltr">
+                      {[25, 50, 75].map(mark => <span key={mark} className="absolute inset-y-0 border-l border-dashed border-slate-200" style={{ left: `${mark}%` }} />)}
+                      <span className="absolute top-1/2 z-0 h-3 -translate-y-1/2 rounded-full bg-emerald-500 shadow-sm" style={{ left: `${shiftLeft}%`, width: `${shiftWidth}%` }} title={lang === 'ar' ? `وقت العمل: ${shift.startTime} - ${shift.endTime}` : `Work: ${shift.startTime} - ${shift.endTime}`} />
+                      {(shift.breaks || []).map(item => {
+                        const rawBreakStart = timeToMinutes(item.startTime);
+                        const rawBreakEnd = timeToMinutes(item.endTime);
+                        const breakStart = Math.max(shiftStart, Math.min(shiftEnd, rawBreakStart));
+                        const breakEnd = Math.max(shiftStart, Math.min(shiftEnd, rawBreakEnd));
+                        if (breakEnd <= breakStart) return null;
+                        const breakLeft = shiftLeft + ((breakStart - shiftStart) / shiftDuration) * shiftWidth;
+                        const breakWidth = ((breakEnd - breakStart) / shiftDuration) * shiftWidth;
+                        return (
+                          <button type="button" key={item.id} className="absolute top-1/2 z-10 h-3 -translate-y-1/2 cursor-pointer rounded-full bg-rose-500 shadow-sm transition hover:bg-rose-700 focus:outline-none focus:ring-2 focus:ring-rose-400" style={{ left: `${breakLeft}%`, width: `${breakWidth}%` }} title={lang === 'ar' ? `${item.nameAr}: ${item.startTime} - ${item.endTime}` : `${item.nameEn}: ${item.startTime} - ${item.endTime}`} onClick={() => setSelectedBreak({ name: lang === 'ar' ? item.nameAr : item.nameEn, startTime: item.startTime, endTime: item.endTime, durationMinutes: item.durationMinutes || 0 })} aria-label={lang === 'ar' ? `عرض وقت ${item.nameAr}` : `Show ${item.nameEn} time`} />
+                        );
+                      })}
                     </div>
-                  )}
-                </div>
-              )}
+                    <div className="mt-1 grid grid-cols-5 text-center font-mono text-[8px] font-bold text-slate-400" dir="ltr">
+                      <span>00</span><span>06</span><span>12</span><span>18</span><span>24</span>
+                    </div>
+                    {(shift.breaks || []).length > 0 && (
+                      <div className="mt-2 space-y-1 border-t border-slate-200 pt-2">
+                        {(shift.breaks || []).map(item => (
+                          <div key={`detail-${item.id}`} className="flex min-w-0 items-center justify-between gap-1 text-[9px] font-bold text-rose-700">
+                            <span className="min-w-0 truncate">{lang === 'ar' ? item.nameAr : item.nameEn}</span>
+                            <span className="shrink-0 font-mono">{item.startTime}–{item.endTime} · {item.durationMinutes || 0}m</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {(shift.breaks || []).length === 0 && (
+                      <div className="mt-2 border-t border-slate-200 pt-2 text-[9px] font-bold text-slate-400">{lang === 'ar' ? 'لا توجد بريكات مضافة لهذا الشفت' : 'No breaks configured for this shift'}</div>
+                    )}
+                  </div>
+                );
+              })()}
               <div className={`mt-3 rounded-xl border p-3 ${value === OFF ? 'border-slate-300 bg-slate-100' : value === EMPTY ? 'border-dashed border-slate-300 bg-white' : 'border-emerald-200 bg-emerald-50'}`}>
                 <div className="text-xs font-black text-slate-800">{value === OFF ? (lang === 'ar' ? 'إجازة أسبوعية' : 'OFF') : value === EMPTY ? (lang === 'ar' ? 'غير مُعيّن' : 'Unassigned') : (shift ? (lang === 'ar' ? shift.nameAr || shift.name : shift.nameEn || shift.name) : (lang === 'ar' ? 'شفت غير معروف' : 'Unknown shift'))}</div>
                 {shift && <><div className="mt-2 flex items-center gap-1.5 text-[11px] font-bold text-slate-600"><Clock3 className="h-3.5 w-3.5" />{shift.startTime || '--'} - {shift.endTime || '--'}</div>{(shift.breaks?.length || Number(shift.breakMinutes || 0) > 0) && <div className="mt-1 flex items-center gap-1.5 text-[11px] font-bold text-rose-600"><Coffee className="h-3.5 w-3.5" />{shift.breaks?.length ? `${shift.breaks.length} ${lang === 'ar' ? 'بريك' : 'breaks'}` : `${shift.breakMinutes} ${lang === 'ar' ? 'دقيقة راحة' : 'min break'}`}</div>}</>}
