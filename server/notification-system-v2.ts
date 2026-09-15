@@ -98,9 +98,60 @@ async function ensureReady() {
 export async function ensureNotificationStorage() {
   await ensureReady();
 }
+async function reconcilePendingLeaveNotifications(recipientId: string) {
+  if (!USE_DATABASE || !recipientId) return;
+  try {
+    const recipients = await db.select({ id: schema.employees.id, role: schema.employees.role })
+      .from(schema.employees)
+      .where(eq(schema.employees.id, recipientId));
+    const recipient = recipients[0];
+    if (!recipient || !['leader', 'admin'].includes(clean(recipient.role).toLowerCase())) return;
+
+    const [employees, pendingLeaves, existing] = await Promise.all([
+      db.select().from(schema.employees),
+      db.select().from(schema.leaveRequests).where(eq(schema.leaveRequests.status, 'pending')),
+      db.select().from(schema.notifications).where(eq(schema.notifications.recipientId, recipientId)),
+    ]);
+    const employeeNames = new Map(employees.map((employee: any) => [
+      String(employee.id),
+      clean(employee.nameAr) || clean(employee.nameEn) || String(employee.id),
+    ]));
+    const notifiedLeaveIds = new Set(existing
+      .filter((item: any) => item.type === 'leave_requested' && item.relatedLeaveId)
+      .map((item: any) => String(item.relatedLeaveId)));
+
+    for (const leave of pendingLeaves as any[]) {
+      const leaveId = clean(leave.id);
+      const employeeId = clean(leave.employeeId);
+      if (!leaveId || !employeeId || employeeId === recipientId || notifiedLeaveIds.has(leaveId)) continue;
+      const title = 'طلب إجازة جديد';
+      const message = `${employeeNames.get(employeeId) || employeeId} أرسل طلب ${clean(leave.type) || 'leave'} من ${clean(leave.startDate)} إلى ${clean(leave.endDate)}.`;
+      const item = normalize({
+        recipientId,
+        type: 'leave_requested',
+        title,
+        message,
+        relatedEmployeeId: employeeId,
+        relatedLeaveId: leaveId,
+        isRead: false,
+        createdAt: clean(leave.createdAt) || nowIso(),
+        updatedAt: clean(leave.updatedAt) || clean(leave.createdAt) || nowIso(),
+      });
+      if (!item) continue;
+      const { link: _link, targetUrl: _targetUrl, ...dbItem } = item;
+      await db.insert(schema.notifications).values(dbItem as any).onConflictDoNothing({ target: schema.notifications.id });
+      notifiedLeaveIds.add(leaveId);
+    }
+  } catch (error) {
+    // Reconciliation repairs missed events but must never make notification
+    // reads fail when an older database is temporarily unavailable.
+    console.warn('[Notifications v2] pending leave reconciliation skipped:', error);
+  }
+}
 async function listForUser(userId: string): Promise<NotificationRecord[]> {
   await ensureReady(); const id = clean(userId); if (!id) return [];
   if (USE_DATABASE) {
+    await reconcilePendingLeaveNotifications(id);
     const rows = await db.select().from(schema.notifications).where(eq(schema.notifications.recipientId, id));
     let leaveRows: any[] = [];
     try { leaveRows = await db.select({ id: schema.leaveRequests.id, status: schema.leaveRequests.status }).from(schema.leaveRequests); } catch (error) { console.warn('[Notifications v2] leave validation skipped:', error); }
