@@ -219,14 +219,24 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
                       />
                     ))}
                   </div>
-                  <div className="mt-1 flex justify-between font-mono text-[9px] text-slate-400" dir="ltr">
-                    <span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>24:00</span>
+                  <div className="mt-1 grid grid-cols-5 text-center font-mono text-[8px] font-bold text-slate-400" dir="ltr">
+                    <span>00</span><span>06</span><span>12</span><span>18</span><span>24</span>
                   </div>
+                  {(shift.breaks || []).length > 0 && (
+                    <div className="mt-2 space-y-1 border-t border-slate-200 pt-2">
+                      {(shift.breaks || []).map(item => (
+                        <div key={`detail-${item.id}`} className="flex min-w-0 items-center justify-between gap-1 text-[9px] font-bold text-rose-700">
+                          <span className="min-w-0 truncate">{lang === 'ar' ? item.nameAr : item.nameEn}</span>
+                          <span className="shrink-0 font-mono">{item.startTime}–{item.endTime} · {item.durationMinutes || 0}m</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
               <div className={`mt-3 rounded-xl border p-3 ${value === OFF ? 'border-slate-300 bg-slate-100' : value === EMPTY ? 'border-dashed border-slate-300 bg-white' : 'border-emerald-200 bg-emerald-50'}`}>
                 <div className="text-xs font-black text-slate-800">{value === OFF ? (lang === 'ar' ? 'إجازة أسبوعية' : 'OFF') : value === EMPTY ? (lang === 'ar' ? 'غير مُعيّن' : 'Unassigned') : (shift ? (lang === 'ar' ? shift.nameAr || shift.name : shift.nameEn || shift.name) : (lang === 'ar' ? 'شفت غير معروف' : 'Unknown shift'))}</div>
-                {shift && <><div className="mt-2 flex items-center gap-1.5 text-[11px] font-bold text-slate-600"><Clock3 className="h-3.5 w-3.5" />{shift.startTime || '--'} - {shift.endTime || '--'}</div>{(shift.breaks?.length || Number(shift.breakMinutes || 0) > 0) && <div className="mt-1 flex items-center gap-1.5 text-[11px] font-bold text-rose-600"><Coffee className="h-3.5 w-3.5" />{shift.breaks?.length || shift.breakMinutes} {lang === 'ar' ? 'بريك/دقيقة' : 'break min'}</div>}</>}
+                {shift && <><div className="mt-2 flex items-center gap-1.5 text-[11px] font-bold text-slate-600"><Clock3 className="h-3.5 w-3.5" />{shift.startTime || '--'} - {shift.endTime || '--'}</div>{(shift.breaks?.length || Number(shift.breakMinutes || 0) > 0) && <div className="mt-1 flex items-center gap-1.5 text-[11px] font-bold text-rose-600"><Coffee className="h-3.5 w-3.5" />{shift.breaks?.length ? `${shift.breaks.length} ${lang === 'ar' ? 'بريك' : 'breaks'}` : `${shift.breakMinutes} ${lang === 'ar' ? 'دقيقة راحة' : 'min break'}`}</div>}</>}
               </div>
             </div>;
           })}</div>
