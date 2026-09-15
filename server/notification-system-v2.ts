@@ -58,8 +58,6 @@ function writeLocal(items: NotificationRecord[]) { try { fs.writeFileSync(LOCAL_
 async function ensureReady() {
   if (!readyPromise) readyPromise = (async () => {
     if (USE_DATABASE) {
-      // Bootstrap the notification table defensively so an older production
-      // database cannot make the polling endpoint fail with HTTP 500.
       await db.execute(sql`CREATE TABLE IF NOT EXISTS notifications (
         id text PRIMARY KEY,
         recipient_id text NOT NULL,
@@ -83,7 +81,6 @@ async function ensureReady() {
       await db.execute(sql`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS updated_at text`);
       await db.execute(sql`CREATE TABLE IF NOT EXISTS notification_system_meta (key text PRIMARY KEY, value text NOT NULL)`);
       await db.execute(sql`INSERT INTO notification_system_meta (key, value) VALUES ('version', ${VERSION}) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`);
-      // Cleanup is non-critical; never let a stale leave row take down GET /api/notifications.
       try {
         await db.execute(sql`DELETE FROM notifications n WHERE (n.type = 'leave_rejected' AND (n.related_leave_id IS NULL OR NOT EXISTS (SELECT 1 FROM leave_requests l WHERE l.id = n.related_leave_id AND LOWER(COALESCE(l.status,'')) = 'rejected')))`);
       } catch (error) {
@@ -93,6 +90,12 @@ async function ensureReady() {
   })().catch(error => { readyPromise = null; throw error; });
   return readyPromise;
 }
+
+// Public readiness helper used by server bootstrap and notification triggers.
+export async function ensureNotificationStorage() {
+  await ensureReady();
+}
+
 async function listForUser(userId: string): Promise<NotificationRecord[]> {
   await ensureReady(); const id = clean(userId); if (!id) return [];
   if (USE_DATABASE) {
