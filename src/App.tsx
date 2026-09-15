@@ -526,6 +526,33 @@ export default function App() {
      KEEP REFS UPDATED
      ========================================================= */
 
+  const openNotificationSource = (notification: Notification) => {
+    const type = String(notification?.type || '');
+    if (type.startsWith('leave_')) {
+      setActiveTab('leaves');
+      return;
+    }
+    if (type.startsWith('shift_')) {
+      setActiveTab('schedule');
+      return;
+    }
+    if (type.startsWith('overtime_')) {
+      setActiveTab('attendance');
+      return;
+    }
+    setActiveTab('dashboard');
+  };
+
+  useEffect(() => {
+    /* TECH_SOURCE_NOTIFICATION_ROUTE_LISTENER_V1 */
+    const handleNotificationNavigation = (event: Event) => {
+      const notification = (event as CustomEvent<Notification>).detail;
+      if (notification?.type) openNotificationSource(notification);
+    };
+    window.addEventListener('techsource:navigate-notification', handleNotificationNavigation);
+    return () => window.removeEventListener('techsource:navigate-notification', handleNotificationNavigation);
+  }, [currentUser?.role]);
+
   useEffect(() => {
     employeesRef.current =
       employees;
@@ -586,7 +613,6 @@ const pushSync = async (
     deletedAttendanceIds?: string[];
     deletedEmployeeIds?: string[];
     deletedLeaveIds?: string[];
-    deletedShiftIds?: string[];
     replaceAttendance?: boolean;
   }
 ) => {
@@ -653,11 +679,6 @@ const pushSync = async (
   if (overrides?.deletedLeaveIds) {
     payload.deletedLeaveIds =
       overrides.deletedLeaveIds;
-  }
-
-  if (overrides?.deletedShiftIds) {
-    payload.deletedShiftIds =
-      overrides.deletedShiftIds;
   }
 
   if (overrides?.replaceAttendance) {
@@ -3177,35 +3198,6 @@ const pushSync = async (
     setDailyShiftAssignments(next);
     localStorage.setItem('daily_shift_assignments', JSON.stringify(next));
     void pushSync({ dailyShiftAssignments: next });
-  };
-
-  const canManageShifts = currentUser?.role === 'leader' || currentUser?.role === 'admin';
-
-  const handleAddShift = (shift: Shift) => {
-    if (!canManageShifts) return;
-    const next = [...shifts, shift];
-    setShifts(next);
-    localStorage.setItem('attendance_shifts', JSON.stringify(next));
-    void pushSync({ shifts: next });
-  };
-
-  const handleUpdateShift = (shift: Shift) => {
-    if (!canManageShifts) return;
-    const next = shifts.map(item => item.id === shift.id ? shift : item);
-    setShifts(next);
-    localStorage.setItem('attendance_shifts', JSON.stringify(next));
-    void pushSync({ shifts: next });
-  };
-
-  const handleDeleteShift = (shiftId: string) => {
-    if (!canManageShifts) return;
-    const next = shifts.filter(item => item.id !== shiftId);
-    const nextAssignments = dailyShiftAssignments.filter(item => String(item.shiftId ?? (item as any).shift_id ?? '') !== String(shiftId));
-    setShifts(next);
-    setDailyShiftAssignments(nextAssignments);
-    localStorage.setItem('attendance_shifts', JSON.stringify(next));
-    localStorage.setItem('daily_shift_assignments', JSON.stringify(nextAssignments));
-    void pushSync({ shifts: next, dailyShiftAssignments: nextAssignments, deletedShiftIds: [shiftId] });
   };
 
 
@@ -6062,16 +6054,17 @@ try {
 
         {activeTab === 'schedule' && (
           <WeeklyShiftSchedule
-            employees={employees}
-            shifts={shifts}
-            dailyShiftAssignments={dailyShiftAssignments}
-            currentUser={currentUser}
-            onSaveDailyShift={handleSaveDailyShift}
-            onAddShift={handleAddShift}
-            onUpdateShift={handleUpdateShift}
-            onDeleteShift={handleDeleteShift}
             lang={lang}
             onClose={() => setActiveTab(currentUser?.role === 'leader' || !currentUser ? 'dashboard' : 'portal')}
+          />
+        )}
+
+        {activeTab === 'notifications' && (
+          <NotificationsPage
+            currentUserId={currentUser?.id}
+            lang={lang}
+            onBack={() => setActiveTab(currentUser?.role === 'leader' || !currentUser ? 'dashboard' : 'portal')}
+            onOpenNotification={openNotificationSource}
           />
         )}
 
