@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import type { Express, Request } from 'express';
-import { and, eq, sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { db } from '../src/db/index.js';
 import * as schema from '../src/db/schema.js';
 
@@ -93,65 +93,9 @@ async function ensureReady() {
   })().catch(error => { readyPromise = null; throw error; });
   return readyPromise;
 }
-// Other server-side notification producers share the same table. Expose the
-// bootstrap guard so they cannot race the first /api/notifications request.
-export async function ensureNotificationStorage() {
-  await ensureReady();
-}
-async function reconcilePendingLeaveNotifications(recipientId: string) {
-  if (!USE_DATABASE || !recipientId) return;
-  try {
-    const recipients = await db.select({ id: schema.employees.id, role: schema.employees.role })
-      .from(schema.employees)
-      .where(eq(schema.employees.id, recipientId));
-    const recipient = recipients[0];
-    if (!recipient || !['leader', 'admin'].includes(clean(recipient.role).toLowerCase())) return;
-
-    const [employees, pendingLeaves, existing] = await Promise.all([
-      db.select().from(schema.employees),
-      db.select().from(schema.leaveRequests).where(eq(schema.leaveRequests.status, 'pending')),
-      db.select().from(schema.notifications).where(eq(schema.notifications.recipientId, recipientId)),
-    ]);
-    const employeeNames = new Map(employees.map((employee: any) => [
-      String(employee.id),
-      clean(employee.nameAr) || clean(employee.nameEn) || String(employee.id),
-    ]));
-    const notifiedLeaveIds = new Set(existing
-      .filter((item: any) => item.type === 'leave_requested' && item.relatedLeaveId)
-      .map((item: any) => String(item.relatedLeaveId)));
-
-    for (const leave of pendingLeaves as any[]) {
-      const leaveId = clean(leave.id);
-      const employeeId = clean(leave.employeeId);
-      if (!leaveId || !employeeId || employeeId === recipientId || notifiedLeaveIds.has(leaveId)) continue;
-      const title = 'طلب إجازة جديد';
-      const message = `${employeeNames.get(employeeId) || employeeId} أرسل طلب ${clean(leave.type) || 'leave'} من ${clean(leave.startDate)} إلى ${clean(leave.endDate)}.`;
-      const item = normalize({
-        recipientId,
-        type: 'leave_requested',
-        title,
-        message,
-        relatedEmployeeId: employeeId,
-        relatedLeaveId: leaveId,
-        isRead: false,
-        createdAt: clean(leave.createdAt) || nowIso(),
-        updatedAt: clean(leave.updatedAt) || clean(leave.createdAt) || nowIso(),
-      });
-      if (!item) continue;
-      const { link: _link, targetUrl: _targetUrl, ...dbItem } = item;
-      await db.insert(schema.notifications).values(dbItem as any).onConflictDoNothing({ target: schema.notifications.id });
-      notifiedLeaveIds.add(leaveId);
-    }
-  } catch (error) {
-    // Reconciliation repairs missed events but must never make notification
-    // reads fail when an older database is temporarily unavailable.
-    console.warn('[Notifications v2] pending leave reconciliation skipped:', error);
-  }
-}
 async function listForUser(userId: string): Promise<NotificationRecord[]> {
   await ensureReady(); const id = clean(userId); if (!id) return [];
   if (USE_DATABASE) {
-    await reconcilePendingLeaveNotifications(id);
     const rows = await db.select().from(schema.notifications).where(eq(schema.notifications.recipientId, id));
     let leaveRows: any[] = [];
     try { leaveRows = await db.select({ id: schema.leaveRequests.id, status: schema.leaveRequests.status }).from(schema.leaveRequests); } catch (error) { console.warn('[Notifications v2] leave validation skipped:', error); }
@@ -197,7 +141,10 @@ async function markRead(id: string, recipientId: string) {
 async function markAllRead(recipientId: string) {
   await ensureReady(); const userId = clean(recipientId); if (!userId) return 0;
   if (!USE_DATABASE) { const items = readLocal(); let count = 0; const updated = items.map(item => { if (item.recipientId === userId && !item.isRead) { count++; return { ...item, isRead: true, updatedAt: nowIso() }; } return item; }); writeLocal(updated); return count; }
-  const result = await db.update(schema.notifications).set({ isRead: true, updatedAt: nowIso() }).where(and(eq(schema.notifications.recipientId, userId), eq(schema.notifications.isRead, false))); return Number((result as any)?.rowCount ?? 0);
+  const rows = await db.select({ isRead: schema.notifications.isRead }).from(schema.notifications).where(eq(schema.notifications.recipientId, userId));
+  const unreadCount = rows.filter((row: any) => !Boolean(row.isRead)).length;
+  await db.update(schema.notifications).set({ isRead: true, updatedAt: nowIso() }).where(eq(schema.notifications.recipientId, userId));
+  return unreadCount;
 }
 function bodyOf(req: Request) { return req.body && typeof req.body === 'object' ? req.body : {}; }
 export function registerNotificationSystemV2(app: Express) {
@@ -205,6 +152,5 @@ export function registerNotificationSystemV2(app: Express) {
   app.put('/api/notifications/mark-all-read', async (req, res) => { try { const userId = clean(bodyOf(req).userId || req.query.userId); const count = await markAllRead(userId); const notifications = await listForUser(userId); res.setHeader('Cache-Control', 'no-store'); res.json({ success: true, count, notifications }); } catch (error) { console.error('[Notifications v2] mark-all-read failed', error); res.status(500).json({ success: false, count: 0 }); } });
   app.put('/api/notifications/:id/mark-read', async (req, res) => { try { const userId = clean(bodyOf(req).userId || req.query.userId); const updated = await markRead(req.params.id, userId); const notifications = await listForUser(userId); res.setHeader('Cache-Control', 'no-store'); res.json({ success: updated, updated, notifications }); } catch (error) { console.error('[Notifications v2] mark-read failed', error); res.status(500).json({ success: false, updated: false }); } });
   app.post('/api/notifications/emit', async (req, res) => { try { const notification = await saveOne(bodyOf(req).notification || bodyOf(req)); if (!notification) return res.status(400).json({ success: false, error: 'invalid_notification' }); res.setHeader('Cache-Control', 'no-store'); res.json({ success: true, notification }); } catch (error) { console.error('[Notifications v2] emit failed', error); res.status(500).json({ success: false }); } });
-  // Initialization is lazy. Serverless cold starts should not fail or emit a
-  // misleading startup error while the database pool is still warming up.
+  void ensureReady().catch(error => console.error('[Notifications v2] startup failed', error));
 }
