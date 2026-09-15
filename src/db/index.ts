@@ -19,10 +19,20 @@ export const createPool = () => {
       );
     }
 
+    // Serverless instances can scale horizontally. A large pool per instance
+    // quickly exhausts the database pooler and surfaces as connection
+    // timeouts during cold starts.
+    const configuredPoolSize = Number(process.env.PG_POOL_MAX || 2);
+    const maxPoolSize = Number.isFinite(configuredPoolSize)
+      ? Math.max(1, Math.min(configuredPoolSize, 4))
+      : 2;
+
     global._postgresPool = new Pool({
       connectionString,
-      max: 10,
-      connectionTimeoutMillis: 15000,
+      max: maxPoolSize,
+      idleTimeoutMillis: 10000,
+      connectionTimeoutMillis: 10000,
+      keepAlive: true,
     });
 
     global._postgresPool.on("error", (err) => {

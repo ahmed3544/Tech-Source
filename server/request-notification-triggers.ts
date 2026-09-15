@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '../src/db/index.js';
 import * as schema from '../src/db/schema.js';
 import { sendPushToEmployee } from './fcm.js';
+import { ensureNotificationStorage } from './notification-system-v2.js';
 
 const hasDatabase = () => Boolean(process.env.DATABASE_URL || process.env.SUPABASE_DB_URL);
 const clean = (v:any) => String(v ?? '').trim();
@@ -20,6 +21,7 @@ async function insertNotification(recipientId:string, type:string, title:string,
 
 async function emitForSync(body:any) {
   if (!hasDatabase()) return;
+  await ensureNotificationStorage();
   const requestedLeaves = Array.isArray(body?.leaveRequests) ? body.leaveRequests : [];
   const requestedOvertimes = Array.isArray(body?.overtimeRequests) ? body.overtimeRequests : [];
   const requestedSwaps = Array.isArray(body?.shiftSwapRequests) ? body.shiftSwapRequests : [];
