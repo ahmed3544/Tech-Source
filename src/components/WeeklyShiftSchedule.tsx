@@ -44,7 +44,17 @@ const timeToMinutes = (value: string) => {
   return Math.max(0, Math.min(24 * 60, (hours || 0) * 60 + (minutes || 0)));
 };
 const timePercent = (value: string) => (timeToMinutes(value) / (24 * 60)) * 100;
-const durationPercent = (start: string, end: string) => Math.max(0, timePercent(end) - timePercent(start));
+const shiftSegments = (start: string, end: string) => {
+  const startMinutes = timeToMinutes(start);
+  const endMinutes = timeToMinutes(end);
+  if (endMinutes > startMinutes) return [{ left: (startMinutes / 1440) * 100, width: ((endMinutes - startMinutes) / 1440) * 100 }];
+  if (endMinutes < startMinutes) return [
+    { left: (startMinutes / 1440) * 100, width: ((1440 - startMinutes) / 1440) * 100 },
+    { left: 0, width: (endMinutes / 1440) * 100 },
+  ];
+  return [{ left: 0, width: 100 }];
+};
+const isOvernight = (start: string, end: string) => timeToMinutes(end) < timeToMinutes(start);
 
 export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
   employees: suppliedEmployees = [],
@@ -194,9 +204,11 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
               {shift && (() => {
                 const shiftStart = timeToMinutes(shift.startTime);
                 const shiftEnd = timeToMinutes(shift.endTime);
-                const shiftDuration = Math.max(1, shiftEnd - shiftStart);
-                const shiftLeft = timePercent(shift.startTime);
-                const shiftWidth = durationPercent(shift.startTime, shift.endTime);
+                const shiftDuration = Math.max(1, isOvernight(shift.startTime, shift.endTime) ? (1440 - shiftStart) + shiftEnd : shiftEnd - shiftStart);
+                const segments = shiftSegments(shift.startTime, shift.endTime);
+                const shiftLeft = segments[0]?.left ?? 0;
+                const shiftWidth = segments[0]?.width ?? 0;
+                const overnight = isOvernight(shift.startTime, shift.endTime);
                 return (
                   <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-2.5">
                     <div className="mb-2 flex items-center justify-between gap-2 text-[10px] font-black text-slate-600">
@@ -205,7 +217,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
                     </div>
                     <div className="relative h-7 overflow-hidden rounded-lg border border-slate-200 bg-white" dir="ltr">
                       {[25, 50, 75].map(mark => <span key={mark} className="absolute inset-y-0 border-l border-dashed border-slate-200" style={{ left: `${mark}%` }} />)}
-                      <span className="absolute top-1/2 z-0 h-3 -translate-y-1/2 rounded-full bg-emerald-500 shadow-sm" style={{ left: `${shiftLeft}%`, width: `${shiftWidth}%` }} title={lang === 'ar' ? `وقت العمل: ${shift.startTime} - ${shift.endTime}` : `Work: ${shift.startTime} - ${shift.endTime}`} />
+                      {segments.map((segment, index) => <span key={`segment-${index}`} className="absolute top-1/2 z-0 h-3 -translate-y-1/2 rounded-full bg-emerald-500 shadow-sm" style={{ left: `${segment.left}%`, width: `${segment.width}%` }} title={lang === 'ar' ? `وقت العمل: ${shift.startTime} - ${shift.endTime}` : `Work: ${shift.startTime} - ${shift.endTime}`} />)}
                       {(shift.breaks || []).map(item => {
                         const rawBreakStart = timeToMinutes(item.startTime);
                         const rawBreakEnd = timeToMinutes(item.endTime);
