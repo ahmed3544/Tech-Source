@@ -3173,6 +3173,32 @@ const pushSync = async (
     void pushSync({ dailyShiftAssignments: next });
   };
 
+  const canManageShifts = currentUser?.role === 'leader' || currentUser?.role === 'admin';
+
+  const handleAddShift = (shift: Shift) => {
+    if (!canManageShifts) return;
+    const next = [...shifts, shift];
+    setShifts(next);
+    localStorage.setItem('attendance_shifts', JSON.stringify(next));
+    void pushSync({ shifts: next });
+  };
+
+  const handleUpdateShift = (shift: Shift) => {
+    if (!canManageShifts) return;
+    const next = shifts.map(item => item.id === shift.id ? shift : item);
+    setShifts(next);
+    localStorage.setItem('attendance_shifts', JSON.stringify(next));
+    void pushSync({ shifts: next });
+  };
+
+  const handleDeleteShift = (shiftId: string) => {
+    if (!canManageShifts) return;
+    const next = shifts.filter(item => item.id !== shiftId);
+    setShifts(next);
+    localStorage.setItem('attendance_shifts', JSON.stringify(next));
+    void pushSync({ shifts: next });
+  };
+
 
   /* =========================================================
      DELETE EMPLOYEE
@@ -6032,6 +6058,9 @@ try {
             dailyShiftAssignments={dailyShiftAssignments}
             currentUser={currentUser}
             onSaveDailyShift={handleSaveDailyShift}
+            onAddShift={handleAddShift}
+            onUpdateShift={handleUpdateShift}
+            onDeleteShift={handleDeleteShift}
             lang={lang}
             onClose={() => setActiveTab(currentUser?.role === 'leader' || !currentUser ? 'dashboard' : 'portal')}
           />
