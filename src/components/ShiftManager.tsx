@@ -83,12 +83,7 @@ export const ShiftManager: React.FC<ShiftManagerProps> = ({
   };
 
   const handleSaveShift = () => {
-    if (!formData.startDate || !formData.endDate) {
-      alert(lang === 'ar' ? 'الرجاء تحديد تاريخ بداية ونهاية الشفت' : 'Please select the shift start and end dates');
-      return;
-    }
-
-    if (formData.endDate < formData.startDate) {
+    if (formData.startDate && formData.endDate && formData.endDate < formData.startDate) {
       alert(lang === 'ar' ? 'تاريخ النهاية يجب أن يكون بعد أو مساويًا لتاريخ البداية' : 'End date must be on or after the start date');
       return;
     }
@@ -129,8 +124,8 @@ export const ShiftManager: React.FC<ShiftManagerProps> = ({
 
     const shift: Shift = {
       id: editingShift?.id || `shift_${Date.now()}`,
-      nameAr: `${formData.startTime} - ${formData.endTime}`,
-      nameEn: `${formData.startTime} - ${formData.endTime}`,
+      nameAr: String(formData.nameAr || '').trim() || `${formData.startTime} - ${formData.endTime}`,
+      nameEn: String(formData.nameEn || '').trim() || `${formData.startTime} - ${formData.endTime}`,
       startTime: formData.startTime,
       endTime: formData.endTime,
       startDate: formData.startDate,
@@ -204,6 +199,11 @@ export const ShiftManager: React.FC<ShiftManagerProps> = ({
             </div>
 
             <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <label className="block text-sm font-medium text-gray-700">{lang === 'ar' ? 'اسم الشفت بالعربي' : 'Arabic shift name'}<input type="text" value={formData.nameAr || ''} onChange={e => setFormData({ ...formData, nameAr: e.target.value })} placeholder={lang === 'ar' ? 'مثال: شفت صباحي' : 'Example: Morning shift'} className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg" /></label>
+                <label className="block text-sm font-medium text-gray-700">{lang === 'ar' ? 'اسم الشفت بالإنجليزية' : 'English shift name'}<input type="text" value={formData.nameEn || ''} onChange={e => setFormData({ ...formData, nameEn: e.target.value })} placeholder="Morning shift" className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg" /></label>
+              </div>
+
               <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
                 <h5 className="font-black text-slate-900 mb-3">{lang === 'ar' ? 'تاريخ الشفت' : 'Shift Date Range'}</h5>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
