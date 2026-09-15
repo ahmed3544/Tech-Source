@@ -6067,8 +6067,26 @@ try {
             shifts={shifts}
             dailyShiftAssignments={dailyShiftAssignments}
             currentUser={currentUser}
-            onSaveDailyShift={handleSaveDailyShift}
-            lang={lang}
+  onSaveDailyShift={handleSaveDailyShift}
+  onAddShift={(shift) => {
+    const nextShifts = [...shifts, shift];
+    setShifts(nextShifts);
+    localStorage.setItem('attendance_shifts', JSON.stringify(nextShifts));
+    void pushSync({ shifts: nextShifts });
+  }}
+  onUpdateShift={(shift) => {
+    const nextShifts = shifts.map((item) => item.id === shift.id ? shift : item);
+    setShifts(nextShifts);
+    localStorage.setItem('attendance_shifts', JSON.stringify(nextShifts));
+    void pushSync({ shifts: nextShifts });
+  }}
+  onDeleteShift={(shiftId) => {
+    const nextShifts = shifts.filter((item) => item.id !== shiftId);
+    setShifts(nextShifts);
+    localStorage.setItem('attendance_shifts', JSON.stringify(nextShifts));
+    void pushSync({ shifts: nextShifts });
+  }}
+  lang={lang}
             onClose={() => setActiveTab(currentUser?.role === 'leader' || !currentUser ? 'dashboard' : 'portal')}
           />
         )}
