@@ -61,7 +61,7 @@ async function emitForSync(body:any) {
 
   if (requestedSwaps.length) {
     const settings = await db.select().from(schema.settings).where(eq(schema.settings.key, 'shiftSwapRequests'));
-    const persistedSwaps:any[] = Array.isArray(settings[0]?.value) ? settings[0].value : [];
+    const persistedSwaps:any[] = requestedSwaps.length ? requestedSwaps : (Array.isArray(settings[0]?.value) ? settings[0].value : []);
     for (const requested of requestedSwaps) {
       const id = clean(requested?.id); const r:any = persistedSwaps.find((x:any) => clean(x?.id) === id); if (!r) continue;
       const requesterId = clean(r.requesterId), targetId = clean(r.targetEmployeeId), status = clean(r.status).toLowerCase(); if (!requesterId || !targetId) continue;

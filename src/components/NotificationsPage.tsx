@@ -24,6 +24,7 @@ const normalize = (items: unknown, currentUserId?: string): Notification[] => {
       const recipientId = String(n.recipientId || '').trim();
       if (!id || recipientId !== userId || seen.has(id)) return false;
       seen.add(id);
+      (n as any).isRead = Boolean(n.isRead ?? (n as any).is_read ?? false);
       return true;
     })
     .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
@@ -83,21 +84,21 @@ export const NotificationsPage: React.FC<Props> = ({ currentUserId, lang, onBack
   };
 
   useEffect(() => {
-    let stopped = false;
-    let delay = 1000;
-    let timer: number | undefined;
-    const run = async () => {
-      if (stopped) return;
-      await load(false);
-      if (stopped) return;
-      delay = Math.min(delay * 2, 30000);
-      timer = window.setTimeout(run, delay);
-    };
-    void run();
-    return () => {
-      stopped = true;
-      if (timer) window.clearTimeout(timer);
-    };
+    void load(false);
+    if (!currentUserId) return;
+    let connected = false;
+    const stream = new EventSource(`/api/notifications/stream?userId=${encodeURIComponent(String(currentUserId).trim())}`);
+    stream.onopen = () => { connected = true; };
+    stream.addEventListener('notification', (event) => {
+      try {
+        const incoming = JSON.parse((event as MessageEvent).data) as Notification;
+        if (String(incoming.recipientId).trim() !== String(currentUserId).trim()) return;
+        setItems((current) => normalize([incoming, ...current], currentUserId));
+      } catch { void load(true); }
+    });
+    stream.onerror = () => { connected = false; };
+    const timer = window.setInterval(() => { if (!connected) void load(true); }, 2000);
+    return () => { window.clearInterval(timer); stream.close(); };
   }, [currentUserId]);
 
   const list = useMemo(() => items, [items]);

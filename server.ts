@@ -6,6 +6,7 @@ import * as schema from "./src/db/schema.js";
 import { registerFcmRoutes } from "./server/fcm.js";
 import { ensureNotificationStorage, registerNotificationSystemV2 } from "./server/notification-system-v2.js";
 import { registerRequestNotificationTriggers } from "./server/request-notification-triggers.js";
+import { registerNotificationSse } from "./server/notification-sse.js";
 import { registerAttendanceRealtime } from "./server/attendance-realtime.js";
 import { registerDeviceSyncV2 } from "./server/device-sync-v2.js";
 import { registerScheduleSyncGuard } from "./server/schedule-sync-guard.js";
@@ -32,6 +33,7 @@ async function setting(key:string,value:any){await db.insert(schema.settings).va
 async function dbSnapshot(){const [employees,attendanceRecords,leaveRequests,overtimeRequests,shifts,notifications,settings,employeeShiftAssignments]=await Promise.all([db.select().from(schema.employees),db.select().from(schema.attendanceRecords),db.select().from(schema.leaveRequests),db.select().from(schema.overtimeRequests),db.select().from(schema.shifts),db.select().from(schema.notifications),db.select().from(schema.settings),db.select().from(schema.employeeShiftAssignments)]);const m=new Map(settings.map((s:any)=>[String(s.key),s.value]));return{success:true,employees,attendanceRecords,leaveRequests,overtimeRequests,shifts,notifications,employeeShiftAssignments,dailyShiftAssignments:Array.isArray(m.get("dailyShiftAssignments"))?m.get("dailyShiftAssignments"):[],shiftSwapRequests:Array.isArray(m.get("shiftSwapRequests"))?m.get("shiftSwapRequests"):[],companyNameAr:m.get("companyNameAr")??null,companyNameEn:m.get("companyNameEn")??null,urgentNotice:m.get("urgentNotice")??null,lastUpdated:Date.now()};}
 
 registerNotificationSystemV2(app);
+registerNotificationSse(app);
 
 app.get('/api/data', async (_req, res) => {
   try {
