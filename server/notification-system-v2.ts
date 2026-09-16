@@ -1,30 +1,27 @@
-import fs from 'fs';
-import path from 'path';
 import crypto from 'crypto';
 import type { Express, Request } from 'express';
-import { eq, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { db } from '../src/db/index.js';
 import * as schema from '../src/db/schema.js';
 import { publishNotification } from './notification-sse.js';
 
 type NotificationRecord = { id: string; recipientId: string; type: string; title: string; message: string; relatedEmployeeId?: string; relatedLeaveId?: string; relatedOvertimeId?: string; relatedShiftSwapId?: string; link?: string; targetUrl?: string; isRead: boolean; createdAt: string; updatedAt: string; };
-const USE_DATABASE = Boolean(process.env.DATABASE_URL || process.env.SUPABASE_DB_URL);
-const LOCAL_FILE = path.join(process.cwd(), 'notifications_v2.json');
-const VERSION = '10-notifications-bootstrap-safe';
-let readyPromise: Promise<void> | null = null;
 const clean = (value: unknown) => String(value ?? '').trim();
 const nowIso = () => new Date().toISOString();
+
 function stableId(input: Omit<NotificationRecord, 'id'> & { id?: string }) {
   if (clean(input.id)) return clean(input.id);
   const basis = [input.recipientId, input.type, input.relatedEmployeeId || '', input.relatedLeaveId || '', input.relatedOvertimeId || '', input.relatedShiftSwapId || '', input.title, input.message].join('|');
   return `n2_${crypto.createHash('sha256').update(basis).digest('hex').slice(0, 40)}`;
 }
+
 function semanticKey(raw: any): string {
   const recipientId = clean(raw?.recipientId); const type = clean(raw?.type);
   const relatedId = clean(raw?.relatedLeaveId) || clean(raw?.relatedOvertimeId) || clean(raw?.relatedShiftSwapId);
   if (relatedId) return `${recipientId}|${type}|${relatedId}`;
   return `${recipientId}|${type}|${clean(raw?.title)}|${clean(raw?.message)}`;
 }
+
 function targetFor(raw: any): string | undefined {
   const explicit = clean(raw?.link || raw?.targetUrl); if (explicit) return explicit;
   const type = clean(raw?.type);
@@ -36,104 +33,105 @@ function targetFor(raw: any): string | undefined {
   if (type.startsWith('shift_')) return '/schedule';
   return '/notifications';
 }
-function withTarget(item: NotificationRecord): NotificationRecord { const link = targetFor(item); return link ? { ...item, link, targetUrl: link } : item; }
+
+function withTarget(item: NotificationRecord): NotificationRecord {
+  const link = targetFor(item); return link ? { ...item, link, targetUrl: link } : item;
+}
+
 function normalize(raw: any): NotificationRecord | null {
-  const recipientId = clean(raw?.recipientId); const type = clean(raw?.type); if (!recipientId || !type) return null;
+  const recipientId = clean(raw?.recipientId); const type = clean(raw?.type);
+  if (!recipientId || !type) return null;
   if (type === 'leave_rejected' && !clean(raw?.relatedLeaveId)) return null;
-  const createdAt = clean(raw?.createdAt) || nowIso(); const updatedAt = clean(raw?.updatedAt) || createdAt;
-  const item: Omit<NotificationRecord, 'id'> & { id?: string } = { id: clean(raw?.id) || undefined, recipientId, type, title: clean(raw?.title) || 'إشعار جديد', message: clean(raw?.message) || 'لديك إشعار جديد.', relatedEmployeeId: clean(raw?.relatedEmployeeId) || undefined, relatedLeaveId: clean(raw?.relatedLeaveId) || undefined, relatedOvertimeId: clean(raw?.relatedOvertimeId) || undefined, relatedShiftSwapId: clean(raw?.relatedShiftSwapId) || undefined, isRead: Boolean(raw?.isRead), createdAt, updatedAt };
+  const createdAt = clean(raw?.createdAt) || nowIso();
+  const updatedAt = clean(raw?.updatedAt) || createdAt;
+  const item: Omit<NotificationRecord, 'id'> & { id?: string } = {
+    id: clean(raw?.id) || undefined,
+    recipientId,
+    type,
+    title: clean(raw?.title) || 'إشعار جديد',
+    message: clean(raw?.message) || 'لديك إشعار جديد.',
+    relatedEmployeeId: clean(raw?.relatedEmployeeId) || undefined,
+    relatedLeaveId: clean(raw?.relatedLeaveId) || undefined,
+    relatedOvertimeId: clean(raw?.relatedOvertimeId) || undefined,
+    relatedShiftSwapId: clean(raw?.relatedShiftSwapId) || undefined,
+    isRead: Boolean(raw?.isRead),
+    createdAt,
+    updatedAt,
+  };
   return withTarget({ id: stableId(item), ...item });
 }
+
 function mergeDuplicates(items: NotificationRecord[]): NotificationRecord[] {
   const map = new Map<string, NotificationRecord>();
   for (const raw of items) {
     const item = withTarget(raw); const key = semanticKey(item); const old = map.get(key);
     if (!old) { map.set(key, item); continue; }
-    const oldTime = new Date(old.updatedAt || old.createdAt || 0).getTime(); const newTime = new Date(item.updatedAt || item.createdAt || 0).getTime(); const newer = newTime >= oldTime ? item : old;
-    map.set(key, { ...newer, isRead: Boolean(old.isRead || item.isRead), createdAt: new Date(old.createdAt || item.createdAt || 0).getTime() <= new Date(item.createdAt || old.createdAt || 0).getTime() ? old.createdAt : item.createdAt });
+    const oldTime = new Date(old.updatedAt || old.createdAt || 0).getTime();
+    const newTime = new Date(item.updatedAt || item.createdAt || 0).getTime();
+    const newer = newTime >= oldTime ? item : old;
+    map.set(key, {
+      ...newer,
+      isRead: Boolean(old.isRead || item.isRead),
+      createdAt: new Date(old.createdAt || item.createdAt || 0).getTime() <= new Date(item.createdAt || old.createdAt || 0).getTime() ? old.createdAt : item.createdAt,
+    });
   }
   return Array.from(map.values()).sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
 }
-function readLocal(): NotificationRecord[] { try { if (!fs.existsSync(LOCAL_FILE)) return []; const parsed = JSON.parse(fs.readFileSync(LOCAL_FILE, 'utf8')); return Array.isArray(parsed) ? parsed : []; } catch { return []; } }
-function writeLocal(items: NotificationRecord[]) { try { fs.writeFileSync(LOCAL_FILE, JSON.stringify(items, null, 2)); } catch (error) { console.warn('[Notifications v2] local persistence failed', error); } }
+
 async function ensureReady() {
-  if (!readyPromise) readyPromise = (async () => {
-    if (USE_DATABASE) {
-      await db.execute(sql`CREATE TABLE IF NOT EXISTS notifications (
-        id text PRIMARY KEY,
-        recipient_id text NOT NULL,
-        type text NOT NULL,
-        title text NOT NULL,
-        message text NOT NULL,
-        related_employee_id text,
-        related_leave_id text,
-        related_overtime_id text,
-        related_shift_swap_id text,
-        is_read boolean DEFAULT false,
-        created_at text NOT NULL,
-        updated_at text NOT NULL
-      )`);
-      await db.execute(sql`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS related_employee_id text`);
-      await db.execute(sql`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS related_leave_id text`);
-      await db.execute(sql`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS related_overtime_id text`);
-      await db.execute(sql`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS related_shift_swap_id text`);
-      await db.execute(sql`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS is_read boolean DEFAULT false`);
-      await db.execute(sql`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS created_at text`);
-      await db.execute(sql`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS updated_at text`);
-      await db.execute(sql`CREATE TABLE IF NOT EXISTS notification_system_meta (key text PRIMARY KEY, value text NOT NULL)`);
-      await db.execute(sql`INSERT INTO notification_system_meta (key, value) VALUES ('version', ${VERSION}) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`);
-      try {
-        await db.execute(sql`DELETE FROM notifications n WHERE (n.type = 'leave_rejected' AND (n.related_leave_id IS NULL OR NOT EXISTS (SELECT 1 FROM leave_requests l WHERE l.id = n.related_leave_id AND LOWER(COALESCE(l.status,'')) = 'rejected')))`);
-      } catch (error) {
-        console.warn('[Notifications v2] cleanup skipped:', error);
-      }
-    } else if (!fs.existsSync(LOCAL_FILE)) writeLocal([]);
-  })().catch(error => { readyPromise = null; throw error; });
-  return readyPromise;
+  // The notifications table is part of the application schema. Do not run
+  // CREATE/ALTER TABLE during a user request on serverless/Vercel.
+  return;
 }
 
-// Public readiness helper used by server bootstrap and notification triggers.
 export async function ensureNotificationStorage() {
   await ensureReady();
 }
 
 async function listForUser(userId: string): Promise<NotificationRecord[]> {
-  await ensureReady(); const id = clean(userId); if (!id) return [];
-  if (USE_DATABASE) {
-    const rows = await db.select().from(schema.notifications).where(eq(schema.notifications.recipientId, id));
-    let leaveRows: any[] = [];
-    try { leaveRows = await db.select({ id: schema.leaveRequests.id, status: schema.leaveRequests.status }).from(schema.leaveRequests); } catch (error) { console.warn('[Notifications v2] leave validation skipped:', error); }
-    const validRejectedLeaveIds = new Set(leaveRows.filter((row: any) => String(row.status || '').toLowerCase() === 'rejected').map((row: any) => String(row.id)));
-    const validLeaveIds = new Set(leaveRows.map((row: any) => String(row.id)));
-    const normalized = rows.map((row: any) => withTarget({ ...row, id: String(row.id), recipientId: String(row.recipientId) })).filter((item) => leaveRows.length === 0 || (item.type === 'leave_rejected' ? Boolean(item.relatedLeaveId && validRejectedLeaveIds.has(String(item.relatedLeaveId))) : !(item.type.startsWith('leave_') && item.relatedLeaveId && !validLeaveIds.has(String(item.relatedLeaveId)))));
-    return mergeDuplicates(normalized);
+  const id = clean(userId); if (!id) return [];
+  await ensureReady();
+  const rows = await db.select().from(schema.notifications).where(eq(schema.notifications.recipientId, id));
+  let leaveRows: any[] = [];
+  try {
+    leaveRows = await db.select({ id: schema.leaveRequests.id, status: schema.leaveRequests.status }).from(schema.leaveRequests);
+  } catch (error) {
+    console.warn('[Notifications v2] leave validation skipped:', error);
   }
-  return mergeDuplicates(readLocal().filter(item => item.recipientId === id).map(item => normalize(item)).filter((item): item is NotificationRecord => Boolean(item)));
+  const validRejectedLeaveIds = new Set(leaveRows.filter((row: any) => String(row.status || '').toLowerCase() === 'rejected').map((row: any) => String(row.id)));
+  const validLeaveIds = new Set(leaveRows.map((row: any) => String(row.id)));
+  const normalized = rows
+    .map((row: any) => withTarget({ ...row, id: String(row.id), recipientId: String(row.recipientId) }))
+    .filter((item) => leaveRows.length === 0 || (item.type === 'leave_rejected'
+      ? Boolean(item.relatedLeaveId && validRejectedLeaveIds.has(String(item.relatedLeaveId)))
+      : !(item.type.startsWith('leave_') && item.relatedLeaveId && !validLeaveIds.has(String(item.relatedLeaveId)))));
+  return mergeDuplicates(normalized);
 }
+
 export async function saveOne(input: any): Promise<NotificationRecord | null> {
-  const item = normalize(input); if (!item) return null; await ensureReady();
-  if (!USE_DATABASE) {
-    const items = readLocal(); const key = semanticKey(item); const index = items.findIndex(existing => semanticKey(existing) === key || existing.id === item.id);
-    if (index >= 0) { const existing = items[index]; items[index] = { ...existing, ...item, id: existing.id, isRead: Boolean(existing.isRead || item.isRead), updatedAt: nowIso() }; } else items.push(item);
-    writeLocal(mergeDuplicates(items)); return withTarget(items.find(existing => semanticKey(existing) === key) || item);
-  }
-  const key = semanticKey(item); const allRows = await db.select().from(schema.notifications).where(eq(schema.notifications.recipientId, item.recipientId));
+  const item = normalize(input); if (!item) return null;
+  await ensureReady();
+  const key = semanticKey(item);
+  const allRows = await db.select().from(schema.notifications).where(eq(schema.notifications.recipientId, item.recipientId));
   const existing: any = allRows.find((row: any) => String(row.id) === item.id) || allRows.find((row: any) => semanticKey(row) === key);
   if (existing) {
-    const existingTime = new Date(existing.updatedAt || existing.createdAt || 0).getTime(); const incomingTime = new Date(item.updatedAt || item.createdAt || 0).getTime();
+    const existingTime = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
+    const incomingTime = new Date(item.updatedAt || item.createdAt || 0).getTime();
     if (existing.isRead && !item.isRead) return withTarget({ ...existing, id: String(existing.id), recipientId: String(existing.recipientId) });
     if (Number.isFinite(existingTime) && Number.isFinite(incomingTime) && incomingTime < existingTime) return withTarget({ ...existing, id: String(existing.id), recipientId: String(existing.recipientId) });
-    const merged = { ...item, id: String(existing.id), isRead: Boolean(existing.isRead || item.isRead), updatedAt: nowIso() }; const { id: _ignoredId, link: _link, targetUrl: _targetUrl, ...changes } = merged;
-    await db.update(schema.notifications).set(changes as any).where(eq(schema.notifications.id, String(existing.id))); return withTarget(merged);
+    const merged = { ...item, id: String(existing.id), isRead: Boolean(existing.isRead || item.isRead), updatedAt: nowIso() };
+    const { id: _ignoredId, link: _link, targetUrl: _targetUrl, ...changes } = merged;
+    await db.update(schema.notifications).set(changes as any).where(eq(schema.notifications.id, String(existing.id)));
+    return withTarget(merged);
   }
   const { link: _link, targetUrl: _targetUrl, ...dbItem } = item;
   await db.insert(schema.notifications).values(dbItem as any).onConflictDoNothing({ target: schema.notifications.id });
   const persisted = await db.select().from(schema.notifications).where(eq(schema.notifications.id, item.id));
   return persisted[0] ? withTarget({ ...persisted[0], id: String(persisted[0].id), recipientId: String(persisted[0].recipientId) }) : item;
 }
+
 async function markRead(id: string, recipientId: string) {
   await ensureReady(); const notificationId = clean(id); const userId = clean(recipientId); if (!notificationId || !userId) return false;
-  if (!USE_DATABASE) { const items = readLocal(); const target = items.find(item => item.id === notificationId && item.recipientId === userId); if (!target) return false; const key = semanticKey(target); const updated = items.map(item => semanticKey(item) === key ? { ...item, isRead: true, updatedAt: nowIso() } : item); writeLocal(updated); return true; }
   const rows = await db.select().from(schema.notifications).where(eq(schema.notifications.recipientId, userId));
   let target: any = rows.find((row: any) => String(row.id) === notificationId);
   if (!target) { const byId = await db.select().from(schema.notifications).where(eq(schema.notifications.id, notificationId)); target = byId[0]; }
@@ -142,19 +140,63 @@ async function markRead(id: string, recipientId: string) {
   await Promise.all(Array.from(ids).map((notificationIdToUpdate: string) => db.update(schema.notifications).set({ isRead: true, updatedAt: nowIso() }).where(eq(schema.notifications.id, notificationIdToUpdate))));
   return true;
 }
+
 async function markAllRead(recipientId: string) {
   await ensureReady(); const userId = clean(recipientId); if (!userId) return 0;
-  if (!USE_DATABASE) { const items = readLocal(); let count = 0; const updated = items.map(item => { if (item.recipientId === userId && !item.isRead) { count++; return { ...item, isRead: true, updatedAt: nowIso() }; } return item; }); writeLocal(updated); return count; }
   const rows = await db.select({ isRead: schema.notifications.isRead }).from(schema.notifications).where(eq(schema.notifications.recipientId, userId));
   const unreadCount = rows.filter((row: any) => !Boolean(row.isRead)).length;
   await db.update(schema.notifications).set({ isRead: true, updatedAt: nowIso() }).where(eq(schema.notifications.recipientId, userId));
   return unreadCount;
 }
+
 function bodyOf(req: Request) { return req.body && typeof req.body === 'object' ? req.body : {}; }
+
 export function registerNotificationSystemV2(app: Express) {
-  app.get('/api/notifications', async (req, res) => { try { const notifications = await listForUser(clean(req.query.userId)); res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate'); res.setHeader('Pragma', 'no-cache'); res.json({ success: true, notifications }); } catch (error) { console.error('[Notifications v2] GET failed', error); res.status(500).json({ success: false, notifications: [], error: 'notifications_unavailable' }); } });
-  app.put('/api/notifications/mark-all-read', async (req, res) => { try { const userId = clean(bodyOf(req).userId || req.query.userId); const count = await markAllRead(userId); const notifications = await listForUser(userId); res.setHeader('Cache-Control', 'no-store'); res.json({ success: true, count, notifications }); } catch (error) { console.error('[Notifications v2] mark-all-read failed', error); res.status(500).json({ success: false, count: 0 }); } });
-  app.put('/api/notifications/:id/mark-read', async (req, res) => { try { const userId = clean(bodyOf(req).userId || req.query.userId); const updated = await markRead(req.params.id, userId); const notifications = await listForUser(userId); res.setHeader('Cache-Control', 'no-store'); res.json({ success: updated, updated, notifications }); } catch (error) { console.error('[Notifications v2] mark-read failed', error); res.status(500).json({ success: false, updated: false }); } });
-  app.post('/api/notifications/emit', async (req, res) => { try { const notification = await saveOne(bodyOf(req).notification || bodyOf(req)); if (!notification) return res.status(400).json({ success: false, error: 'invalid_notification' }); publishNotification(notification); res.setHeader('Cache-Control', 'no-store'); res.json({ success: true, notification }); } catch (error) { console.error('[Notifications v2] emit failed', error); res.status(500).json({ success: false }); } });
-  void ensureReady().catch(error => console.error('[Notifications v2] startup failed', error));
+  app.get('/api/notifications', async (req, res) => {
+    try {
+      const notifications = await listForUser(clean(req.query.userId));
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.json({ success: true, notifications });
+    } catch (error) {
+      console.error('[Notifications v2] GET failed', error);
+      res.status(500).json({ success: false, notifications: [], error: 'notifications_unavailable' });
+    }
+  });
+  app.put('/api/notifications/mark-all-read', async (req, res) => {
+    try {
+      const userId = clean(bodyOf(req).userId || req.query.userId);
+      const count = await markAllRead(userId);
+      const notifications = await listForUser(userId);
+      res.setHeader('Cache-Control', 'no-store');
+      res.json({ success: true, count, notifications });
+    } catch (error) {
+      console.error('[Notifications v2] mark-all-read failed', error);
+      res.status(500).json({ success: false, count: 0 });
+    }
+  });
+  app.put('/api/notifications/:id/mark-read', async (req, res) => {
+    try {
+      const userId = clean(bodyOf(req).userId || req.query.userId);
+      const updated = await markRead(req.params.id, userId);
+      const notifications = await listForUser(userId);
+      res.setHeader('Cache-Control', 'no-store');
+      res.json({ success: updated, updated, notifications });
+    } catch (error) {
+      console.error('[Notifications v2] mark-read failed', error);
+      res.status(500).json({ success: false, updated: false });
+    }
+  });
+  app.post('/api/notifications/emit', async (req, res) => {
+    try {
+      const notification = await saveOne(bodyOf(req).notification || bodyOf(req));
+      if (!notification) return res.status(400).json({ success: false, error: 'invalid_notification' });
+      publishNotification(notification);
+      res.setHeader('Cache-Control', 'no-store');
+      res.json({ success: true, notification });
+    } catch (error) {
+      console.error('[Notifications v2] emit failed', error);
+      res.status(500).json({ success: false });
+    }
+  });
 }
