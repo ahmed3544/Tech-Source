@@ -29,7 +29,7 @@ source = source.replace(
 );
 
 const actions = `        {/* Quick Actions */}
-        <div className="relative shrink-0" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
+        <div className="relative shrink-0" dir={\${lang === 'ar' ? 'rtl' : 'ltr'}}>
           <button
             type="button"
             onClick={() => setQuickActionsOpen(prev => !prev)}
@@ -38,7 +38,7 @@ const actions = `        {/* Quick Actions */}
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#0d2240] hover:bg-[#153460] text-white font-bold text-[11px] shadow transition border border-blue-900"
           >
             <Zap className="w-3.5 h-3.5 text-emerald-400" />
-            <span>{lang === 'ar' ? 'الإجراءات السريعة' : 'Quick Actions'}</span>
+            <span>{\${lang === 'ar' ? 'الإجراءات السريعة' : 'Quick Actions'}}</span>
             <ChevronDown className={\`w-3.5 h-3.5 transition-transform \${quickActionsOpen ? 'rotate-180' : ''}\`} />
           </button>
 
@@ -46,7 +46,7 @@ const actions = `        {/* Quick Actions */}
             <>
               <button
                 type="button"
-                aria-label={lang === 'ar' ? 'إغلاق الإجراءات السريعة' : 'Close quick actions'}
+                aria-label={\${lang === 'ar' ? 'إغلاق الإجراءات السريعة' : 'Close quick actions'}}
                 className="fixed inset-0 z-30 cursor-default"
                 onClick={() => setQuickActionsOpen(false)}
               />
@@ -56,19 +56,19 @@ const actions = `        {/* Quick Actions */}
               >
                 <button type="button" role="menuitem" onClick={() => handleQuickAction(onOpenManualPunch)} className="w-full flex items-center gap-2 rounded-lg px-3 py-2.5 text-right hover:bg-slate-100 dark:hover:bg-slate-800 transition text-[11px] font-bold text-slate-800 dark:text-slate-100">
                   <span className="flex items-center justify-center w-7 h-7 rounded-md bg-[#0d2240] text-emerald-400 shrink-0"><Plus className="w-3.5 h-3.5" /></span>
-                  <span className="flex-1">{lang === 'ar' ? 'تسجيل يدوي (يوم)' : 'Manual Punch'}</span>
+                  <span className="flex-1">{\${lang === 'ar' ? 'تسجيل يدوي (يوم)' : 'Manual Punch'}}</span>
                 </button>
                 <button type="button" role="menuitem" onClick={() => handleQuickAction(() => setActiveTab('attendance'))} className="w-full flex items-center gap-2 rounded-lg px-3 py-2.5 text-right hover:bg-slate-100 dark:hover:bg-slate-800 transition text-[11px] font-bold text-slate-800 dark:text-slate-100">
                   <span className="flex items-center justify-center w-7 h-7 rounded-md bg-emerald-700 text-white shrink-0"><Users className="w-3.5 h-3.5" /></span>
-                  <span className="flex-1">{lang === 'ar' ? 'تسجيل حضور جماعي (إجمالي الأيام)' : 'Bulk Manual Entry'}</span>
+                  <span className="flex-1">{\${lang === 'ar' ? 'تسجيل حضور جماعي (إجمالي الأيام)' : 'Bulk Manual Entry'}}</span>
                 </button>
                 <button type="button" role="menuitem" onClick={() => handleQuickAction(onOpenAddEmployee)} className="w-full flex items-center gap-2 rounded-lg px-3 py-2.5 text-right hover:bg-slate-100 dark:hover:bg-slate-800 transition text-[11px] font-bold text-slate-800 dark:text-slate-100">
                   <span className="flex items-center justify-center w-7 h-7 rounded-md bg-slate-900 text-emerald-400 shrink-0"><UserPlus className="w-3.5 h-3.5" /></span>
-                  <span className="flex-1">{lang === 'ar' ? 'إضافة موظف' : 'Add Employee'}</span>
+                  <span className="flex-1">{\${lang === 'ar' ? 'إضافة موظف' : 'Add Employee'}}</span>
                 </button>
                 <button type="button" role="menuitem" onClick={() => handleQuickAction(onExportCSV)} className="w-full flex items-center gap-2 rounded-lg px-3 py-2.5 text-right hover:bg-slate-100 dark:hover:bg-slate-800 transition text-[11px] font-bold text-slate-800 dark:text-slate-100">
                   <span className="flex items-center justify-center w-7 h-7 rounded-md bg-slate-100 dark:bg-slate-800 text-emerald-600 shrink-0"><FileSpreadsheet className="w-3.5 h-3.5" /></span>
-                  <span className="flex-1">{lang === 'ar' ? 'تصدير اكسل' : 'Export CSV'}</span>
+                  <span className="flex-1">{\${lang === 'ar' ? 'تصدير اكسل' : 'Export CSV'}}</span>
                 </button>
               </div>
             </>
