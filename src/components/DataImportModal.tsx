@@ -964,7 +964,7 @@ export function DataImportModal({
                   focus:outline-none
                   text-sm
                   text-slate-200
-                  placeholder:text-slate-600
+                  placeholder:text-slate-600 dark:text-slate-400
                   resize-y
                   font-mono
                 "

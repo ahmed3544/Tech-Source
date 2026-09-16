@@ -163,7 +163,7 @@ export const TeamOverallReport: React.FC<TeamOverallReportProps> = ({
       </div>
 
       {/* Detailed Table */}
-      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+      <div className="bg-white dark:bg-slate-900 border border-gray-200 rounded-lg overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>

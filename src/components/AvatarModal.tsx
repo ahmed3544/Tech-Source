@@ -64,14 +64,14 @@ export const AvatarModal: React.FC<AvatarModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-white w-full max-w-md rounded-3xl p-6 shadow-2xl border border-slate-200 space-y-5 animate-in fade-in zoom-in-95">
+      <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-3xl p-6 shadow-2xl border border-slate-200 dark:border-slate-700 space-y-5 animate-in fade-in zoom-in-95">
         <div className="flex items-center justify-between pb-3 border-b border-slate-100">
           <div className="flex items-center gap-2">
             <div className="p-2 bg-emerald-50 rounded-xl border border-emerald-100">
               <Camera className="w-5 h-5 text-emerald-600" />
             </div>
             <div>
-              <h3 className="font-extrabold text-slate-900 text-base">
+              <h3 className="font-extrabold text-slate-900 dark:text-white text-base">
                 {lang === 'ar' ? 'تغيير صورة البروفايل' : 'Change Profile Photo'}
               </h3>
               <p className="text-[11px] text-slate-500 font-medium">
@@ -83,13 +83,13 @@ export const AvatarModal: React.FC<AvatarModalProps> = ({
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition"
+            className="p-1.5 rounded-full text-slate-400 hover:text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:bg-slate-800 transition"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="flex flex-col items-center justify-center p-4 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-2">
+        <div className="flex flex-col items-center justify-center p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-700/80 space-y-2">
           <div className="relative group">
             <UserAvatar name={employee.nameEn || employee.nameAr} code={employee.code} avatar={employee.avatar} size="xl" />
             {isLeader && (
@@ -99,7 +99,7 @@ export const AvatarModal: React.FC<AvatarModalProps> = ({
             )}
           </div>
           <div className="text-center">
-            <span className="text-xs font-black text-slate-800 block">
+            <span className="text-xs font-black text-slate-800 dark:text-slate-200 block">
               {lang === 'ar' ? employee.nameAr : employee.nameEn}
             </span>
             <span className="text-[10px] text-slate-400 font-mono">
@@ -109,7 +109,7 @@ export const AvatarModal: React.FC<AvatarModalProps> = ({
         </div>
 
         <div className="space-y-2">
-          <label className="block text-xs font-bold text-slate-800">
+          <label className="block text-xs font-bold text-slate-800 dark:text-slate-200">
             {lang === 'ar' ? 'رفع صورة من جهازك أو موبايلك:' : 'Upload photo from device:'}
           </label>
           <input

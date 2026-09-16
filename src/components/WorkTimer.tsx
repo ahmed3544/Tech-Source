@@ -105,9 +105,9 @@ export const WorkTimer: React.FC<WorkTimerProps> = ({
         </span>
       </div>
       
-      <div className="flex justify-between items-center text-xs text-slate-600 mb-1">
+      <div className="flex justify-between items-center text-xs text-slate-600 dark:text-slate-400 mb-1">
         <span>الشفت:</span>
-        <span className="font-mono font-semibold bg-white px-2 py-0.5 rounded border border-slate-200">
+        <span className="font-mono font-semibold bg-white dark:bg-slate-900 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700">
           {shift?.startTime || '09:00'} - {shift?.endTime || '17:00'}
         </span>
       </div>
@@ -120,9 +120,9 @@ export const WorkTimer: React.FC<WorkTimerProps> = ({
           </span>
         </div>
       ) : (
-        <div className="flex justify-between items-center bg-slate-100 px-3 py-2 rounded-lg border border-slate-200 mt-1">
-          <span className="text-slate-600 text-xs font-bold">المتبقي:</span>
-          <span className="font-mono font-bold text-slate-700">
+        <div className="flex justify-between items-center bg-slate-100 dark:bg-slate-800 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 mt-1">
+          <span className="text-slate-600 dark:text-slate-400 text-xs font-bold">المتبقي:</span>
+          <span className="font-mono font-bold text-slate-700 dark:text-slate-300">
             {formatSecondsToHMS(remainingSecs)}
           </span>
         </div>

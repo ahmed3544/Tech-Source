@@ -27,7 +27,7 @@ export const TechSourceLogo: React.FC<TechSourceLogoProps> = ({
   return (
     <div className={`tech-source-logo inline-flex items-center select-none ${className}`}>
       {withBg ? (
-        <div className={`bg-white shadow-sm border border-slate-100/90 flex items-center justify-center ${containerPadding} transition-all duration-200 hover:shadow-md`}>
+        <div className={`bg-white dark:bg-slate-900 shadow-sm border border-slate-100/90 flex items-center justify-center ${containerPadding} transition-all duration-200 hover:shadow-md`}>
           <img
             src="logo.png"
             alt="Tech Source GDS - Global Development"

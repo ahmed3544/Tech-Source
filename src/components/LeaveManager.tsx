@@ -255,12 +255,12 @@ export const LeaveManager: React.FC<LeaveManagerProps> = ({
   return (
     <div className="max-w-7xl mx-auto p-4 sm:p-6 space-y-6">
       {/* Top Header Card */}
-      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm">
         <div>
-          <h2 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2.5 flex-wrap">
+          <h2 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2.5 flex-wrap">
             <span>{lang === 'ar' ? 'إدارة طلبات الإجازات والاستئذان' : 'Leave & Permission Requests'}</span>
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#0d2240] text-white text-xs font-bold border border-blue-900 shadow-sm shrink-0" dir="ltr">
-              <img src="logo.png" alt="Tech Source" className="w-4 h-4 object-contain bg-white rounded-full p-0.5" onError={(e) => { (e.currentTarget as HTMLElement).style.display = 'none'; }} />
+              <img src="logo.png" alt="Tech Source" className="w-4 h-4 object-contain bg-white dark:bg-slate-900 rounded-full p-0.5" onError={(e) => { (e.currentTarget as HTMLElement).style.display = 'none'; }} />
               <span>TECH SOURCE GDS</span>
             </span>
           </h2>
@@ -279,13 +279,13 @@ export const LeaveManager: React.FC<LeaveManagerProps> = ({
       </div>
 
       {/* Tabs Filter */}
-      <div className="flex items-center gap-2 border-b border-slate-200 pb-2 overflow-x-auto">
+      <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-700 pb-2 overflow-x-auto">
         <button
           onClick={() => setActiveTab('pending')}
           className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all shrink-0 ${
             activeTab === 'pending'
               ? 'bg-amber-500 text-slate-950 shadow-sm'
-              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+              : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700'
           }`}
         >
           <Clock className="w-4 h-4" />
@@ -300,7 +300,7 @@ export const LeaveManager: React.FC<LeaveManagerProps> = ({
           className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all shrink-0 ${
             activeTab === 'approved'
               ? 'bg-emerald-600 text-white shadow-sm'
-              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+              : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700'
           }`}
         >
           <CheckCircle2 className="w-4 h-4" />
@@ -312,7 +312,7 @@ export const LeaveManager: React.FC<LeaveManagerProps> = ({
           className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all shrink-0 ${
             activeTab === 'rejected'
               ? 'bg-rose-600 text-white shadow-sm'
-              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+              : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700'
           }`}
         >
           <XCircle className="w-4 h-4" />
@@ -324,7 +324,7 @@ export const LeaveManager: React.FC<LeaveManagerProps> = ({
           className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all shrink-0 ${
             activeTab === 'all'
               ? 'bg-slate-900 text-white shadow-sm'
-              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+              : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700'
           }`}
         >
           <span>{lang === 'ar' ? 'الكل' : 'All'}</span>
@@ -348,7 +348,7 @@ export const LeaveManager: React.FC<LeaveManagerProps> = ({
 
       {/* Secondary Search & Month Filters for Leave Requests */}
       {activeTab !== 'holidays' && (
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3">
+        <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="relative w-full sm:w-72">
             <Search className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
@@ -356,16 +356,16 @@ export const LeaveManager: React.FC<LeaveManagerProps> = ({
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={lang === 'ar' ? 'بحث باسم الموظف، الكود، أو السبب...' : 'Search employee or reason...'}
-              className="w-full text-xs pr-9 pl-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 font-sans"
+              className="w-full text-xs pr-9 pl-3 py-2 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 font-sans"
             />
           </div>
 
           <div className="flex items-center gap-2 w-full sm:w-auto">
-            <span className="text-xs font-bold text-slate-600 shrink-0">{lang === 'ar' ? 'تصفية حسب الشهر:' : 'Month:'}</span>
+            <span className="text-xs font-bold text-slate-600 dark:text-slate-400 shrink-0">{lang === 'ar' ? 'تصفية حسب الشهر:' : 'Month:'}</span>
             <select
               value={selectedLeaveMonth}
               onChange={(e) => setSelectedLeaveMonth(e.target.value)}
-              className="w-full sm:w-56 text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-medium font-sans"
+              className="w-full sm:w-56 text-xs bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-medium font-sans"
             >
               <option value="all">{lang === 'ar' ? 'جميع الشهور 📅' : 'All Months'}</option>
               {availableMonths.map(m => (
@@ -413,9 +413,9 @@ export const LeaveManager: React.FC<LeaveManagerProps> = ({
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
                 {thisMonthHolidays.map(h => (
-                  <div key={h.id} className="bg-white p-3 rounded-2xl border border-amber-200 shadow-sm flex items-center justify-between text-xs">
+                  <div key={h.id} className="bg-white dark:bg-slate-900 p-3 rounded-2xl border border-amber-200 shadow-sm flex items-center justify-between text-xs">
                     <div>
-                      <span className="font-bold text-slate-900 block">{h.nameAr}</span>
+                      <span className="font-bold text-slate-900 dark:text-white block">{h.nameAr}</span>
                       <span className="text-[10px] text-slate-500 font-mono">{h.startDate} {h.daysCount > 1 ? `(${h.daysCount} أيام)` : ''}</span>
                     </div>
                     <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-amber-100 text-amber-900">
@@ -430,7 +430,7 @@ export const LeaveManager: React.FC<LeaveManagerProps> = ({
           {/* All Official Holidays List Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {officialHolidays.map(h => (
-              <div key={h.id} className="bg-white rounded-3xl p-5 border border-slate-200 shadow-sm flex flex-col justify-between space-y-3">
+              <div key={h.id} className="bg-white dark:bg-slate-900 rounded-3xl p-5 border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col justify-between space-y-3">
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${
@@ -442,15 +442,15 @@ export const LeaveManager: React.FC<LeaveManagerProps> = ({
                     }`}>
                       {h.type === 'religious' ? 'عيد ديني 🌙' : h.type === 'national' ? 'مناسبة وطنية 🇪🇬' : 'عطلة رسمية 🏛️'}
                     </span>
-                    <span className="text-xs font-mono font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-lg">
+                    <span className="text-xs font-mono font-bold text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-lg">
                       {h.daysCount} {h.daysCount === 1 ? 'يوم' : 'أيام'}
                     </span>
                   </div>
 
-                  <h4 className="font-bold text-slate-900 text-sm">{h.nameAr}</h4>
-                  <div className="text-xs font-mono text-slate-600 flex items-center justify-between bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                  <h4 className="font-bold text-slate-900 dark:text-white text-sm">{h.nameAr}</h4>
+                  <div className="text-xs font-mono text-slate-600 dark:text-slate-400 flex items-center justify-between bg-slate-50 dark:bg-slate-800/50 p-2.5 rounded-xl border border-slate-100">
                     <span>التاريخ:</span>
-                    <span className="font-bold text-slate-900">{h.startDate} {h.endDate !== h.startDate ? `إلى ${h.endDate}` : ''}</span>
+                    <span className="font-bold text-slate-900 dark:text-white">{h.startDate} {h.endDate !== h.startDate ? `إلى ${h.endDate}` : ''}</span>
                   </div>
                 </div>
 
@@ -480,14 +480,14 @@ export const LeaveManager: React.FC<LeaveManagerProps> = ({
               return (
                 <div
                   key={req.id}
-                  className="bg-white rounded-3xl p-5 border border-slate-200 shadow-sm space-y-4 flex flex-col justify-between"
+                  className="bg-white dark:bg-slate-900 rounded-3xl p-5 border border-slate-200 dark:border-slate-700 shadow-sm space-y-4 flex flex-col justify-between"
                 >
                   <div className="space-y-3">
                     <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                       <div className="flex items-center gap-3">
                         <UserAvatar name={emp.nameEn || emp.nameAr} code={emp.code} size="md" />
                         <div>
-                          <h4 className="font-bold text-slate-900 text-sm">{emp.nameAr}</h4>
+                          <h4 className="font-bold text-slate-900 dark:text-white text-sm">{emp.nameAr}</h4>
                           <p className="text-[11px] text-slate-400">{localizeBackendValue(emp.department, lang)} • {emp.jobTitleAr}</p>
                         </div>
                       </div>
@@ -519,7 +519,7 @@ export const LeaveManager: React.FC<LeaveManagerProps> = ({
                     </div>
 
                     <div className="space-y-2 text-xs">
-                      <div className="flex items-center justify-between text-slate-600">
+                      <div className="flex items-center justify-between text-slate-600 dark:text-slate-400">
                         <span className="font-semibold">{lang === 'ar' ? 'نوع الطلب:' : 'Type:'}</span>
                         <span className={`font-bold px-2 py-0.5 rounded ${
                           req.type === 'sick' 
@@ -530,7 +530,7 @@ export const LeaveManager: React.FC<LeaveManagerProps> = ({
                         </span>
                       </div>
 
-                      <div className="flex items-center justify-between text-slate-600 font-mono">
+                      <div className="flex items-center justify-between text-slate-600 dark:text-slate-400 font-mono">
                         <span className="font-semibold font-sans">{lang === 'ar' ? 'الفترة:' : 'Dates:'}</span>
                         <span className="font-bold">{req.startDate} إلى {req.endDate}</span>
                       </div>
@@ -538,13 +538,13 @@ export const LeaveManager: React.FC<LeaveManagerProps> = ({
                       {req.type === 'permission' && (
                         <div className="bg-sky-50 border border-sky-200 rounded-2xl p-2.5 text-[11px] text-sky-950 font-bold flex items-center justify-between">
                           <span>تقسيم فترات الإذن:</span>
-                          <span className="bg-white px-2.5 py-0.5 rounded-lg border border-sky-300 text-sky-800 font-mono">
+                          <span className="bg-white dark:bg-slate-900 px-2.5 py-0.5 rounded-lg border border-sky-300 text-sky-800 font-mono">
                             {req.permissionSlot === 'first_half' ? '🌅 نصف اليوم الأول (حضور حتى 11:00 ص)' : req.permissionSlot === 'second_half' ? '🌆 نصف اليوم الثاني (انصراف 03:00 م)' : '⏱️ إذن ساعتان مخصص'}
                           </span>
                         </div>
                       )}
 
-                      <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100 text-slate-700">
+                      <div className="bg-slate-50 dark:bg-slate-800/50 p-3 rounded-2xl border border-slate-100 text-slate-700 dark:text-slate-300">
                         <span className="font-bold block mb-1 text-[11px] text-slate-500">{lang === 'ar' ? 'السبب:' : 'Reason:'}</span>
                         <p className="leading-relaxed">{req.reason}</p>
                       </div>
@@ -639,7 +639,7 @@ export const LeaveManager: React.FC<LeaveManagerProps> = ({
               );
             })
           ) : (
-            <div className="col-span-2 bg-white rounded-3xl p-12 text-center text-slate-400 border border-slate-200">
+            <div className="col-span-2 bg-white dark:bg-slate-900 rounded-3xl p-12 text-center text-slate-400 border border-slate-200 dark:border-slate-700">
 <p className="font-semibold">{lang === 'ar' ? 'لا توجد طلبات إجازة في هذا القسم' : 'No leave requests found'}</p>
             </div>
           )}
@@ -649,23 +649,23 @@ export const LeaveManager: React.FC<LeaveManagerProps> = ({
       {/* Submit New Request Modal */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-lg rounded-3xl p-6 shadow-2xl border border-slate-200 space-y-5 max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95">
+          <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-3xl p-6 shadow-2xl border border-slate-200 dark:border-slate-700 space-y-5 max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <h3 className="font-bold text-slate-900 text-lg">
+              <h3 className="font-bold text-slate-900 dark:text-white text-lg">
                 {lang === 'ar' ? 'تقديم طلب إجازة جديد' : 'Submit Leave Request'}
               </h3>
-              <button onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-slate-600">
+              <button onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-slate-600 dark:text-slate-400">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <form onSubmit={handleAddSubmit} className="space-y-4 text-xs">
               <div>
-                <label className="block font-bold text-slate-700 mb-1">الموظف مقدم الطلب</label>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">الموظف مقدم الطلب</label>
                 <select
                   value={employeeId}
                   onChange={(e) => setEmployeeId(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-bold text-slate-900"
+                  className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 font-bold text-slate-900 dark:text-white"
                 >
                   {employees.map(e => (
                     <option key={e.id} value={e.id}>
@@ -678,7 +678,7 @@ export const LeaveManager: React.FC<LeaveManagerProps> = ({
               {selectedEmp && (
                 <div className="bg-emerald-50 border border-emerald-200 p-2.5 rounded-2xl flex items-center justify-between text-emerald-950 font-bold text-xs">
                   <span>أرصدة إجازات الموظف ({selectedEmp.nameAr}):</span>
-                  <span className="font-mono text-emerald-800 bg-white px-2 py-0.5 rounded border border-emerald-300">
+                  <span className="font-mono text-emerald-800 bg-white dark:bg-slate-900 px-2 py-0.5 rounded border border-emerald-300">
                     عارضة: {selectedEmp.casualLeaveBalance ?? 7}/7 | اعتيادي: {selectedEmp.regularLeaveBalance ?? 8}/8 | مرضية: {selectedEmp.sickLeaveBalance ?? 30}/30 يوم
                   </span>
                 </div>
@@ -686,11 +686,11 @@ export const LeaveManager: React.FC<LeaveManagerProps> = ({
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">نوع الطلب</label>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">نوع الطلب</label>
                   <select
                     value={type}
                     onChange={(e) => setType(e.target.value as LeaveType)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-bold text-slate-900"
+                    className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 font-bold text-slate-900 dark:text-white"
                   >
                     <option value="annual">إجازة سنوية اعتيادية (تخصم من رصيد الـ 8 أيام)</option>
                     <option value="casual">إجازة عارضة (تخصم من رصيد الـ 7 أيام)</option>
@@ -701,11 +701,11 @@ export const LeaveManager: React.FC<LeaveManagerProps> = ({
                 </div>
 
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">حالة القرار والاعتماد:</label>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">حالة القرار والاعتماد:</label>
                   <select
                     value={initialStatus}
                     onChange={(e) => setInitialStatus(e.target.value as LeaveStatus)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-bold text-slate-900"
+                    className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 font-bold text-slate-900 dark:text-white"
                   >
                     <option value="approved">🟢 موافقة وتأكيد فوري (خصم مباشر من الرصيد)</option>
                     <option value="pending">🟡 إرسال كطلب قيد الانتظار</option>
@@ -715,23 +715,23 @@ export const LeaveManager: React.FC<LeaveManagerProps> = ({
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">تاريخ البداية</label>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">تاريخ البداية</label>
                   <input
                     type="date"
                     required
                     value={startDate}
                     onChange={(e) => setStartDate(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-mono"
+                    className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 font-mono"
                   />
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">تاريخ النهاية</label>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">تاريخ النهاية</label>
                   <input
                     type="date"
                     required
                     value={endDate}
                     onChange={(e) => setEndDate(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-mono"
+                    className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 font-mono"
                   />
                 </div>
               </div>
@@ -754,7 +754,7 @@ export const LeaveManager: React.FC<LeaveManagerProps> = ({
                   </label>
 
                   <div className="flex items-center gap-3">
-                    <label className="flex-1 flex items-center justify-center gap-2 bg-white border border-rose-300 border-dashed hover:bg-rose-100/50 p-2.5 rounded-xl cursor-pointer text-rose-900 font-bold transition">
+                    <label className="flex-1 flex items-center justify-center gap-2 bg-white dark:bg-slate-900 border border-rose-300 border-dashed hover:bg-rose-100/50 p-2.5 rounded-xl cursor-pointer text-rose-900 font-bold transition">
                       <Upload className="w-4 h-4 text-rose-600" />
                       <span>{attachmentName ? attachmentName : 'إرفاق التقرير الطبي'}</span>
                       <input type="file" accept="image/*,.pdf" onChange={handleFileUpload} className="hidden" />
@@ -777,14 +777,14 @@ export const LeaveManager: React.FC<LeaveManagerProps> = ({
               )}
 
               <div>
-                <label className="block font-bold text-slate-700 mb-1">سبب الطلب وتفاصيل الإجازة</label>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">سبب الطلب وتفاصيل الإجازة</label>
                 <textarea
                   required
                   value={reason}
                   onChange={(e) => setReason(e.target.value)}
                   rows={3}
                   placeholder="اكتب تفاصيل ومبررات الطلب..."
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5"
+                  className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5"
                 />
               </div>
 
@@ -792,7 +792,7 @@ export const LeaveManager: React.FC<LeaveManagerProps> = ({
                 <button
                   type="button"
                   onClick={() => setShowAddModal(false)}
-                  className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 font-semibold"
+                  className="px-4 py-2 rounded-xl text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:bg-slate-800 font-semibold"
                 >
                   إلغاء
                 </button>
@@ -811,59 +811,59 @@ export const LeaveManager: React.FC<LeaveManagerProps> = ({
       {/* Modal: Add Official Holiday */}
       {showAddHolidayModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-md rounded-3xl p-6 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95">
+          <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-3xl p-6 shadow-2xl border border-slate-200 dark:border-slate-700 space-y-4 animate-in fade-in zoom-in-95">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
+              <h3 className="font-bold text-slate-900 dark:text-white text-base flex items-center gap-2">
                 <Flag className="w-5 h-5 text-purple-600" />
                 <span>إضافة مناسبة / إجازة رسمية للدولة</span>
               </h3>
-              <button onClick={() => setShowAddHolidayModal(false)} className="text-slate-400 hover:text-slate-600">
+              <button onClick={() => setShowAddHolidayModal(false)} className="text-slate-400 hover:text-slate-600 dark:text-slate-400">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <form onSubmit={handleAddHolidaySubmit} className="space-y-3 text-xs">
               <div>
-                <label className="block font-bold text-slate-700 mb-1">اسم المناسبة / العطلة الرسمية</label>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">اسم المناسبة / العطلة الرسمية</label>
                 <input
                   type="text"
                   required
                   placeholder="مثال: عيد الفطر المبارك / ثورة 30 يونيو"
                   value={holNameAr}
                   onChange={(e) => setHolNameAr(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-bold text-slate-900"
+                  className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 font-bold text-slate-900 dark:text-white"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">تاريخ البداية</label>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">تاريخ البداية</label>
                   <input
                     type="date"
                     required
                     value={holStartDate}
                     onChange={(e) => setHolStartDate(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-mono"
+                    className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 font-mono"
                   />
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">تاريخ النهاية</label>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">تاريخ النهاية</label>
                   <input
                     type="date"
                     required
                     value={holEndDate}
                     onChange={(e) => setHolEndDate(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-mono"
+                    className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 font-mono"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block font-bold text-slate-700 mb-1">تصنيف الإجازة الرسمية</label>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">تصنيف الإجازة الرسمية</label>
                 <select
                   value={holType}
                   onChange={(e) => setHolType(e.target.value as any)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-bold"
+                  className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 font-bold"
                 >
                   <option value="national">مناسبة وطنية 🇪🇬</option>
                   <option value="religious">عيد ديني 🌙</option>
@@ -875,7 +875,7 @@ export const LeaveManager: React.FC<LeaveManagerProps> = ({
                 <button
                   type="button"
                   onClick={() => setShowAddHolidayModal(false)}
-                  className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100"
+                  className="px-4 py-2 rounded-xl text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:bg-slate-800"
                 >
                   إلغاء
                 </button>
@@ -894,13 +894,13 @@ export const LeaveManager: React.FC<LeaveManagerProps> = ({
       {/* Lightbox Modal: Medical Report Document Viewer */}
       {previewAttachment && (
         <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-white max-w-3xl w-full rounded-3xl p-6 shadow-2xl space-y-4 border border-slate-200">
+          <div className="bg-white dark:bg-slate-900 max-w-3xl w-full rounded-3xl p-6 shadow-2xl space-y-4 border border-slate-200 dark:border-slate-700">
             <div className="flex items-center justify-between border-b pb-3">
-              <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
+              <h3 className="font-bold text-slate-900 dark:text-white text-base flex items-center gap-2">
                 <Stethoscope className="w-5 h-5 text-rose-600" />
                 <span>{previewAttachment.title}</span>
               </h3>
-              <button onClick={() => setPreviewAttachment(null)} className="text-slate-400 hover:text-slate-600">
+              <button onClick={() => setPreviewAttachment(null)} className="text-slate-400 hover:text-slate-600 dark:text-slate-400">
                 <X className="w-6 h-6" />
               </button>
             </div>

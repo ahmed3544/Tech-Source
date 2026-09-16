@@ -1176,13 +1176,13 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
           TEAM OVERALL MONTHLY REPORT
       ===================================================== */}
 
-      <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm space-y-6">
+      <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm space-y-6">
 
         <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 pb-4 border-b border-slate-100">
 
           <div>
 
-            <h2 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2.5 flex-wrap">
+            <h2 className="text-xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2.5 flex-wrap">
 
               <Users className="w-5 h-5 text-emerald-600" />
 
@@ -1200,7 +1200,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
                 <img
                   src="logo.png"
                   alt="Tech Source"
-                  className="w-4 h-4 object-contain bg-white rounded-full p-0.5"
+                  className="w-4 h-4 object-contain bg-white dark:bg-slate-900 rounded-full p-0.5"
                   onError={e => {
                     e.currentTarget.style.display =
                       'none';
@@ -1240,7 +1240,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
                     e.target.value
                   )
                 }
-                className="text-xs bg-white border border-slate-200 rounded-xl px-3 py-2.5 font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                className="text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500"
               >
 
                 {availableMonths.map(
@@ -1433,11 +1433,11 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
             TEAM TABLE
         ===================================================== */}
 
-        <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white">
+        <div className="border border-slate-200 dark:border-slate-700 rounded-2xl overflow-hidden bg-white dark:bg-slate-900">
 
-          <div className="bg-slate-50 p-3.5 border-b border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+          <div className="bg-slate-50 dark:bg-slate-800/50 p-3.5 border-b border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
 
-            <h4 className="font-bold text-slate-900 text-xs flex items-center gap-2">
+            <h4 className="font-bold text-slate-900 dark:text-white text-xs flex items-center gap-2">
 
               <Users className="w-4 h-4 text-emerald-600" />
 
@@ -1473,7 +1473,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
 
               <thead>
 
-                <tr className="bg-slate-100 text-slate-600 font-bold border-b border-slate-200 whitespace-nowrap">
+                <tr className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-bold border-b border-slate-200 dark:border-slate-700 whitespace-nowrap">
 
                   <th className="py-3 px-4">
                     {lang === 'ar'
@@ -1558,20 +1558,20 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
 
                     <tr
                       key={item.emp.id}
-                      className="hover:bg-slate-50 transition-colors"
+                      className="hover:bg-slate-50 dark:bg-slate-800/50 transition-colors"
                     >
 
-                      <td className="py-3 px-4 font-mono font-bold text-slate-800">
+                      <td className="py-3 px-4 font-mono font-bold text-slate-800 dark:text-slate-200">
                         {item.emp.code}
                       </td>
 
-                      <td className="py-3 px-4 font-bold text-slate-800">
+                      <td className="py-3 px-4 font-bold text-slate-800 dark:text-slate-200">
                         {lang === 'ar'
                           ? item.emp.nameAr
                           : item.emp.nameEn}
                       </td>
 
-                      <td className="py-3 px-4 text-slate-600">
+                      <td className="py-3 px-4 text-slate-600 dark:text-slate-400">
                         {item.emp.department}
                       </td>
 
@@ -1738,13 +1738,13 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
           EMPLOYEE REPORT
       ===================================================== */}
 
-      <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm space-y-6">
+      <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm space-y-6">
 
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pb-4 border-b border-slate-100">
 
           <div>
 
-            <h2 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2.5 flex-wrap">
+            <h2 className="text-xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2.5 flex-wrap">
 
               <Search className="w-5 h-5 text-emerald-600" />
 
@@ -1762,7 +1762,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
                 <img
                   src="logo.png"
                   alt="Tech Source"
-                  className="w-4 h-4 object-contain bg-white rounded-full p-0.5"
+                  className="w-4 h-4 object-contain bg-white dark:bg-slate-900 rounded-full p-0.5"
                   onError={e => {
                     e.currentTarget.style.display =
                       'none';
@@ -1815,11 +1815,11 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
             SEARCH
         ===================================================== */}
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-200">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-50 dark:bg-slate-800/50 p-4 rounded-2xl border border-slate-200 dark:border-slate-700">
 
           <div className="relative">
 
-            <label className="block text-[11px] font-bold text-slate-700 mb-1">
+            <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
 
               {lang === 'ar'
                 ? 'البحث باسم الموظف أو الكود'
@@ -1844,7 +1844,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
                     ? 'ادخل الاسم أو الكود (EMP001)...'
                     : 'Type name or EMP code...'
                 }
-                className="w-full text-xs pr-9 pl-3 py-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 font-sans"
+                className="w-full text-xs pr-9 pl-3 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 font-sans"
               />
 
             </div>
@@ -1853,7 +1853,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
 
           <div>
 
-            <label className="block text-[11px] font-bold text-slate-700 mb-1">
+            <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
 
               {lang === 'ar'
                 ? 'التصفية حسب القسم'
@@ -1868,7 +1868,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
                   e.target.value
                 )
               }
-              className="w-full text-xs bg-white border border-slate-200 rounded-xl px-3 py-2.5 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500 font-sans"
+              className="w-full text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500 font-sans"
             >
 
               <option value="all">
@@ -1895,7 +1895,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
 
           <div>
 
-            <label className="block text-[11px] font-bold text-slate-700 mb-1">
+            <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
 
               {lang === 'ar'
                 ? 'اختيار الموظف'
@@ -1910,7 +1910,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
                   e.target.value
                 )
               }
-              className="w-full text-xs bg-white border border-slate-200 rounded-xl px-3 py-2.5 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500 font-sans"
+              className="w-full text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500 font-sans"
             >
 
               {filteredEmployees.length >
@@ -2264,11 +2264,11 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
             ATTENDANCE TABLE
         ===================================================== */}
 
-        <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white">
+        <div className="border border-slate-200 dark:border-slate-700 rounded-2xl overflow-hidden bg-white dark:bg-slate-900">
 
-          <div className="bg-slate-50 p-3.5 border-b border-slate-200 flex items-center justify-between">
+          <div className="bg-slate-50 dark:bg-slate-800/50 p-3.5 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
 
-            <h4 className="font-bold text-slate-900 text-xs flex items-center gap-2">
+            <h4 className="font-bold text-slate-900 dark:text-white text-xs flex items-center gap-2">
 
               <Calendar className="w-4 h-4 text-emerald-600" />
 
@@ -2308,7 +2308,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
 
               <thead>
 
-                <tr className="bg-slate-100 text-slate-600 font-bold border-b border-slate-200 whitespace-nowrap">
+                <tr className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-bold border-b border-slate-200 dark:border-slate-700 whitespace-nowrap">
 
                   <th className="py-3 px-4">
                     {lang === 'ar'
@@ -2374,10 +2374,10 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
                         key={
                           record.id
                         }
-                        className="hover:bg-slate-50 transition-colors"
+                        className="hover:bg-slate-50 dark:bg-slate-800/50 transition-colors"
                       >
 
-                        <td className="py-3 px-4 font-mono font-bold text-slate-800">
+                        <td className="py-3 px-4 font-mono font-bold text-slate-800 dark:text-slate-200">
 
                           {toWesternDigits(
                             record.date
@@ -2396,7 +2396,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
 
                         </td>
 
-                        <td className="py-3 px-4 font-mono font-bold text-slate-800">
+                        <td className="py-3 px-4 font-mono font-bold text-slate-800 dark:text-slate-200">
 
                           {record.checkOut
                             ? formatTime(
@@ -2505,11 +2505,11 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
           SYSTEM ANALYTICS HEADER
       ===================================================== */}
 
-      <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex items-center justify-between">
+      <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm flex items-center justify-between">
 
         <div>
 
-          <h2 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+          <h2 className="text-xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
 
             <BarChart3 className="w-5 h-5 text-emerald-600" />
 
@@ -2541,11 +2541,11 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
 
         {/* WEEKLY */}
 
-        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+        <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
 
           <div className="flex items-center justify-between">
 
-            <h3 className="font-bold text-slate-900 text-sm">
+            <h3 className="font-bold text-slate-900 dark:text-white text-sm">
 
               {lang === 'ar'
                 ? 'معدل الحضور اليومي الأسبوعي'
@@ -2665,9 +2665,9 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
 
         {/* PIE */}
 
-        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+        <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
 
-          <h3 className="font-bold text-slate-900 text-sm">
+          <h3 className="font-bold text-slate-900 dark:text-white text-sm">
 
             {lang === 'ar'
               ? 'توزيع حالات الحضور والانصراف'
@@ -2740,8 +2740,8 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
           DEPARTMENT ANALYTICS
       ===================================================== */}
 
-<div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
-        <h3 className="font-bold text-slate-900 text-sm">
+<div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
+        <h3 className="font-bold text-slate-900 dark:text-white text-sm">
 
           {lang === 'ar'
             ? 'إجمالي ساعات العمل والإضافي حسب القسم'

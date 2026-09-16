@@ -5591,8 +5591,8 @@ try {
     <div
       className="
         min-h-screen
-        bg-slate-100/70
-        text-slate-900
+        bg-slate-100 dark:bg-slate-800/70
+        text-slate-900 dark:text-white
         font-sans
         antialiased
         selection:bg-emerald-500
@@ -6395,7 +6395,7 @@ try {
             px-2
             py-0.5
             rounded-md
-            bg-white
+            bg-white dark:bg-slate-900
             border
             border-slate-700
             flex

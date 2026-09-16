@@ -364,12 +364,12 @@ export const AttendanceLogTable: React.FC<AttendanceLogTableProps> = ({
   return (
     <div className="max-w-7xl mx-auto p-4 sm:p-6 space-y-6 animate-fade-in">
       {/* Header & Control Bar */}
-      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm">
         <div>
-          <h2 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2.5 flex-wrap">
+          <h2 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2.5 flex-wrap">
             <span>{lang === 'ar' ? 'سجل الحضور اليومي والورديات' : 'Attendance & Shift Log'}</span>
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#0d2240] text-white text-xs font-bold border border-blue-900 shadow-sm shrink-0" dir="ltr">
-              <img src="logo.png" alt="Tech Source" className="w-4 h-4 object-contain bg-white rounded-full p-0.5" onError={(e) => { (e.currentTarget as HTMLElement).style.display = 'none'; }} />
+              <img src="logo.png" alt="Tech Source" className="w-4 h-4 object-contain bg-white dark:bg-slate-900 rounded-full p-0.5" onError={(e) => { (e.currentTarget as HTMLElement).style.display = 'none'; }} />
               <span>TECH SOURCE GDS</span>
             </span>
           </h2>
@@ -393,7 +393,7 @@ export const AttendanceLogTable: React.FC<AttendanceLogTableProps> = ({
               if (action === 'export') onExportCSV();
               e.currentTarget.value = '';
             }}
-            className="w-full sm:w-auto min-w-[190px] h-10 rounded-xl border border-slate-300 bg-white px-3 text-xs font-bold text-slate-800 shadow-sm outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+            className="w-full sm:w-auto min-w-[190px] h-10 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 text-xs font-bold text-slate-800 dark:text-slate-200 shadow-sm outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
           >
             <option value="" disabled>{lang === 'ar' ? 'إجراءات الحضور' : 'Attendance Actions'}</option>
             <option value="bulk">{lang === 'ar' ? 'تسجيل حضور جماعي' : 'Bulk Attendance Entry'}</option>
@@ -408,7 +408,7 @@ export const AttendanceLogTable: React.FC<AttendanceLogTableProps> = ({
         </div>
       </div>
       {/* Filters Bar */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+      <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
         {/* Search */}
         <div className="relative">
           <Search className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -417,7 +417,7 @@ export const AttendanceLogTable: React.FC<AttendanceLogTableProps> = ({
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder={lang === 'ar' ? 'بحث باسم الموظف أو الكود (EMP001)...' : 'Search employee...'}
-            className="w-full text-xs pr-9 pl-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 font-sans"
+            className="w-full text-xs pr-9 pl-3 py-2.5 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 font-sans"
           />
         </div>
 
@@ -426,7 +426,7 @@ export const AttendanceLogTable: React.FC<AttendanceLogTableProps> = ({
           <select
             value={selectedDept}
             onChange={(e) => setSelectedDept(e.target.value)}
-            className="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-medium font-sans"
+            className="w-full text-xs bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-medium font-sans"
           >
             <option value="all">{lang === 'ar' ? 'جميع الأقسام' : 'All Departments'}</option>
             <option value="CX">CX</option>
@@ -440,7 +440,7 @@ export const AttendanceLogTable: React.FC<AttendanceLogTableProps> = ({
           <select
             value={selectedStatus}
             onChange={(e) => setSelectedStatus(e.target.value)}
-            className="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-medium font-sans"
+            className="w-full text-xs bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-medium font-sans"
           >
             <option value="all">{lang === 'ar' ? 'جميع الحالات' : 'All Statuses'}</option>
             <option value="on_time">حاضر (في الوقت)</option>
@@ -458,7 +458,7 @@ export const AttendanceLogTable: React.FC<AttendanceLogTableProps> = ({
           <select
             value={selectedMonth}
             onChange={(e) => setSelectedMonth(e.target.value)}
-            className="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-medium font-sans"
+            className="w-full text-xs bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-medium font-sans"
           >
             <option value="all">{lang === 'ar' ? 'جميع الشهور 📅' : 'All Months'}</option>
             <option value="2026-08">أغسطس 2026 (الشهر الحالي)</option>
@@ -479,13 +479,13 @@ export const AttendanceLogTable: React.FC<AttendanceLogTableProps> = ({
             type="date"
             value={selectedDate}
             onChange={(e) => setSelectedDate(e.target.value)}
-            className="w-full text-xs pr-9 pl-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono"
+            className="w-full text-xs pr-9 pl-3 py-2.5 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono"
           />
         </div>
       </div>
 
       {/* Main Records Table Card */}
-      <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-right text-xs">
             <thead>
@@ -509,13 +509,13 @@ export const AttendanceLogTable: React.FC<AttendanceLogTableProps> = ({
                   const isBreakActive = Boolean(rec.breakStart && !rec.breakEnd);
 
                   return (
-                    <tr key={rec.id} className={`hover:bg-slate-50/80 transition-colors ${isBreakActive ? 'bg-amber-50/40' : ''}`}>
-                      <td className="py-3.5 px-4 font-mono font-semibold text-slate-700">{toWesternDigits(rec.date)}</td>
+                    <tr key={rec.id} className={`hover:bg-slate-50 dark:bg-slate-800/50/80 transition-colors ${isBreakActive ? 'bg-amber-50/40' : ''}`}>
+                      <td className="py-3.5 px-4 font-mono font-semibold text-slate-700 dark:text-slate-300">{toWesternDigits(rec.date)}</td>
                       <td className="py-3.5 px-4">
                         <div className="flex items-center gap-2.5">
                           <UserAvatar name={emp.nameEn || emp.nameAr} code={emp.code} avatar={emp.avatar} size="sm" />
                           <div>
-                            <div className="font-bold text-slate-900 whitespace-nowrap" title={lang === 'ar' ? emp.nameAr : emp.nameEn}>
+                            <div className="font-bold text-slate-900 dark:text-white whitespace-nowrap" title={lang === 'ar' ? emp.nameAr : emp.nameEn}>
                               {getFirstTwoNames(lang === 'ar' ? emp.nameAr : emp.nameEn)}
                             </div>
                             <div className="text-[10px] text-slate-500 font-mono font-bold">{emp.code}</div>
@@ -548,11 +548,11 @@ export const AttendanceLogTable: React.FC<AttendanceLogTableProps> = ({
 
                         return (
                           <>
-                            <td className="py-3.5 px-4 text-slate-600 font-medium">{localizeBackendValue(emp.department, lang)}</td>
-                            <td className="py-3.5 px-4 font-mono font-bold text-slate-900">
+                            <td className="py-3.5 px-4 text-slate-600 dark:text-slate-400 font-medium">{localizeBackendValue(emp.department, lang)}</td>
+                            <td className="py-3.5 px-4 font-mono font-bold text-slate-900 dark:text-white">
                               {rec.checkIn ? formatTime(rec.checkIn, lang) : '--:--'}
                             </td>
-                            <td className="py-3.5 px-4 font-mono font-bold text-slate-900">
+                            <td className="py-3.5 px-4 font-mono font-bold text-slate-900 dark:text-white">
                               {rec.checkOut ? formatTime(rec.checkOut, lang) : '--:--'}
                             </td>
                             <td className="py-3.5 px-4 font-mono font-bold text-emerald-700">
@@ -669,7 +669,7 @@ export const AttendanceLogTable: React.FC<AttendanceLogTableProps> = ({
                             )}
                             <button
                               onClick={() => openEditModal(rec)}
-                              className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors"
+                              className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 transition-colors"
                               title="تعديل السجل"
                             >
                               <Edit3 className="w-4 h-4" />
@@ -709,14 +709,14 @@ export const AttendanceLogTable: React.FC<AttendanceLogTableProps> = ({
       {/* Manual Punch Modal */}
       {showModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-lg rounded-3xl p-6 shadow-2xl border border-slate-200 space-y-5 animate-in fade-in zoom-in-95">
+          <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-3xl p-6 shadow-2xl border border-slate-200 dark:border-slate-700 space-y-5 animate-in fade-in zoom-in-95">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <h3 className="font-bold text-slate-900 text-lg">
+              <h3 className="font-bold text-slate-900 dark:text-white text-lg">
                 {editingRecord 
                   ? (lang === 'ar' ? 'تعديل سجل حضور الموظف' : 'Edit Attendance Record') 
                   : (lang === 'ar' ? 'تسجيل حضور يدوي بواسطة التيم ليدر' : 'Leader Manual Punch Record')}
               </h3>
-              <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-600">
+              <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-600 dark:text-slate-400">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -724,12 +724,12 @@ export const AttendanceLogTable: React.FC<AttendanceLogTableProps> = ({
             <form onSubmit={handleSaveForm} className="space-y-4 text-xs font-sans">
               {/* Record Type Selector */}
               <div>
-                <label className="block font-bold text-slate-700 mb-1.5">{lang === 'ar' ? 'نوع السجل / حالة اليوم' : 'Record Type / Day Status'}</label>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">{lang === 'ar' ? 'نوع السجل / حالة اليوم' : 'Record Type / Day Status'}</label>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   <button
                     type="button"
                     onClick={() => setFormRecordType('attendance')}
-                    className={`px-3 py-2 rounded-xl font-bold text-xs border flex items-center justify-center gap-1.5 transition ${formRecordType === 'attendance' ? 'bg-[#0d2240] text-white border-blue-900 shadow-xs' : 'bg-slate-50 text-slate-700 hover:bg-slate-100 border-slate-200'}`}
+                    className={`px-3 py-2 rounded-xl font-bold text-xs border flex items-center justify-center gap-1.5 transition ${formRecordType === 'attendance' ? 'bg-[#0d2240] text-white border-blue-900 shadow-xs' : 'bg-slate-50 dark:bg-slate-800/50 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`}
                   >
                     <Clock className="w-3.5 h-3.5" />
                     <span>{lang === 'ar' ? 'حضور وانصراف' : 'Attendance'}</span>
@@ -772,11 +772,11 @@ export const AttendanceLogTable: React.FC<AttendanceLogTableProps> = ({
 
               {/* Select Employee */}
               <div>
-                <label className="block font-bold text-slate-700 mb-1">{lang === 'ar' ? 'اختيار الموظف' : 'Select Employee'}</label>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">{lang === 'ar' ? 'اختيار الموظف' : 'Select Employee'}</label>
                 <select
                   value={formEmpId}
                   onChange={(e) => setFormEmpId(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-medium"
+                  className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 font-medium"
                   required
                 >
                   {employees.map(e => (
@@ -789,12 +789,12 @@ export const AttendanceLogTable: React.FC<AttendanceLogTableProps> = ({
 
               {/* Date */}
               <div>
-                <label className="block font-bold text-slate-700 mb-1">{lang === 'ar' ? 'التاريخ' : 'Date'}</label>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">{lang === 'ar' ? 'التاريخ' : 'Date'}</label>
                 <input
                   type="date"
                   value={formDate}
                   onChange={(e) => setFormDate(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-mono"
+                  className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 font-mono"
                   required
                 />
               </div>
@@ -845,24 +845,24 @@ export const AttendanceLogTable: React.FC<AttendanceLogTableProps> = ({
                 <>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block font-bold text-slate-700 mb-1">{lang === 'ar' ? 'وقت الدخول (Check-In)' : 'Check-In'}</label>
+                      <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">{lang === 'ar' ? 'وقت الدخول (Check-In)' : 'Check-In'}</label>
                       <input
                         type="time"
                         value={formCheckIn}
                         onChange={(e) => setFormCheckIn(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-mono"
+                        className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 font-mono"
                       />
                       <span className="text-[10px] text-slate-400 mt-0.5 block">
                         {lang === 'ar' ? 'التسجيل بعد 09:00 AM يحسب متأخراً تلقائياً' : 'After 09:00 AM marks late'}
                       </span>
                     </div>
                     <div>
-                      <label className="block font-bold text-slate-700 mb-1">{lang === 'ar' ? 'وقت الخروج (Check-Out)' : 'Check-Out'}</label>
+                      <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">{lang === 'ar' ? 'وقت الخروج (Check-Out)' : 'Check-Out'}</label>
                       <input
                         type="time"
                         value={formCheckOut}
                         onChange={(e) => setFormCheckOut(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-mono"
+                        className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 font-mono"
                       />
                       {formCheckOut && (
                         <button
@@ -902,7 +902,7 @@ export const AttendanceLogTable: React.FC<AttendanceLogTableProps> = ({
                           value={formExcusedReason}
                           onChange={(e) => setFormExcusedReason(e.target.value)}
                           placeholder={lang === 'ar' ? 'سبب الإعفاء (مثال: ظرف طارئ مقبول / موافقة الليدر)' : 'Excuse Reason'}
-                          className="w-full bg-white border border-emerald-300 rounded-lg px-3 py-1.5 text-xs text-emerald-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                          className="w-full bg-white dark:bg-slate-900 border border-emerald-300 rounded-lg px-3 py-1.5 text-xs text-emerald-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                         />
                       </div>
                     )}
@@ -912,13 +912,13 @@ export const AttendanceLogTable: React.FC<AttendanceLogTableProps> = ({
 
               {/* Notes */}
               <div>
-                <label className="block font-bold text-slate-700 mb-1">{lang === 'ar' ? 'ملاحظة إدارية' : 'Admin Note'}</label>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">{lang === 'ar' ? 'ملاحظة إدارية' : 'Admin Note'}</label>
                 <textarea
                   value={formNotes}
                   onChange={(e) => setFormNotes(e.target.value)}
                   placeholder={lang === 'ar' ? 'ملاحظة إدارية أو سبب التسجيل...' : 'Admin note...'}
                   rows={2}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5"
+                  className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5"
                 />
               </div>
 
@@ -1024,7 +1024,7 @@ export const AttendanceLogTable: React.FC<AttendanceLogTableProps> = ({
                   <button
                     type="button"
                     onClick={() => setShowModal(false)}
-                    className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 font-semibold text-xs"
+                    className="px-4 py-2 rounded-xl text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:bg-slate-800 font-semibold text-xs"
                   >
                     {lang === 'ar' ? 'إلغاء' : 'Cancel'}
                   </button>
@@ -1044,14 +1044,14 @@ export const AttendanceLogTable: React.FC<AttendanceLogTableProps> = ({
       {/* EXCUSE PENALTY MODAL */}
       {showExcuseModal && selectedRecordToExcuse && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-white max-w-md w-full rounded-3xl p-6 shadow-2xl border border-slate-100 space-y-5 dir-rtl">
+          <div className="bg-white dark:bg-slate-900 max-w-md w-full rounded-3xl p-6 shadow-2xl border border-slate-100 space-y-5 dir-rtl">
             <div className="flex items-center justify-between border-b border-slate-100 pb-4">
               <div className="flex items-center gap-2.5">
                 <div className={`p-2.5 rounded-2xl ${isRestoring ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700'}`}>
                   {isRestoring ? <ShieldAlert className="w-5 h-5" /> : <ShieldCheck className="w-5 h-5" />}
                 </div>
                 <div>
-                  <h3 className="font-extrabold text-slate-900 text-base">
+                  <h3 className="font-extrabold text-slate-900 dark:text-white text-base">
                     {isRestoring
                       ? (lang === 'ar' ? 'إعادة احتساب الخصم والجزاء المالي' : 'Restore Penalty Deduction')
                       : (lang === 'ar' ? 'إلغاء الخصم والجزاء المالي (إعفاء)' : 'Waive Penalty Deduction')}
@@ -1063,7 +1063,7 @@ export const AttendanceLogTable: React.FC<AttendanceLogTableProps> = ({
               </div>
               <button
                 onClick={() => setShowExcuseModal(false)}
-                className="p-1.5 rounded-xl hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition"
+                className="p-1.5 rounded-xl hover:bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-slate-600 dark:text-slate-400 transition"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1071,7 +1071,7 @@ export const AttendanceLogTable: React.FC<AttendanceLogTableProps> = ({
 
             {!isRestoring ? (
               <div className="space-y-2">
-                <label className="block font-bold text-xs text-slate-700">
+                <label className="block font-bold text-xs text-slate-700 dark:text-slate-300">
                   {lang === 'ar' ? 'سبب إلغاء الخصم (الإعفاء الإداري):' : 'Excuse Reason:'}
                 </label>
                 <textarea
@@ -1079,7 +1079,7 @@ export const AttendanceLogTable: React.FC<AttendanceLogTableProps> = ({
                   value={excuseReason}
                   onChange={(e) => setExcuseReason(e.target.value)}
                   placeholder={lang === 'ar' ? 'أدخل سبب إلغاء الخصم...' : 'Enter reason...'}
-                  className="w-full bg-slate-50 border border-slate-200 focus:bg-white focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 rounded-2xl p-3 text-xs font-bold text-slate-800 transition"
+                  className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 focus:bg-white dark:bg-slate-900 focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 rounded-2xl p-3 text-xs font-bold text-slate-800 dark:text-slate-200 transition"
                 />
               </div>
             ) : (
@@ -1092,7 +1092,7 @@ export const AttendanceLogTable: React.FC<AttendanceLogTableProps> = ({
               <button
                 type="button"
                 onClick={() => setShowExcuseModal(false)}
-                className="px-4 py-2.5 rounded-xl text-slate-600 hover:bg-slate-100 font-bold text-xs transition"
+                className="px-4 py-2.5 rounded-xl text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:bg-slate-800 font-bold text-xs transition"
               >
                 {lang === 'ar' ? 'تراجع (إلغاء)' : 'Cancel'}
               </button>

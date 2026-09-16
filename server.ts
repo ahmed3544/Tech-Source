@@ -14,8 +14,8 @@ import { registerDirectScheduleSync } from "./server/schedule-sync-direct.js";
 import { registerDbWriteVerification } from "./server/db-write-verification.js";
 
 const app = express();
-app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 registerFcmRoutes(app);
 const PORT = Number(process.env.PORT || 3000);
 const TZ = process.env.SERVER_TIME_ZONE || "Africa/Cairo";

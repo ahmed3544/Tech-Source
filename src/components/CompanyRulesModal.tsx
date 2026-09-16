@@ -37,12 +37,12 @@ export const CompanyRulesModal: React.FC<CompanyRulesModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-950/70 backdrop-blur-sm animate-fadeIn">
-      <div className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl border border-slate-200 w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden text-right">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-700 w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden text-right">
         
         {/* Modal Header */}
         <div className="bg-[#0d2240] text-white p-4 sm:p-6 border-b border-blue-900 flex items-center justify-between gap-4 shrink-0">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="h-12 px-3 py-1.5 rounded-xl bg-white border border-slate-300 shadow-sm flex items-center justify-center shrink-0 overflow-hidden">
+            <div className="h-12 px-3 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 shadow-sm flex items-center justify-center shrink-0 overflow-hidden">
               <img 
                 src="logo.png"
                 alt="Tech Source GDS" 
@@ -69,20 +69,20 @@ export const CompanyRulesModal: React.FC<CompanyRulesModalProps> = ({
 
           <button
             onClick={onClose}
-            className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition shrink-0"
+            className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white dark:bg-slate-900/10 transition shrink-0"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Tab Navigation */}
-        <div className="bg-slate-100 border-b border-slate-200 p-2 flex items-center gap-1 overflow-x-auto shrink-0 scrollbar-none">
+        <div className="bg-slate-100 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 p-2 flex items-center gap-1 overflow-x-auto shrink-0 scrollbar-none">
           <button
             onClick={() => setActiveSubTab('companyInfo')}
             className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
               activeSubTab === 'companyInfo'
                 ? 'bg-[#0d2240] text-white shadow-sm'
-                : 'text-slate-600 hover:bg-slate-200'
+                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200'
             }`}
           >
             <Building2 className="w-4 h-4 text-sky-400" />
@@ -94,7 +94,7 @@ export const CompanyRulesModal: React.FC<CompanyRulesModalProps> = ({
             className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
               activeSubTab === 'violations'
                 ? 'bg-[#0d2240] text-white shadow-sm'
-                : 'text-slate-600 hover:bg-slate-200'
+                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200'
             }`}
           >
             <ShieldAlert className="w-4 h-4 text-amber-400" />
@@ -106,7 +106,7 @@ export const CompanyRulesModal: React.FC<CompanyRulesModalProps> = ({
             className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
               activeSubTab === 'leaves'
                 ? 'bg-[#0d2240] text-white shadow-sm'
-                : 'text-slate-600 hover:bg-slate-200'
+                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200'
             }`}
           >
 <span>{lang === 'ar' ? 'الإجازات والمزايا والأجور' : 'Leaves & Benefits'}</span>
@@ -117,7 +117,7 @@ export const CompanyRulesModal: React.FC<CompanyRulesModalProps> = ({
             className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
               activeSubTab === 'conduct'
                 ? 'bg-[#0d2240] text-white shadow-sm'
-                : 'text-slate-600 hover:bg-slate-200'
+                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200'
             }`}
           >
             <HeartHandshake className="w-4 h-4 text-indigo-400" />
@@ -129,7 +129,7 @@ export const CompanyRulesModal: React.FC<CompanyRulesModalProps> = ({
             className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
               activeSubTab === 'general'
                 ? 'bg-[#0d2240] text-white shadow-sm'
-                : 'text-slate-600 hover:bg-slate-200'
+                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200'
             }`}
           >
             <ShieldCheck className="w-4 h-4 text-rose-400" />
@@ -138,7 +138,7 @@ export const CompanyRulesModal: React.FC<CompanyRulesModalProps> = ({
         </div>
 
         {/* Modal Body Content */}
-        <div className="p-4 sm:p-6 overflow-y-auto space-y-6 flex-1 text-slate-800 text-xs sm:text-sm">
+        <div className="p-4 sm:p-6 overflow-y-auto space-y-6 flex-1 text-slate-800 dark:text-slate-200 text-xs sm:text-sm">
 
           {/* TAB 0: COMPANY INFO & MANAGEMENT */}
           {activeSubTab === 'companyInfo' && (
@@ -164,7 +164,7 @@ export const CompanyRulesModal: React.FC<CompanyRulesModalProps> = ({
                   </div>
 
                   {/* Contact Links Box */}
-                  <div className="flex flex-col gap-2 shrink-0 bg-white/10 backdrop-blur-md p-3 rounded-xl border border-white/15 text-xs">
+                  <div className="flex flex-col gap-2 shrink-0 bg-white dark:bg-slate-900/10 backdrop-blur-md p-3 rounded-xl border border-white/15 text-xs">
                     <a
                       href={COMPANY_CONTACTS.website}
                       target="_blank"
@@ -194,22 +194,22 @@ export const CompanyRulesModal: React.FC<CompanyRulesModalProps> = ({
                   <Briefcase className="w-5 h-5 text-sky-700 shrink-0" />
                   <span>{lang === 'ar' ? 'ملخص سياسة العمل العامة والتنظيم المؤسسي' : 'General Company Policy Overview'}</span>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs text-slate-700">
-                  <div className="bg-white p-3.5 rounded-xl border border-sky-100 space-y-1">
-                    <strong className="text-slate-900 font-bold block text-sm">1. المواعيد والسماح</strong>
-                    <p className="text-slate-600 leading-relaxed">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs text-slate-700 dark:text-slate-300">
+                  <div className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-sky-100 space-y-1">
+                    <strong className="text-slate-900 dark:text-white font-bold block text-sm">1. المواعيد والسماح</strong>
+                    <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
                       الوردية الصباحية تبدأ الساعة 09:00 AM. الحضور بعد 9:00 AM بدقيقة واحدة يُحسب "متأخر"، والتأخير بعد 10:00 AM (تجاوز ساعة كاملة) يُسجّل "غائب"، وقبل 9:00 AM يُسجّل "لم يحضر بعد".
                     </p>
                   </div>
-                  <div className="bg-white p-3.5 rounded-xl border border-sky-100 space-y-1">
-                    <strong className="text-slate-900 font-bold block text-sm">2. الإجازات المعتمدة</strong>
-                    <p className="text-slate-600 leading-relaxed">
+                  <div className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-sky-100 space-y-1">
+                    <strong className="text-slate-900 dark:text-white font-bold block text-sm">2. الإجازات المعتمدة</strong>
+                    <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
                       يتم تسجيل الإجازات من قبل التيم ليدر والإدارة وتفعيل حظر الحضور التلقائي في أيام الإجازات المعتمدة.
                     </p>
                   </div>
-                  <div className="bg-white p-3.5 rounded-xl border border-sky-100 space-y-1">
-                    <strong className="text-slate-900 font-bold block text-sm">3. السرية وجودة العمل</strong>
-                    <p className="text-slate-600 leading-relaxed">
+                  <div className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-sky-100 space-y-1">
+                    <strong className="text-slate-900 dark:text-white font-bold block text-sm">3. السرية وجودة العمل</strong>
+                    <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
                       حماية سرية البيانات (NDA) والالتزام بأعلى معايير الأداء والجودة وقانون العمل المصري 14/2025.
                     </p>
                   </div>
@@ -234,7 +234,7 @@ export const CompanyRulesModal: React.FC<CompanyRulesModalProps> = ({
               </div>
 
               {/* Table of Violations */}
-              <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
+              <div className="border border-slate-200 dark:border-slate-700 rounded-2xl overflow-hidden shadow-xs">
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs text-right border-collapse">
                     <thead>
@@ -250,8 +250,8 @@ export const CompanyRulesModal: React.FC<CompanyRulesModalProps> = ({
                     <tbody className="divide-y divide-slate-200">
                       
                       {/* Row 1 */}
-                      <tr className="hover:bg-slate-50">
-                        <td className="py-3 px-4 font-bold text-slate-900">
+                      <tr className="hover:bg-slate-50 dark:bg-slate-800/50">
+                        <td className="py-3 px-4 font-bold text-slate-900 dark:text-white">
                           1. التأخير حتى 15 دقيقة دون إذن بعد فترة السماح
                         </td>
                         <td className="py-3 px-4 text-center text-amber-700 font-bold">إنذار كتابي</td>
@@ -262,8 +262,8 @@ export const CompanyRulesModal: React.FC<CompanyRulesModalProps> = ({
                       </tr>
 
                       {/* Row 2 */}
-                      <tr className="hover:bg-slate-50 bg-slate-50/50">
-                        <td className="py-3 px-4 font-bold text-slate-900">
+                      <tr className="hover:bg-slate-50 dark:bg-slate-800/50 bg-slate-50 dark:bg-slate-800/50/50">
+                        <td className="py-3 px-4 font-bold text-slate-900 dark:text-white">
                           2. التأخير من 15 دقيقة حتى 60 دقيقة دون إذن
                         </td>
                         <td className="py-3 px-4 text-center text-amber-700 font-bold">خصم نصف يوم (0.5)</td>
@@ -285,19 +285,19 @@ export const CompanyRulesModal: React.FC<CompanyRulesModalProps> = ({
                       </tr>
 
                       {/* Row 4 */}
-                      <tr className="hover:bg-slate-50">
-                        <td className="py-3 px-4 font-bold text-slate-900">
+                      <tr className="hover:bg-slate-50 dark:bg-slate-800/50">
+                        <td className="py-3 px-4 font-bold text-slate-900 dark:text-white">
                           4. الانقطاع عن العمل بدون إذن أو عذر مقبول
                         </td>
-                        <td colSpan={4} className="py-3 px-4 text-center text-slate-700">
+                        <td colSpan={4} className="py-3 px-4 text-center text-slate-700 dark:text-slate-300">
                           تطبق أحكام المادة 166 (إنذار بخطاب مسجل بعد 10 أيام متتالية أو 20 يوماً متقطعة خلال السنة)
                         </td>
                         <td className="py-3 px-4 text-rose-700 font-bold">اعتبار الموظف مستقيلاً</td>
                       </tr>
 
                       {/* Row 5 */}
-                      <tr className="hover:bg-slate-50 bg-slate-50/50">
-                        <td className="py-3 px-4 font-bold text-slate-900">
+                      <tr className="hover:bg-slate-50 dark:bg-slate-800/50 bg-slate-50 dark:bg-slate-800/50/50">
+                        <td className="py-3 px-4 font-bold text-slate-900 dark:text-white">
                           5. ترك مكان العمل أو الانصراف المبكر دون إذن
                         </td>
                         <td className="py-3 px-4 text-center text-amber-700 font-bold">خصم يوم</td>
@@ -308,8 +308,8 @@ export const CompanyRulesModal: React.FC<CompanyRulesModalProps> = ({
                       </tr>
 
                       {/* Row 6 */}
-                      <tr className="hover:bg-slate-50">
-                        <td className="py-3 px-4 font-bold text-slate-900">
+                      <tr className="hover:bg-slate-50 dark:bg-slate-800/50">
+                        <td className="py-3 px-4 font-bold text-slate-900 dark:text-white">
                           6. الامتناع عن استخدام البصمة لإنشاء إثبات حضور/انصراف
                         </td>
                         <td className="py-3 px-4 text-center text-amber-700 font-bold">خصم يوم</td>
@@ -320,8 +320,8 @@ export const CompanyRulesModal: React.FC<CompanyRulesModalProps> = ({
                       </tr>
 
                       {/* Row 7 */}
-                      <tr className="hover:bg-slate-50 bg-slate-50/50">
-                        <td className="py-3 px-4 font-bold text-slate-900">
+                      <tr className="hover:bg-slate-50 dark:bg-slate-800/50 bg-slate-50 dark:bg-slate-800/50/50">
+                        <td className="py-3 px-4 font-bold text-slate-900 dark:text-white">
                           7. الخروج في وقت الراحة دون إبلاغ (الاستئذان)
                         </td>
                         <td className="py-3 px-4 text-center text-amber-700 font-bold">خصم نصف يوم (في وجود بديل)</td>
@@ -350,7 +350,7 @@ export const CompanyRulesModal: React.FC<CompanyRulesModalProps> = ({
                   <div className="flex items-center gap-2 text-emerald-900 font-extrabold text-sm">
 <span>رصيد الإجازات السنوية (المادة 125)</span>
                   </div>
-                  <ul className="text-xs text-slate-700 space-y-1.5 list-disc list-inside leading-relaxed">
+                  <ul className="text-xs text-slate-700 dark:text-slate-300 space-y-1.5 list-disc list-inside leading-relaxed">
                     <li><strong>السنة الأولى:</strong> 15 يوماً (تحتسب بعد فترة الاختبار 3 أشهر).</li>
                     <li><strong>أكثر من سنة كاملة:</strong> 21 يوماً إجازة سنوية مدفوعة.</li>
                     <li><strong>10 سنوات خدمة أو تجاوز سن 50:</strong> 30 يوماً إجازة سنوية.</li>
@@ -365,7 +365,7 @@ export const CompanyRulesModal: React.FC<CompanyRulesModalProps> = ({
                     <AlertTriangle className="w-5 h-5 text-amber-600" />
                     <span>الإجازة العارضة (7 أيام سنوياً)</span>
                   </div>
-                  <ul className="text-xs text-slate-700 space-y-1.5 list-disc list-inside leading-relaxed">
+                  <ul className="text-xs text-slate-700 dark:text-slate-300 space-y-1.5 list-disc list-inside leading-relaxed">
                     <li>تمنح للأسباب الطارئة بحد أقصى <strong>يومين في المرة الواحدة</strong>.</li>
                     <li>تقتطع من رصيد الإجازات السنوية.</li>
                     <li>يلزم إبلاغ الشركة هاتفياً أو رسمياً <strong>قبل الساعة 10:00 صباحاً</strong> من يوم الغياب.</li>
@@ -378,7 +378,7 @@ export const CompanyRulesModal: React.FC<CompanyRulesModalProps> = ({
                     <DollarSign className="w-5 h-5 text-blue-600" />
                     <span>حساب العمل الإضافي والأجور (المادة 121)</span>
                   </div>
-                  <ul className="text-xs text-slate-700 space-y-1.5 list-disc list-inside leading-relaxed">
+                  <ul className="text-xs text-slate-700 dark:text-slate-300 space-y-1.5 list-disc list-inside leading-relaxed">
                     <li><strong>ساعات العمل النهارية الإضافية:</strong> يُصرف أجر الساعي الأساسية + <strong className="text-blue-700">35% زيادة</strong>.</li>
                     <li><strong>ساعات العمل الليلية الإضافية:</strong> يُصرف أجر الساعة الأساسية + <strong className="text-blue-700">70% زيادة</strong>.</li>
                     <li><strong>العمل في العطلة الأسبوعية/الرسمية:</strong> أجر يومين كاملين أو منح يوم آخر مدفوع الأجر بديل عنه.</li>
@@ -392,7 +392,7 @@ export const CompanyRulesModal: React.FC<CompanyRulesModalProps> = ({
                     <Award className="w-5 h-5 text-purple-600" />
                     <span>الإجازات الرسمية الخاصة</span>
                   </div>
-                  <ul className="text-xs text-slate-700 space-y-1.5 list-disc list-inside leading-relaxed">
+                  <ul className="text-xs text-slate-700 dark:text-slate-300 space-y-1.5 list-disc list-inside leading-relaxed">
                     <li><strong>إجازة الوضع (للعاملات):</strong> 4 أشهر مدفوعة الأجر الكامل (حتى 3 مرات).</li>
                     <li><strong>إجازة الزواج:</strong> 3 أيام مدفوعة الأجر (لمرة واحدة).</li>
                     <li><strong>إجازة الحج/العمرة:</strong> شهر مدفوع الأجر لمن أمضى 5 سنوات متصلة.</li>
@@ -465,7 +465,7 @@ export const CompanyRulesModal: React.FC<CompanyRulesModalProps> = ({
         </div>
 
         {/* Modal Footer */}
-        <div className="bg-slate-100 p-4 border-t border-slate-200 flex items-center justify-between gap-4 shrink-0">
+        <div className="bg-slate-100 dark:bg-slate-800 p-4 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between gap-4 shrink-0">
           <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
             <CheckCircle2 className="w-4 h-4 text-emerald-600" />
             <span>تطبق هذه اللائحة على جميع العاملين بشركة تيك سورس لتطوير الأعمال Global GSD</span>

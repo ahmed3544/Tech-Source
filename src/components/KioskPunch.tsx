@@ -344,7 +344,7 @@ export const KioskPunch: React.FC<KioskPunchProps> = ({
                     : 'Check-in after 10:00 AM will be recorded as "Absent".'}
                 </span>
               </div>
-              <span className="font-mono font-black bg-white text-red-700 px-3 py-1.5 rounded-xl shadow-md text-xs shrink-0">
+              <span className="font-mono font-black bg-white dark:bg-slate-900 text-red-700 px-3 py-1.5 rounded-xl shadow-md text-xs shrink-0">
                 +10:00 AM (غائب)
               </span>
             </div>
@@ -385,7 +385,7 @@ export const KioskPunch: React.FC<KioskPunchProps> = ({
             }`}
           >
             <div className="flex items-center gap-4">
-              <div className="p-3 bg-white/20 rounded-xl">
+              <div className="p-3 bg-white dark:bg-slate-900/20 rounded-xl">
                 <CheckCircle2 className="w-7 h-7" />
               </div>
               <div>
@@ -395,7 +395,7 @@ export const KioskPunch: React.FC<KioskPunchProps> = ({
                 </p>
               </div>
             </div>
-            <div className="text-xs bg-white/20 px-3 py-1.5 rounded-lg font-bold font-mono">
+            <div className="text-xs bg-white dark:bg-slate-900/20 px-3 py-1.5 rounded-lg font-bold font-mono">
               TECH SOURCE VERIFIED
             </div>
           </motion.div>
@@ -406,13 +406,13 @@ export const KioskPunch: React.FC<KioskPunchProps> = ({
         
         {/* Left Side: Employee Directory (Leader Only or view single employee) */}
         {isLeader && (
-          <div className="lg:col-span-5 bg-white rounded-3xl p-5 border border-slate-200 shadow-sm space-y-4">
+          <div className="lg:col-span-5 bg-white dark:bg-slate-900 rounded-3xl p-5 border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
+              <h3 className="font-bold text-slate-900 dark:text-white text-base flex items-center gap-2">
                 <User className="w-4 h-4 text-emerald-600" />
                 <span>{lang === 'ar' ? 'دليل الموظفين' : 'Employee Directory'}</span>
               </h3>
-              <span className="text-xs font-semibold font-mono bg-slate-100 text-slate-700 px-2.5 py-1 rounded-full">
+              <span className="text-xs font-semibold font-mono bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 px-2.5 py-1 rounded-full">
                 {filteredEmployees.length} {lang === 'ar' ? 'موظف' : 'emps'}
               </span>
             </div>
@@ -425,7 +425,7 @@ export const KioskPunch: React.FC<KioskPunchProps> = ({
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder={lang === 'ar' ? 'ابحث بالاسم أو الكود (EMP001)...' : 'Search name or code...'}
-                className="w-full pl-3 pr-9 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all font-sans"
+                className="w-full pl-3 pr-9 py-2.5 text-sm bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all font-sans"
               />
             </div>
 
@@ -448,14 +448,14 @@ export const KioskPunch: React.FC<KioskPunchProps> = ({
                     className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex items-center justify-between ${
                       isSelected
                         ? 'border-emerald-500 bg-emerald-50/60 shadow-sm ring-1 ring-emerald-500/20'
-                        : 'border-slate-100 bg-slate-50/50 hover:bg-slate-100/70 hover:border-slate-200'
+                        : 'border-slate-100 bg-slate-50 dark:bg-slate-800/50/50 hover:bg-slate-100 dark:bg-slate-800/70 hover:border-slate-200 dark:border-slate-700'
                     }`}
                   >
                     <div className="flex items-center gap-3">
                       <UserAvatar name={emp.nameEn || emp.nameAr} code={emp.code} size="md" />
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 flex-nowrap min-w-0">
-                          <span className="font-bold text-sm text-slate-900 whitespace-nowrap" title={lang === 'ar' ? emp.nameAr : emp.nameEn}>
+                          <span className="font-bold text-sm text-slate-900 dark:text-white whitespace-nowrap" title={lang === 'ar' ? emp.nameAr : emp.nameEn}>
                             {getFirstTwoNames(lang === 'ar' ? emp.nameAr : emp.nameEn)}
                           </span>
                           <span className="text-[10px] font-mono font-bold bg-[#0d2240] text-white px-1.5 py-0.5 rounded shrink-0">
@@ -486,7 +486,7 @@ export const KioskPunch: React.FC<KioskPunchProps> = ({
                           <WorkTimer checkIn={rec.checkIn} checkOut={rec.checkOut} breakStart={rec.breakStart} breakEnd={rec.breakEnd} showIcon={false} className="text-[10px] text-emerald-900 font-mono pl-1 border-l border-emerald-300" />
                         </span>
                       ) : rec?.checkOut ? (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-600 bg-slate-200 px-2 py-0.5 rounded-full">
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-600 dark:text-slate-400 bg-slate-200 px-2 py-0.5 rounded-full">
                           {lang === 'ar' ? 'منصرف' : 'Out'}
                         </span>
                       ) : (
@@ -522,16 +522,16 @@ export const KioskPunch: React.FC<KioskPunchProps> = ({
         )}
 
         {/* Action Pad Container */}
-        <div className={`${isLeader ? 'lg:col-span-7' : 'lg:col-span-12'} bg-white rounded-3xl p-6 border border-slate-200 shadow-sm space-y-6 flex flex-col justify-between`}>
+        <div className={`${isLeader ? 'lg:col-span-7' : 'lg:col-span-12'} bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm space-y-6 flex flex-col justify-between`}>
           {selectedEmp ? (
             <>
               {/* Employee Selected Header */}
-              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-2xl border border-slate-200 dark:border-slate-700/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div className="flex items-center gap-4 min-w-0">
                   <UserAvatar name={selectedEmp.nameEn || selectedEmp.nameAr} code={selectedEmp.code} size="lg" />
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 flex-nowrap min-w-0">
-                      <h4 className="font-extrabold text-base sm:text-lg text-slate-900 whitespace-nowrap" title={lang === 'ar' ? selectedEmp.nameAr : selectedEmp.nameEn}>
+                      <h4 className="font-extrabold text-base sm:text-lg text-slate-900 dark:text-white whitespace-nowrap" title={lang === 'ar' ? selectedEmp.nameAr : selectedEmp.nameEn}>
                         {getFirstTwoNames(lang === 'ar' ? selectedEmp.nameAr : selectedEmp.nameEn)}
                       </h4>
                       {selectedEmp.role === 'leader' && (
@@ -542,7 +542,7 @@ export const KioskPunch: React.FC<KioskPunchProps> = ({
                       )}
                     </div>
                     <p className="text-xs text-slate-500 font-medium mt-0.5 whitespace-nowrap truncate">
-                      {lang === 'ar' ? 'كود الموظف' : 'Code'}: <span className="font-mono font-bold text-slate-900">{selectedEmp.code}</span> • {selectedEmp.department}
+                      {lang === 'ar' ? 'كود الموظف' : 'Code'}: <span className="font-mono font-bold text-slate-900 dark:text-white">{selectedEmp.code}</span> • {selectedEmp.department}
                     </p>
                   </div>
                 </div>
@@ -641,12 +641,12 @@ export const KioskPunch: React.FC<KioskPunchProps> = ({
                     </span>
                   </div>
 
-                  <div className="flex items-center justify-between bg-white/80 p-3 rounded-xl border border-amber-200">
+                  <div className="flex items-center justify-between bg-white dark:bg-slate-900/80 p-3 rounded-xl border border-amber-200">
                     <div>
                       <span className="text-[10px] text-slate-500 block font-semibold">
                         {lang === 'ar' ? 'وقت بدء الاستراحة:' : 'Break Start Time:'}
                       </span>
-                      <span className="font-mono text-xs font-bold text-slate-900">
+                      <span className="font-mono text-xs font-bold text-slate-900 dark:text-white">
                         {formatTime(currentRecord?.breakStart, lang)}
                       </span>
                     </div>
@@ -681,10 +681,10 @@ export const KioskPunch: React.FC<KioskPunchProps> = ({
                 <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-950 text-xs flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2.5">
 <div>
-                      <span className="font-bold text-slate-900 block">
+                      <span className="font-bold text-slate-900 dark:text-white block">
                         {lang === 'ar' ? 'إجازة معتمدة سارية' : 'Active Approved Leave'}
                       </span>
-                      <span className="text-slate-600">
+                      <span className="text-slate-600 dark:text-slate-400">
                         {lang === 'ar' 
                           ? `الفترة: من ${activeApprovedLeaveToday.startDate} إلى ${activeApprovedLeaveToday.endDate}.`
                           : `Period: ${activeApprovedLeaveToday.startDate} to ${activeApprovedLeaveToday.endDate}.`}
@@ -703,10 +703,10 @@ export const KioskPunch: React.FC<KioskPunchProps> = ({
                   <div className="flex items-center gap-2.5">
                     <Clock className="w-5 h-5 text-sky-600 shrink-0" />
                     <div>
-                      <span className="font-bold text-slate-900 block">
+                      <span className="font-bold text-slate-900 dark:text-white block">
                         {lang === 'ar' ? 'إذن استئذان معتمد اليوم ⏱️' : 'Active Approved Permission ⏱️'}
                       </span>
-                      <span className="text-slate-600">
+                      <span className="text-slate-600 dark:text-slate-400">
                         {lang === 'ar' 
                           ? 'يمكن تسجيل الحضور خلال فترة الإذن أو بعدها.'
                           : 'Check-in is permitted during or after the approved permission period.'}
@@ -752,7 +752,7 @@ export const KioskPunch: React.FC<KioskPunchProps> = ({
                       value={noteInput}
                       onChange={(e) => setNoteInput(e.target.value)}
                       placeholder={lang === 'ar' ? 'ملاحظات إضافية...' : 'Optional note...'}
-                      className="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-sans"
+                      className="w-full text-xs bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-sans"
                     />
                   </div>
 
@@ -782,7 +782,7 @@ export const KioskPunch: React.FC<KioskPunchProps> = ({
                   disabled={hasCheckedIn || isOnLeaveToday}
                   className={`group flex flex-col items-center justify-center p-6 text-white rounded-2xl shadow-lg transition-all border ${
                     hasCheckedIn || isOnLeaveToday
-                      ? 'bg-slate-200 text-slate-400 border-slate-300 cursor-not-allowed opacity-60'
+                      ? 'bg-slate-200 text-slate-400 border-slate-300 dark:border-slate-600 cursor-not-allowed opacity-60'
                       : 'bg-gradient-to-b from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 border-emerald-500/40 hover:shadow-xl active:scale-[0.98]'
                   }`}
                 >
@@ -817,7 +817,7 @@ export const KioskPunch: React.FC<KioskPunchProps> = ({
                     }
                     className={`w-full h-full flex flex-col items-center justify-center p-6 rounded-2xl shadow-lg transition-all border ${
                       !hasCheckedIn || isBreakActive || hasCheckedOut || isOnLeaveToday
-                        ? 'bg-slate-200 text-slate-400 border-slate-300 cursor-not-allowed opacity-60' 
+                        ? 'bg-slate-200 text-slate-400 border-slate-300 dark:border-slate-600 cursor-not-allowed opacity-60' 
                         : 'bg-gradient-to-b from-rose-600 to-rose-700 hover:from-rose-700 hover:to-rose-800 text-white border-rose-500/40 hover:shadow-xl active:scale-[0.98]'
                     }`}
                   >
@@ -850,7 +850,7 @@ export const KioskPunch: React.FC<KioskPunchProps> = ({
                   disabled={!hasCheckedIn || hasCheckedOut || isBreakActive || isOnLeaveToday}
                   className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-bold text-xs transition-colors ${
                     !hasCheckedIn || hasCheckedOut || isBreakActive || isOnLeaveToday
-                      ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed opacity-60'
+                      ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 border border-slate-200 dark:border-slate-700 cursor-not-allowed opacity-60'
                       : 'bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200'
                   }`}
                 >
@@ -867,7 +867,7 @@ export const KioskPunch: React.FC<KioskPunchProps> = ({
                   disabled={!isBreakActive || isOnLeaveToday}
                   className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-bold text-xs transition-colors ${
                     !isBreakActive || isOnLeaveToday
-                      ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed opacity-60'
+                      ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 border border-slate-200 dark:border-slate-700 cursor-not-allowed opacity-60'
                       : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-md border border-emerald-500 animate-pulse'
                   }`}
                 >
@@ -914,28 +914,28 @@ export const KioskPunch: React.FC<KioskPunchProps> = ({
       {/* Leave Request Modal */}
       {showLeaveModal && selectedEmp && (
         <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-lg rounded-3xl p-6 shadow-2xl border border-slate-200 space-y-5 animate-in fade-in zoom-in-95">
+          <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-3xl p-6 shadow-2xl border border-slate-200 dark:border-slate-700 space-y-5 animate-in fade-in zoom-in-95">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div>
-                <h3 className="font-extrabold text-slate-900 text-base">
+                <h3 className="font-extrabold text-slate-900 dark:text-white text-base">
                   {lang === 'ar' ? 'تقديم طلب إجازة / سنوية' : 'Submit Leave / Annual Request'}
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
                   {lang === 'ar' ? `للموظف: ${selectedEmp.nameAr}` : `Employee: ${selectedEmp.nameEn}`}
                 </p>
               </div>
-              <button onClick={() => setShowLeaveModal(false)} className="text-slate-400 hover:text-slate-600 font-bold text-sm p-1">
+              <button onClick={() => setShowLeaveModal(false)} className="text-slate-400 hover:text-slate-600 dark:text-slate-400 font-bold text-sm p-1">
                 ✕
               </button>
             </div>
 
             <form onSubmit={handleLeaveSubmit} className="space-y-4 text-xs">
               <div>
-                <label className="block font-bold text-slate-700 mb-1">نوع الإجازة المطلوبة</label>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">نوع الإجازة المطلوبة</label>
                 <select
                   value={leaveType}
                   onChange={(e) => setLeaveType(e.target.value as any)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-bold text-slate-800"
+                  className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 font-bold text-slate-800 dark:text-slate-200"
                 >
                   <option value="annual"> إجازة سنوية اعتيادية (Annual Leave)</option>
                   <option value="sick">🩺 إجازة مرضية (Sick Leave)</option>
@@ -946,36 +946,36 @@ export const KioskPunch: React.FC<KioskPunchProps> = ({
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">تاريخ البداية</label>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">تاريخ البداية</label>
                   <input
                     type="date"
                     required
                     value={leaveStartDate}
                     onChange={(e) => setLeaveStartDate(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-mono"
+                    className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 font-mono"
                   />
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">تاريخ النهاية</label>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">تاريخ النهاية</label>
                   <input
                     type="date"
                     required
                     value={leaveEndDate}
                     onChange={(e) => setLeaveEndDate(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-mono"
+                    className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 font-mono"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block font-bold text-slate-700 mb-1">سبب ومبررات الطلب</label>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">سبب ومبررات الطلب</label>
                 <textarea
                   required
                   rows={3}
                   value={leaveReason}
                   onChange={(e) => setLeaveReason(e.target.value)}
                   placeholder="اكتب أسباب الإجازة بالتفصيل..."
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5"
+                  className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5"
                 />
               </div>
 
@@ -983,7 +983,7 @@ export const KioskPunch: React.FC<KioskPunchProps> = ({
                 <button
                   type="button"
                   onClick={() => setShowLeaveModal(false)}
-                  className="px-4 py-2 rounded-xl text-slate-600 font-semibold hover:bg-slate-100"
+                  className="px-4 py-2 rounded-xl text-slate-600 dark:text-slate-400 font-semibold hover:bg-slate-100 dark:bg-slate-800"
                 >
                   إلغاء
                 </button>

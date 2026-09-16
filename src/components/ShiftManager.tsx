@@ -160,7 +160,7 @@ export const ShiftManager: React.FC<ShiftManagerProps> = ({
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {shifts.map(shift => (
-          <div key={shift.id} className="border border-gray-200 rounded-lg p-4 bg-white">
+          <div key={shift.id} className="border border-gray-200 rounded-lg p-4 bg-white dark:bg-slate-900">
             <div className="flex justify-between items-start mb-3">
               <div>
                 <h4 className="font-bold text-gray-900">{lang === 'ar' ? shift.nameAr : shift.nameEn}</h4>
@@ -183,7 +183,7 @@ export const ShiftManager: React.FC<ShiftManagerProps> = ({
             </div>
             {!!shift.breaks?.length && (
               <div className="mt-3 pt-3 border-t border-gray-100 space-y-1">
-                {shift.breaks.map(item => <div key={item.id} className="text-xs text-slate-600 flex justify-between"><span>{lang === 'ar' ? item.nameAr : item.nameEn}</span><span className="font-mono">{item.startTime} - {item.endTime}</span></div>)}
+                {shift.breaks.map(item => <div key={item.id} className="text-xs text-slate-600 dark:text-slate-400 flex justify-between"><span>{lang === 'ar' ? item.nameAr : item.nameEn}</span><span className="font-mono">{item.startTime} - {item.endTime}</span></div>)}
               </div>
             )}
           </div>
@@ -192,7 +192,7 @@ export const ShiftManager: React.FC<ShiftManagerProps> = ({
 
       {isOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full mx-4 p-6 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 rounded-xl shadow-xl max-w-2xl w-full mx-4 p-6 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-5">
               <h4 className="text-lg font-bold">{editingShift ? (lang === 'ar' ? 'تعديل الشفت' : 'Edit Shift') : (lang === 'ar' ? 'شفت جديد' : 'New Shift')}</h4>
               <button onClick={() => setIsOpen(false)} className="text-gray-500 hover:text-gray-700"><X size={20} /></button>
@@ -205,7 +205,7 @@ export const ShiftManager: React.FC<ShiftManagerProps> = ({
               </div>
 
               <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-                <h5 className="font-black text-slate-900 mb-3">{lang === 'ar' ? 'تاريخ الشفت' : 'Shift Date Range'}</h5>
+                <h5 className="font-black text-slate-900 dark:text-white mb-3">{lang === 'ar' ? 'تاريخ الشفت' : 'Shift Date Range'}</h5>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <label className="block text-sm font-medium text-gray-700">{lang === 'ar' ? 'من تاريخ' : 'From Date'}<input type="date" value={formData.startDate || ''} onChange={e => setFormData({ ...formData, startDate: e.target.value })} className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg" /></label>
                   <label className="block text-sm font-medium text-gray-700">{lang === 'ar' ? 'إلى تاريخ' : 'To Date'}<input type="date" value={formData.endDate || ''} onChange={e => setFormData({ ...formData, endDate: e.target.value })} className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg" /></label>
@@ -224,20 +224,20 @@ export const ShiftManager: React.FC<ShiftManagerProps> = ({
 
               <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
                 <div className="flex items-center justify-between gap-3 mb-3">
-                  <div><h5 className="font-black text-slate-900">{lang === 'ar' ? 'البريكات الخاصة بالشفت' : 'Shift Breaks'}</h5><p className="text-xs text-slate-500 mt-1">{lang === 'ar' ? 'حدد اسم ووقت كل بريك. البريكات تظهر للموظف في الجدول الأسبوعي.' : 'Configure each break. Breaks are shown to the employee in the weekly schedule.'}</p></div>
-                  <button type="button" onClick={addBreak} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-amber-300 text-amber-800 text-xs font-bold hover:bg-amber-100"><Plus size={14} />{lang === 'ar' ? 'إضافة بريك' : 'Add break'}</button>
+                  <div><h5 className="font-black text-slate-900 dark:text-white">{lang === 'ar' ? 'البريكات الخاصة بالشفت' : 'Shift Breaks'}</h5><p className="text-xs text-slate-500 mt-1">{lang === 'ar' ? 'حدد اسم ووقت كل بريك. البريكات تظهر للموظف في الجدول الأسبوعي.' : 'Configure each break. Breaks are shown to the employee in the weekly schedule.'}</p></div>
+                  <button type="button" onClick={addBreak} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white dark:bg-slate-900 border border-amber-300 text-amber-800 text-xs font-bold hover:bg-amber-100"><Plus size={14} />{lang === 'ar' ? 'إضافة بريك' : 'Add break'}</button>
                 </div>
                 {(formData.breaks || []).length === 0 && <div className="text-xs text-slate-500 py-2">{lang === 'ar' ? 'لا توجد بريكات لهذا الشفت.' : 'No breaks configured for this shift.'}</div>}
                 <div className="space-y-3">
                   {(formData.breaks || []).map((item, index) => (
-                    <div key={item.id} className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-3 bg-white border border-amber-100 rounded-lg p-3">
+                    <div key={item.id} className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-3 bg-white dark:bg-slate-900 border border-amber-100 rounded-lg p-3">
                       <div className="space-y-2">
                         <select value={BREAK_TYPES.find(t => t.ar === item.nameAr)?.value || 'other'} onChange={e => { const type = BREAK_TYPES.find(t => t.value === e.target.value) || BREAK_TYPES[3]; updateBreak(index, { nameAr: type.ar, nameEn: type.en }); }} className="w-full px-2.5 py-2 border border-gray-200 rounded-lg text-sm"><option value="lunch">{lang === 'ar' ? 'غداء' : 'Lunch'}</option><option value="prayer">{lang === 'ar' ? 'صلاة' : 'Prayer'}</option><option value="rest">{lang === 'ar' ? 'راحة' : 'Rest'}</option><option value="other">{lang === 'ar' ? 'أخرى' : 'Other'}</option></select>
                         <input type="text" value={item.nameAr} onChange={e => updateBreak(index, { nameAr: e.target.value })} placeholder={lang === 'ar' ? 'اسم البريك بالعربي' : 'Arabic break name'} className="w-full px-2.5 py-2 border border-gray-200 rounded-lg text-sm" />
                       </div>
                       <div className="grid grid-cols-2 gap-2">
-                        <label className="text-xs font-bold text-slate-600">{lang === 'ar' ? 'من' : 'From'}<input type="time" value={item.startTime} onChange={e => updateBreak(index, { startTime: e.target.value })} className="mt-1 w-full px-2 py-2 border border-gray-200 rounded-lg" /></label>
-                        <label className="text-xs font-bold text-slate-600">{lang === 'ar' ? 'إلى' : 'To'}<input type="time" value={item.endTime} onChange={e => updateBreak(index, { endTime: e.target.value })} className="mt-1 w-full px-2 py-2 border border-gray-200 rounded-lg" /></label>
+                        <label className="text-xs font-bold text-slate-600 dark:text-slate-400">{lang === 'ar' ? 'من' : 'From'}<input type="time" value={item.startTime} onChange={e => updateBreak(index, { startTime: e.target.value })} className="mt-1 w-full px-2 py-2 border border-gray-200 rounded-lg" /></label>
+                        <label className="text-xs font-bold text-slate-600 dark:text-slate-400">{lang === 'ar' ? 'إلى' : 'To'}<input type="time" value={item.endTime} onChange={e => updateBreak(index, { endTime: e.target.value })} className="mt-1 w-full px-2 py-2 border border-gray-200 rounded-lg" /></label>
                         <div className="col-span-2 text-xs text-slate-500">{lang === 'ar' ? 'المدة: ' : 'Duration: '}{getBreakDuration(item.startTime, item.endTime)} {lang === 'ar' ? 'دقيقة' : 'min'}</div>
                       </div>
                       <button type="button" onClick={() => removeBreak(index)} className="self-start p-2 text-red-600 hover:bg-red-50 rounded-lg" title={lang === 'ar' ? 'حذف البريك' : 'Delete break'}><Trash2 size={16} /></button>

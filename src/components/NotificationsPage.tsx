@@ -54,7 +54,7 @@ const notificationTitle = (n: Notification, lang: Language) => {
 export const NotificationsPage: React.FC<Props> = ({ currentUserId, lang, onBack, onOpenNotification }) => {
   const [items, setItems] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<string | boolean>(false);
   const [actingSwapId, setActingSwapId] = useState<string | null>(null);
 
   const load = async (silent = false) => {
@@ -69,15 +69,15 @@ export const NotificationsPage: React.FC<Props> = ({ currentUserId, lang, onBack
       const url = `/api/notifications?userId=${encodeURIComponent(String(currentUserId).trim())}&_=${Date.now()}`;
       const response = await fetch(url, {
         cache: 'no-store',
-        headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
+        headers: { 'Cache-Control': 'no-cache',  },
       });
       if (!response.ok) throw new Error(String(response.status));
       const data = await response.json();
       if (!data?.success) throw new Error('notifications_failed');
       setItems(normalize(data.notifications, currentUserId));
       setError(false);
-    } catch {
-      if (!silent) setError(true);
+    } catch (err: unknown) {
+      if (!silent) setError(String(err) || "Unknown error");
     } finally {
       if (!silent) setLoading(false);
     }
@@ -94,7 +94,7 @@ export const NotificationsPage: React.FC<Props> = ({ currentUserId, lang, onBack
         const incoming = JSON.parse((event as MessageEvent).data) as Notification;
         if (String(incoming.recipientId).trim() !== String(currentUserId).trim()) return;
         setItems((current) => normalize([incoming, ...current], currentUserId));
-      } catch { void load(true); }
+      } catch (err: unknown) { void load(true); }
     });
     stream.onerror = () => { connected = false; };
     const timer = window.setInterval(() => { if (!connected) void load(true); }, 2000);
@@ -123,7 +123,7 @@ export const NotificationsPage: React.FC<Props> = ({ currentUserId, lang, onBack
       if (Array.isArray(data.notifications)) setItems(normalize(data.notifications, currentUserId));
       setError(false);
       return true;
-    } catch {
+    } catch (err: unknown) {
       setItems(previous);
       return false;
     }
@@ -149,7 +149,7 @@ export const NotificationsPage: React.FC<Props> = ({ currentUserId, lang, onBack
       if (!data?.success) throw new Error('mark_all_read_failed');
       if (Array.isArray(data.notifications)) setItems(normalize(data.notifications, currentUserId));
       setError(false);
-    } catch {
+    } catch (err: unknown) {
       setItems(previous);
     }
   };
@@ -160,7 +160,7 @@ export const NotificationsPage: React.FC<Props> = ({ currentUserId, lang, onBack
     onOpenNotification?.(notification);
     try {
       window.dispatchEvent(new CustomEvent('techsource:navigate-notification', { detail: notification }));
-    } catch {
+    } catch (err: unknown) {
       /* noop */
     }
   };
@@ -242,26 +242,26 @@ export const NotificationsPage: React.FC<Props> = ({ currentUserId, lang, onBack
   };
 
   return (
-    <section dir={lang === 'ar' ? 'rtl' : 'ltr'} className="min-h-[calc(100vh-72px)] w-full bg-slate-50 dark:bg-slate-950 px-3 sm:px-6 py-4 sm:py-6">
+    <section dir={lang === 'ar' ? 'rtl' : 'ltr'} className="min-h-[calc(100vh-72px)] w-full bg-slate-50 dark:bg-slate-800/50 dark:bg-slate-950 px-3 sm:px-6 py-4 sm:py-6">
       <div className="max-w-5xl mx-auto">
         <div className="flex items-center justify-between gap-3 mb-5">
           <div className="flex items-center gap-3">
-            <button type="button" onClick={onBack} className="h-9 w-9 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex items-center justify-center text-slate-600 dark:text-slate-300">
+            <button type="button" onClick={onBack} className="h-9 w-9 rounded-lg bg-white dark:bg-slate-900 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 dark:border-slate-800 flex items-center justify-center text-slate-600 dark:text-slate-400 dark:text-slate-300">
               {lang === 'ar' ? <ArrowRight size={17} /> : <ArrowLeft size={17} />}
             </button>
             <div>
-              <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">{lang === 'ar' ? 'الإشعارات' : 'Notifications'}</h1>
+              <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white dark:text-white">{lang === 'ar' ? 'الإشعارات' : 'Notifications'}</h1>
               <p className="text-xs text-slate-500 dark:text-slate-400 font-bold mt-0.5">{list.length} {lang === 'ar' ? 'إشعار' : 'notifications'} • {unread} {lang === 'ar' ? 'غير مقروء' : 'unread'}</p>
             </div>
           </div>
           {unread > 0 && <button type="button" onClick={() => void markAll()} className="h-9 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black flex items-center gap-1.5"><CheckCheck size={15} />{lang === 'ar' ? 'قراءة الكل' : 'Mark all read'}</button>}
         </div>
 
-        {error && <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 text-amber-800 p-3 text-xs font-bold">{lang === 'ar' ? 'تعذر الاتصال بخدمة الإشعارات.' : 'Notification service unavailable.'}</div>}
+        {error && <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 text-amber-800 p-3 text-xs font-bold">{lang === 'ar' ? 'تعذر الاتصال بخدمة الإشعارات.' : 'Notification service unavailable.'} {typeof error === 'string' ? error : ''}</div>}
         {loading
-          ? <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-10 text-center text-slate-500 font-bold">{lang === 'ar' ? 'جاري تحميل الإشعارات...' : 'Loading notifications...'}</div>
+          ? <div className="rounded-xl border border-slate-200 dark:border-slate-700 dark:border-slate-800 bg-white dark:bg-slate-900 dark:bg-slate-900 p-10 text-center text-slate-500 font-bold">{lang === 'ar' ? 'جاري تحميل الإشعارات...' : 'Loading notifications...'}</div>
           : list.length === 0
-            ? <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-10 text-center text-slate-500 dark:text-slate-400"><Bell size={30} className="mx-auto mb-2 opacity-50" /><p className="font-bold">{lang === 'ar' ? 'لا توجد إشعارات حالياً' : 'No notifications currently'}</p></div>
+            ? <div className="rounded-xl border border-slate-200 dark:border-slate-700 dark:border-slate-800 bg-white dark:bg-slate-900 dark:bg-slate-900 p-10 text-center text-slate-500 dark:text-slate-400"><Bell size={30} className="mx-auto mb-2 opacity-50" /><p className="font-bold">{lang === 'ar' ? 'لا توجد إشعارات حالياً' : 'No notifications currently'}</p></div>
             : <div className="space-y-2.5">
               {list.map((notification) => {
                 const isUnread = !notification.isRead;
@@ -274,18 +274,18 @@ export const NotificationsPage: React.FC<Props> = ({ currentUserId, lang, onBack
                     tabIndex={0}
                     onClick={() => void openNotification(notification)}
                     onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') void openNotification(notification); }}
-                    className={`cursor-pointer rounded-xl border p-4 bg-white dark:bg-slate-900 transition hover:-translate-y-0.5 hover:shadow-md ${isUnread ? 'border-emerald-300 dark:border-emerald-700' : 'border-slate-200 dark:border-slate-800'}`}
+                    className={`cursor-pointer rounded-xl border p-4 bg-white dark:bg-slate-900 dark:bg-slate-900 transition hover:-translate-y-0.5 hover:shadow-md ${isUnread ? 'border-emerald-300 dark:border-emerald-700' : 'border-slate-200 dark:border-slate-700 dark:border-slate-800'}`}
                   >
                     <div className="flex items-start gap-3">
-                      <div className={`h-9 w-9 shrink-0 rounded-lg flex items-center justify-center ${isUnread ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' : 'bg-slate-100 text-slate-500 dark:bg-slate-800'}`}><Bell size={17} /></div>
+                      <div className={`h-9 w-9 shrink-0 rounded-lg flex items-center justify-center ${isUnread ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:bg-slate-800'}`}><Bell size={17} /></div>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-start justify-between gap-3">
-                          <div><h2 className="text-sm font-black text-slate-900 dark:text-white">{notificationTitle(notification, lang)}</h2><p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-400">{notification.message}</p></div>
+                          <div><h2 className="text-sm font-black text-slate-900 dark:text-white dark:text-white">{notificationTitle(notification, lang)}</h2><p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-400 dark:text-slate-400">{notification.message}</p></div>
                           {isUnread && <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-emerald-500" />}
                         </div>
                         <div className="mt-3 flex flex-wrap items-center gap-2">
                           <span className="text-[11px] font-bold text-slate-400">{new Date(notification.createdAt).toLocaleString(lang === 'ar' ? 'ar-EG' : 'en-US')}</span>
-                          {isUnread && !canRespond && <button type="button" onClick={(event) => { event.stopPropagation(); void markRead(notification.id); }} className="h-8 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-black text-slate-600 dark:text-slate-300"><Check size={14} className="inline mr-1" />{lang === 'ar' ? 'تحديد كمقروء' : 'Mark read'}</button>}
+                          {isUnread && !canRespond && <button type="button" onClick={(event) => { event.stopPropagation(); void markRead(notification.id); }} className="h-8 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 dark:border-slate-700 text-xs font-black text-slate-600 dark:text-slate-400 dark:text-slate-300"><Check size={14} className="inline mr-1" />{lang === 'ar' ? 'تحديد كمقروء' : 'Mark read'}</button>}
                           {canRespond && <><button type="button" disabled={acting} onClick={(event) => { event.stopPropagation(); void respondToSwap(notification, 'accept'); }} className="h-8 px-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-black"><Check size={14} className="inline mr-1" />{lang === 'ar' ? 'موافقة' : 'Accept'}</button><button type="button" disabled={acting} onClick={(event) => { event.stopPropagation(); void respondToSwap(notification, 'reject'); }} className="h-8 px-2.5 rounded-lg bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white text-xs font-black"><X size={14} className="inline mr-1" />{lang === 'ar' ? 'رفض' : 'Reject'}</button></>}
                         </div>
                       </div>

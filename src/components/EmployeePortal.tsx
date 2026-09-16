@@ -899,10 +899,10 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
         )}
       </div>
 {/* Main Punch Pad Card */}
-      <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm space-y-6">
+      <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm space-y-6">
         <div className="flex items-center justify-between pb-4 border-b border-slate-100">
           <div>
-            <h3 className="font-bold text-slate-900 text-lg">
+            <h3 className="font-bold text-slate-900 dark:text-white text-lg">
               {lang === 'ar' ? 'تسجيل الحضور والانصراف المباشر' : 'Self Attendance Punch'}
             </h3>
             <p className="text-xs text-slate-500">
@@ -933,7 +933,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
                   <span>حاضر ({formatTime(todayRecord.checkIn, lang)})</span>
 <WorkTimer checkIn={todayRecord.checkIn} checkOut={todayRecord.checkOut ?? undefined} breakStart={todayRecord.breakStart ?? undefined} breakEnd={todayRecord.breakEnd ?? undefined} showIcon={false} className="text-emerald-900 font-mono text-xs border-r border-emerald-300 pr-1.5 mr-1" />                </span>
               ) : todayRecord?.checkOut ? (
-                <span className="text-slate-700 bg-slate-100 px-3 py-1 rounded-full border border-slate-200">تم الانصراف ({formatTime(todayRecord.checkOut, lang)})</span>
+                <span className="text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded-full border border-slate-200 dark:border-slate-700">تم الانصراف ({formatTime(todayRecord.checkOut, lang)})</span>
               ) : (
                 <span className="text-amber-700 bg-amber-100 px-3 py-1 rounded-full border border-amber-200">لم يتم التسجيل</span>
               )}
@@ -954,12 +954,12 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
               </span>
             </div>
 
-            <div className="flex items-center justify-between bg-white/90 p-3 rounded-xl border border-emerald-200">
+            <div className="flex items-center justify-between bg-white dark:bg-slate-900/90 p-3 rounded-xl border border-emerald-200">
               <div>
                 <span className="text-[10px] text-slate-500 block font-semibold">
                   {lang === 'ar' ? 'وقت تسجيل الحضور:' : 'Check-In Time:'}
                 </span>
-                <span className="font-mono text-xs font-bold text-slate-900">
+                <span className="font-mono text-xs font-bold text-slate-900 dark:text-white">
                   {formatTime(todayRecord.checkIn, lang)}
                 </span>
               </div>
@@ -987,12 +987,12 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
               </span>
             </div>
 
-            <div className="flex flex-col sm:flex-row items-center justify-between bg-white/90 p-3 rounded-xl border border-amber-200 gap-3">
+            <div className="flex flex-col sm:flex-row items-center justify-between bg-white dark:bg-slate-900/90 p-3 rounded-xl border border-amber-200 gap-3">
               <div>
                 <span className="text-[10px] text-slate-500 block font-semibold">
                   {lang === 'ar' ? 'وقت بدء الاستراحة:' : 'Break Start Time:'}
                 </span>
-                <span className="font-mono text-xs font-bold text-slate-900">
+                <span className="font-mono text-xs font-bold text-slate-900 dark:text-white">
                   {formatTime(todayRecord?.breakStart, lang)}
                 </span>
               </div>
@@ -1023,10 +1023,10 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
           <div className="p-4 rounded-2xl bg-teal-500/10 border border-teal-500/30 text-teal-950 text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
             <div className="flex items-center gap-3">
 <div>
-                <span className="font-bold text-slate-900 block text-sm">
+                <span className="font-bold text-slate-900 dark:text-white block text-sm">
                   {lang === 'ar' ? `إجازة معتمدة سارية: ${getLeaveTypeLabel(empLeaveToday.type, 'ar')}` : `Active Approved Leave: ${getLeaveTypeLabel(empLeaveToday.type, 'en')}`}
                 </span>
-                <span className="text-slate-600">
+                <span className="text-slate-600 dark:text-slate-400">
                   {lang === 'ar'
                     ? `الفترة: من ${empLeaveToday.startDate} إلى ${empLeaveToday.endDate}.`
                     : `Period: ${empLeaveToday.startDate} to ${empLeaveToday.endDate}.`}
@@ -1057,10 +1057,10 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
             <div className="flex items-center gap-3">
               <Clock className="w-5 h-5 text-sky-600 shrink-0" />
               <div>
-                <span className="font-bold text-slate-900 block text-sm">
+                <span className="font-bold text-slate-900 dark:text-white block text-sm">
                   {lang === 'ar' ? 'إذن استئذان معتمد اليوم ⏱️' : 'Active Approved Permission ⏱️'}
                 </span>
-                <span className="text-slate-600">
+                <span className="text-slate-600 dark:text-slate-400">
                   {lang === 'ar' 
                     ? 'تسجيل الحضور متاح لك في أي وقت خلال اليوم دون الحاجة لانتظار انقضاء ساعات الإذن.' 
                     : 'Check-in is available for you at any time during the day.'}
@@ -1080,7 +1080,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
             disabled={Boolean(isOnLeaveToday) || Boolean(todayRecord?.checkIn) || isBreakActive}
             className={`py-4 text-white rounded-2xl font-bold text-sm sm:text-base shadow-md transition-all flex flex-col items-center justify-center gap-1.5 ${
               isOnLeaveToday || todayRecord?.checkIn || isBreakActive
-                ? 'bg-slate-200 text-slate-500 border border-slate-300 cursor-not-allowed shadow-none' 
+                ? 'bg-slate-200 text-slate-500 border border-slate-300 dark:border-slate-600 cursor-not-allowed shadow-none' 
                 : 'bg-emerald-600 hover:bg-emerald-700'
             }`}
           >
@@ -1117,14 +1117,14 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
             disabled={Boolean(isOnLeaveToday) || Boolean(todayRecord?.checkOut) || !todayRecord?.checkIn || isBreakActive}
             className={`py-4 text-white rounded-2xl font-bold text-sm sm:text-base shadow-md transition-all flex flex-col items-center justify-center gap-1.5 ${
               isOnLeaveToday || todayRecord?.checkOut || !todayRecord?.checkIn || isBreakActive
-                ? 'bg-slate-200 text-slate-500 border border-slate-300 cursor-not-allowed shadow-none' 
+                ? 'bg-slate-200 text-slate-500 border border-slate-300 dark:border-slate-600 cursor-not-allowed shadow-none' 
                 : 'bg-rose-600 hover:bg-rose-700'
             }`}
           >
             {todayRecord?.checkOut ? (
               <>
-                <CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6 text-slate-600" />
-                <span className="text-slate-700 font-extrabold text-xs sm:text-sm">
+                <CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6 text-slate-600 dark:text-slate-400" />
+                <span className="text-slate-700 dark:text-slate-300 font-extrabold text-xs sm:text-sm">
                   {lang === 'ar' ? `تم تسجيل الانصراف (${todayRecord.checkOut}) ✓` : `Checked Out (${todayRecord.checkOut}) ✓`}
                 </span>
                 <span className="text-[10px] text-slate-500 font-normal">
@@ -1169,7 +1169,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
             disabled={Boolean(isOnLeaveToday) || !todayRecord?.checkIn || Boolean(todayRecord?.checkOut) || isBreakActive}
             className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-2xl font-bold text-xs sm:text-sm transition-all ${
               isOnLeaveToday || !todayRecord?.checkIn || Boolean(todayRecord?.checkOut) || isBreakActive
-                ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed opacity-60'
+                ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 border border-slate-200 dark:border-slate-700 cursor-not-allowed opacity-60'
                 : 'bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 shadow-xs'
             }`}
           >
@@ -1187,7 +1187,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
             disabled={Boolean(isOnLeaveToday) || !isBreakActive}
             className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-2xl font-bold text-xs sm:text-sm transition-all ${
               isOnLeaveToday || !isBreakActive
-                ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed opacity-60'
+                ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 border border-slate-200 dark:border-slate-700 cursor-not-allowed opacity-60'
                 : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-md border border-emerald-500 animate-pulse'
             }`}
           >
@@ -1372,9 +1372,9 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
       {/* KPI DASHBOARD CARDS GRID */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* CARD 1: ANNUAL LEAVE DAYS */}
-        <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm flex flex-col justify-between space-y-3 relative overflow-hidden">
+        <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col justify-between space-y-3 relative overflow-hidden">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+            <span className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
               <div className="w-7 h-7 rounded-xl bg-emerald-50 border border-emerald-200/80 flex items-center justify-center shrink-0">
 </div>
               <span>{lang === 'ar' ? 'رصيد الإجازات السنوية' : 'Annual Leave Balance'}</span>
@@ -1392,7 +1392,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
               <span className="text-[11px] text-slate-500 font-bold">{lang === 'ar' ? 'إجمالي المتبقي بالرصيد' : 'Total Remaining'}</span>
             </div>
             <div className="text-right">
-              <div className="text-xs font-extrabold text-slate-700 font-mono">
+              <div className="text-xs font-extrabold text-slate-700 dark:text-slate-300 font-mono">
                 {monthlySummary.usedAnnualDaysAllTime} {lang === 'ar' ? 'يوم' : 'd'}
               </div>
               <span className="text-[10px] text-slate-400 font-medium">{lang === 'ar' ? 'مستهلك' : 'Used'}</span>
@@ -1419,9 +1419,9 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
         </div>
 
         {/* CARD 2: MONTHLY PERMISSIONS QUOTA */}
-        <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm flex flex-col justify-between space-y-3">
+        <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col justify-between space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+            <span className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
               <div className="w-7 h-7 rounded-xl bg-sky-50 border border-sky-200/80 flex items-center justify-center shrink-0">
                 <Clock3 className="w-4 h-4 text-sky-600" />
               </div>
@@ -1440,7 +1440,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
               <span className="text-[11px] text-slate-500 font-bold">{lang === 'ar' ? 'رصيد هذا الشهر' : 'Quota This Month'}</span>
             </div>
             <div className="text-right">
-              <span className="text-xs font-bold text-slate-700 font-mono block">
+              <span className="text-xs font-bold text-slate-700 dark:text-slate-300 font-mono block">
                 {monthlySummary.usedPermissionsCount} {lang === 'ar' ? 'إذن' : 'used'}
               </span>
               <span className="text-[10px] text-slate-400 font-medium">
@@ -1462,9 +1462,9 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
           const completionPct = Math.min(100, Math.round((filteredTotalHours / Math.max(1, targetHours)) * 100));
 
           return (
-            <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm flex flex-col justify-between space-y-3 relative overflow-hidden">
+            <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col justify-between space-y-3 relative overflow-hidden">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                <span className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
                   <div className="w-7 h-7 rounded-xl bg-amber-50 border border-amber-200/80 flex items-center justify-center shrink-0">
                     <Clock className="w-4 h-4 text-amber-600" />
                   </div>
@@ -1487,7 +1487,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
 
               <div className="flex items-baseline justify-between pt-1">
                 <div>
-                  <div className="text-2xl font-black text-slate-900 font-mono tracking-tight flex items-baseline gap-1">
+                  <div className="text-2xl font-black text-slate-900 dark:text-white font-mono tracking-tight flex items-baseline gap-1">
                     <span>{filteredTotalHours.toFixed(1)}</span>
                     <span className="text-xs font-sans text-amber-600 font-bold">{lang === 'ar' ? 'ساعة' : 'Hours'}</span>
                   </div>
@@ -1519,7 +1519,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
                     {completionPct}%
                   </span>
                 </div>
-                <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden border border-slate-200/60">
+                <div className="w-full bg-slate-100 dark:bg-slate-800 h-2 rounded-full overflow-hidden border border-slate-200 dark:border-slate-700/60">
                   <div
                     className="bg-amber-500 h-full rounded-full transition-all duration-500"
                     style={{
@@ -1533,9 +1533,9 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
         })()}
 
         {/* CARD 4: COMPANY BYLAWS PENALTIES & DEDUCTIONS */}
-        <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm flex flex-col justify-between space-y-3">
+        <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col justify-between space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+            <span className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
               <div className="w-7 h-7 rounded-xl bg-rose-50 border border-rose-200/80 flex items-center justify-center shrink-0">
                 <ShieldAlert className="w-4 h-4 text-rose-600" />
               </div>
@@ -1613,15 +1613,15 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
       </div>
 
       {/* DETAILED LOGS & TABS */}
-      <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
         {/* Navigation Tabs */}
-        <div className="bg-slate-50 border-b border-slate-200 p-3 flex items-center gap-2 overflow-x-auto scrollbar-none">
+        <div className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700 p-3 flex items-center gap-2 overflow-x-auto scrollbar-none">
           <button
             onClick={() => setActiveDashboardTab('attendance')}
             className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
               activeDashboardTab === 'attendance'
                 ? 'bg-slate-900 text-white shadow-sm'
-                : 'text-slate-600 hover:bg-slate-200'
+                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200'
             }`}
           >
             <Clock className="w-4 h-4 text-emerald-400" />
@@ -1637,7 +1637,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
             className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
               activeDashboardTab === 'penalties'
                 ? 'bg-slate-900 text-white shadow-sm'
-                : 'text-slate-600 hover:bg-slate-200'
+                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200'
             }`}
           >
             <ShieldAlert className="w-4 h-4 text-rose-400" />
@@ -1658,15 +1658,15 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
                   ? `عرض سجلات الحضور ${searchDayQuery ? `- فلترة: "${searchDayQuery}"` : ''}`
                   : `Showing attendance records`}
               </span>
-              <span className="font-mono text-slate-700 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">
+              <span className="font-mono text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700">
                 {lang === 'ar' ? `المجموع: ${filteredMonthRecords.length} سجل` : `Total: ${filteredMonthRecords.length} records`}
               </span>
             </div>
 
-            <div className="overflow-x-auto border border-slate-200 rounded-2xl">
+            <div className="overflow-x-auto border border-slate-200 dark:border-slate-700 rounded-2xl">
               <table className="w-full text-xs text-right border-collapse">
                 <thead>
-  <tr className="bg-slate-100 text-slate-600 font-bold border-b border-slate-200 whitespace-nowrap">
+  <tr className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-bold border-b border-slate-200 dark:border-slate-700 whitespace-nowrap">
 
     <th className="py-3 px-4">
       {lang === 'ar' ? 'التاريخ (Day)' : 'Date (Day)'}
@@ -1701,8 +1701,8 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
                 <tbody className="divide-y divide-slate-100">
                   {filteredMonthRecords.length > 0 ? (
                     filteredMonthRecords.map((r) => (
-                      <tr key={r.id} className={`hover:bg-slate-50 transition ${r.breakStart && !r.breakEnd ? 'bg-amber-50/40' : ''}`}>
-                        <td className="py-3.5 px-4 font-mono font-bold text-slate-900">
+                      <tr key={r.id} className={`hover:bg-slate-50 dark:bg-slate-800/50 transition ${r.breakStart && !r.breakEnd ? 'bg-amber-50/40' : ''}`}>
+                        <td className="py-3.5 px-4 font-mono font-bold text-slate-900 dark:text-white">
                           {r.date}
                         </td>
                         <td className="py-3.5 px-4 text-center font-mono font-bold text-emerald-700 bg-emerald-50/40">
@@ -1735,7 +1735,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
                         <td className="py-3.5 px-4 text-center font-mono font-bold text-rose-700 bg-rose-50/40">
                           {r.checkOut ? formatTime(r.checkOut, lang) : '--:--'}
                         </td>
-                        <td className="py-3.5 px-4 text-center font-mono font-bold text-slate-800">
+                        <td className="py-3.5 px-4 text-center font-mono font-bold text-slate-800 dark:text-slate-200">
                           {r.workHours ? `${r.workHours.toFixed(1)} ${ui.hourUnit}` : '0 س'}
                         </td>
                         {(() => {
@@ -1812,7 +1812,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
               </div>
             </div>
 
-            <div className="overflow-x-auto border border-slate-200 rounded-2xl">
+            <div className="overflow-x-auto border border-slate-200 dark:border-slate-700 rounded-2xl">
               <table className="w-full text-xs text-right border-collapse">
                 <thead>
                   <tr className="bg-slate-900 text-white font-bold">
@@ -1828,11 +1828,11 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
                 <tbody className="divide-y divide-slate-100">
                   {monthlySummary.penalties.length > 0 ? (
                     monthlySummary.penalties.map((pen) => (
-                      <tr key={pen.id} className="hover:bg-slate-50 transition">
-                        <td className="py-3.5 px-4 font-mono font-bold text-slate-900">
+                      <tr key={pen.id} className="hover:bg-slate-50 dark:bg-slate-800/50 transition">
+                        <td className="py-3.5 px-4 font-mono font-bold text-slate-900 dark:text-white">
                           {pen.date}
                         </td>
-                        <td className="py-3.5 px-4 font-bold text-slate-800">
+                        <td className="py-3.5 px-4 font-bold text-slate-800 dark:text-slate-200">
                           {pen.titleAr}
                           {pen.hasApprovedPermission && (
                             <span className="mr-2 text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded border border-emerald-300">
@@ -1850,12 +1850,12 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
                         </td>
                         <td className="py-3.5 px-4 text-center">
                           {pen.occurrenceCount > 0 ? (
-                            <span className="bg-slate-100 text-slate-800 font-bold px-2.5 py-0.5 rounded-full border border-slate-200 text-[11px]">
+                            <span className="bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 font-bold px-2.5 py-0.5 rounded-full border border-slate-200 dark:border-slate-700 text-[11px]">
                               المرة {pen.occurrenceCount}
                             </span>
                           ) : '--'}
                         </td>
-                        <td className="py-3.5 px-4 text-center font-bold text-slate-800">
+                        <td className="py-3.5 px-4 text-center font-bold text-slate-800 dark:text-slate-200">
                           {pen.penaltyDescriptionAr}
                         </td>
                         <td className="py-3.5 px-4 text-center">
@@ -1917,7 +1917,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
         {activeDashboardTab === 'permissions' && (
           <div className="p-4 sm:p-6 space-y-4">
             <div className="flex items-center justify-between">
-              <h4 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+              <h4 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
                 <Clock3 className="w-4 h-4 text-sky-600" />
                 <span>{lang === 'ar' ? 'سجل الطلبات والأذونات الشهرية' : 'Permission & Leave Requests Log'}</span>
               </h4>
@@ -1934,7 +1934,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
               {leaveRequests.filter(l => l.employeeId === emp.id).length > 0 ? (
                 leaveRequests.filter(l => l.employeeId === emp.id).map(req => {
                   return (
-                    <div key={req.id} className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2 text-xs">
+                    <div key={req.id} className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 space-y-2 text-xs">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <span className={`px-2.5 py-0.5 rounded font-bold text-[11px] ${
@@ -1964,8 +1964,8 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
                         </span>
                       </div>
 
-                      <p className="text-slate-600 bg-white p-2.5 rounded-xl border border-slate-100">
-                        <strong className="text-slate-800">{lang === 'ar' ? 'السبب: ' : 'Reason: '}</strong>
+                      <p className="text-slate-600 dark:text-slate-400 bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-slate-100">
+                        <strong className="text-slate-800 dark:text-slate-200">{lang === 'ar' ? 'السبب: ' : 'Reason: '}</strong>
                         {req.reason}
                       </p>
 
@@ -2005,17 +2005,17 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
       {/* MODAL 1: PERMISSION REQUEST MODAL (Max 2 per month, Max 2h each) */}
       {showPermissionModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
-          <div className="bg-white w-full max-w-md rounded-3xl p-6 shadow-2xl border border-slate-200 space-y-5">
+          <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-3xl p-6 shadow-2xl border border-slate-200 dark:border-slate-700 space-y-5">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
                 <Clock3 className="w-5 h-5 text-sky-600" />
-                <h3 className="font-bold text-slate-900 text-base">
+                <h3 className="font-bold text-slate-900 dark:text-white text-base">
                   {lang === 'ar' ? 'طلب إذن شخصي / رسمي (ساعتين)' : 'Request Personal Permission'}
                 </h3>
               </div>
               <button
                 onClick={() => setShowPermissionModal(false)}
-                className="p-1.5 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition"
+                className="p-1.5 rounded-full text-slate-400 hover:text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:bg-slate-800 transition"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -2025,7 +2025,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
             <div className="bg-sky-50 border border-sky-200 rounded-2xl p-3 text-xs text-sky-950 space-y-1">
               <div className="flex items-center justify-between font-bold">
                 <span>{lang === 'ar' ? 'كوتة الأذونات الشهرية:' : 'Monthly Quota:'}</span>
-                <span className="font-mono text-sky-800 bg-white px-2 py-0.5 rounded border border-sky-200">
+                <span className="font-mono text-sky-800 bg-white dark:bg-slate-900 px-2 py-0.5 rounded border border-sky-200">
                   {monthlySummary.usedPermissionsCount} / 2 {lang === 'ar' ? 'إذنين مستخدمين' : 'Used'}
                 </span>
               </div>
@@ -2044,7 +2044,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
 
             <form onSubmit={handlePermissionSubmit} className="space-y-4 text-xs">
               <div>
-                <label className="block font-bold text-slate-700 mb-1">
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
                   {lang === 'ar' ? 'تاريخ الإذن المطلوب' : 'Permission Date'}
                 </label>
                 <input
@@ -2052,13 +2052,13 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
                   required
                   value={permissionDate}
                   onChange={(e) => setPermissionDate(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-mono text-slate-900"
+                  className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 font-mono text-slate-900 dark:text-white"
                 />
               </div>
 
               {/* PERMISSION TIMING SLOT SELECTION (FIRST HALF vs SECOND HALF) */}
               <div>
-                <label className="block font-bold text-slate-700 mb-1.5">
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">
                   {lang === 'ar' ? 'اختيار تقسيم فترة الإذن (نصف اليوم الأول / الثاني):' : 'Permission Timing Slot:'}
                 </label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -2068,7 +2068,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
                     className={`p-3 rounded-2xl border text-right transition flex flex-col justify-between ${
                       permissionSlot === 'first_half'
                         ? 'bg-sky-50 border-sky-500 ring-2 ring-sky-500/20 text-sky-950 font-bold'
-                        : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                        : 'bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:bg-slate-800'
                     }`}
                   >
                     <div className="flex items-center justify-between font-bold text-xs mb-1">
@@ -2078,7 +2078,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
                       </span>
                       {permissionSlot === 'first_half' && <CheckCircle2 className="w-4 h-4 text-sky-600 shrink-0" />}
                     </div>
-                    <p className="text-[11px] text-slate-600 leading-relaxed font-normal">
+                    <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed font-normal">
                       حضور حتى الساعة 11:00 ص (ساعتان تأخير مسموح بها) 🟢 لا يُحسب تأخير ولا يُخصم من الراتب.
                     </p>
                   </button>
@@ -2089,7 +2089,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
                     className={`p-3 rounded-2xl border text-right transition flex flex-col justify-between ${
                       permissionSlot === 'second_half'
                         ? 'bg-sky-50 border-sky-500 ring-2 ring-sky-500/20 text-sky-950 font-bold'
-                        : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                        : 'bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:bg-slate-800'
                     }`}
                   >
                     <div className="flex items-center justify-between font-bold text-xs mb-1">
@@ -2099,7 +2099,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
                       </span>
                       {permissionSlot === 'second_half' && <CheckCircle2 className="w-4 h-4 text-sky-600 shrink-0" />}
                     </div>
-                    <p className="text-[11px] text-slate-600 leading-relaxed font-normal">
+                    <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed font-normal">
                       انصراف الساعة 03:00 م (ساعتان مبكراً مسموح بها) 🟢 يُحسب انصراف في الميعاد وبدون أي خصم.
                     </p>
                   </button>
@@ -2107,13 +2107,13 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
               </div>
 
               <div>
-                <label className="block font-bold text-slate-700 mb-1">
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
                   {lang === 'ar' ? 'مدة الإذن المطلوبة (أقصى حد ساعتين):' : 'Duration (Max 2h):'}
                 </label>
                 <select
                   value={permissionHours}
                   onChange={(e) => setPermissionHours(Number(e.target.value))}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-bold text-slate-900"
+                  className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 font-bold text-slate-900 dark:text-white"
                 >
                   <option value={0.5}>0.5 ساعة (30 {ui.minuteUnit})</option>
                   <option value={1}>1.0 ساعة (ساعة واحدة)</option>
@@ -2123,7 +2123,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
               </div>
 
               <div>
-                <label className="block font-bold text-slate-700 mb-1">
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
                   {lang === 'ar' ? 'مبررات وسبب الإذن:' : 'Reason for Permission:'}
                 </label>
                 <textarea
@@ -2132,7 +2132,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
                   value={permissionReason}
                   onChange={(e) => setPermissionReason(e.target.value)}
                   placeholder={lang === 'ar' ? 'اكتب سبب طلب الإذن...' : 'State reason...'}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-900"
+                  className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-slate-900 dark:text-white"
                 />
               </div>
 
@@ -2140,7 +2140,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
                 <button
                   type="button"
                   onClick={() => setShowPermissionModal(false)}
-                  className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 font-bold"
+                  className="px-4 py-2 rounded-xl text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:bg-slate-800 font-bold"
                 >
                   {lang === 'ar' ? 'إلغاء' : 'Cancel'}
                 </button>
@@ -2160,9 +2160,9 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
       {/* MODAL 2: LEAVE REQUEST MODAL */}
       {showLeaveModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
-          <div className="bg-white w-full max-w-lg rounded-3xl p-6 shadow-2xl border border-slate-200 space-y-5">
+          <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-3xl p-6 shadow-2xl border border-slate-200 dark:border-slate-700 space-y-5">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="font-bold text-slate-900 text-lg">
+              <h3 className="font-bold text-slate-900 dark:text-white text-lg">
                 {lang === 'ar' ? 'تقديم طلب إجازة رسمية' : 'Submit Leave Request'}
               </h3>
               <span className="text-xs bg-emerald-50 text-emerald-800 font-bold px-3 py-1 rounded-full border border-emerald-200 font-mono">
@@ -2172,13 +2172,13 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
 
             <form onSubmit={handleLeaveSubmit} className="space-y-4 text-xs">
               <div>
-                <label className="block font-bold text-slate-700 mb-1">
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
                   {lang === 'ar' ? 'نوع الإجازة' : 'Leave Type'}
                 </label>
                 <select
                   value={leaveType}
                   onChange={(e) => setLeaveType(e.target.value as any)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-bold text-slate-900"
+                  className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 font-bold text-slate-900 dark:text-white"
                 >
                   <option value="annual">{lang === 'ar' ? 'إجازة سنوية اعتيادية (تخصم من الرصيد)' : 'Annual Leave'}</option>
                   <option value="casual">{lang === 'ar' ? 'إجازة عارضة' : 'Casual Leave'}</option>
@@ -2189,7 +2189,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
                     {lang === 'ar' ? 'تاريخ البداية' : 'Start Date'}
                   </label>
                   <input
@@ -2197,11 +2197,11 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
                     required
                     value={leaveStartDate}
                     onChange={(e) => setLeaveStartDate(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-mono text-slate-900"
+                    className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 font-mono text-slate-900 dark:text-white"
                   />
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
                     {lang === 'ar' ? 'تاريخ النهاية' : 'End Date'}
                   </label>
                   <input
@@ -2209,7 +2209,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
                     required
                     value={leaveEndDate}
                     onChange={(e) => setLeaveEndDate(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-mono text-slate-900"
+                    className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 font-mono text-slate-900 dark:text-white"
                   />
                 </div>
               </div>
@@ -2232,7 +2232,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
                   </label>
 
                   <div className="flex items-center gap-3">
-                    <label className="flex-1 flex items-center justify-center gap-2 bg-white border border-rose-300 border-dashed hover:bg-rose-100/50 p-2.5 rounded-xl cursor-pointer text-rose-900 font-bold transition">
+                    <label className="flex-1 flex items-center justify-center gap-2 bg-white dark:bg-slate-900 border border-rose-300 border-dashed hover:bg-rose-100/50 p-2.5 rounded-xl cursor-pointer text-rose-900 font-bold transition">
                       <Upload className="w-4 h-4 text-rose-600" />
                       <span>{leaveAttachmentName ? leaveAttachmentName : 'اختر صورة التقرير الطبي من جهازك'}</span>
                       <input type="file" accept="image/*,.pdf" onChange={handleLeaveFileUpload} className="hidden" />
@@ -2255,7 +2255,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
               )}
 
               <div>
-                <label className="block font-bold text-slate-700 mb-1">
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
                   {lang === 'ar' ? 'سبب الإجازة' : 'Reason'}
                 </label>
                 <textarea
@@ -2264,7 +2264,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
                   value={leaveReason}
                   onChange={(e) => setLeaveReason(e.target.value)}
                   placeholder={lang === 'ar' ? 'اكتب مبررات الطلب...' : 'Enter reason for leave...'}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-900"
+                  className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-slate-900 dark:text-white"
                 />
               </div>
 
@@ -2272,7 +2272,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
                 <button
                   type="button"
                   onClick={() => setShowLeaveModal(false)}
-                  className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 font-semibold"
+                  className="px-4 py-2 rounded-xl text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:bg-slate-800 font-semibold"
                 >
                   {lang === 'ar' ? 'إلغاء' : 'Cancel'}
                 </button>
@@ -2291,17 +2291,17 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
       {/* MODAL 4: TEAM LEADER BACKDATED ATTENDANCE ENTRY MODAL */}
       {showPastDateModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
-          <div className="bg-white w-full max-w-lg rounded-3xl p-6 shadow-2xl border border-slate-200 space-y-5">
+          <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-3xl p-6 shadow-2xl border border-slate-200 dark:border-slate-700 space-y-5">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
                 <Calendar className="w-5 h-5 text-emerald-600" />
-                <h3 className="font-bold text-slate-900 text-base">
+                <h3 className="font-bold text-slate-900 dark:text-white text-base">
                   {lang === 'ar' ? 'رصد داتا/حضور تاريخ سابق لشهور عدت' : 'Log Historical Attendance Data'}
                 </h3>
               </div>
               <button
                 onClick={() => setShowPastDateModal(false)}
-                className="p-1.5 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition"
+                className="p-1.5 rounded-full text-slate-400 hover:text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:bg-slate-800 transition"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -2321,13 +2321,13 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
             <form onSubmit={handleSavePastRecord} className="space-y-4 text-xs">
               {/* Select Employee */}
               <div>
-                <label className="block font-bold text-slate-700 mb-1">
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
                   {lang === 'ar' ? 'اختيار الموظف' : 'Select Employee'}
                 </label>
                 <select
                   value={pastEmpId || emp.id}
                   onChange={(e) => setPastEmpId(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-bold text-slate-900"
+                  className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 font-bold text-slate-900 dark:text-white"
                 >
                   {employees.map(e => (
                     <option key={e.id} value={e.id}>
@@ -2339,7 +2339,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
 
               {/* Date */}
               <div>
-                <label className="block font-bold text-slate-700 mb-1">
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
                   {lang === 'ar' ? 'التاريخ المطلوب (أو شهر سابق مثل 2026-02-02):' : 'Select Past Date:'}
                 </label>
                 <input
@@ -2353,19 +2353,19 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
                       setSelectedMonth(m);
                     }
                   }}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-mono text-slate-900 font-bold"
+                  className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 font-mono text-slate-900 dark:text-white font-bold"
                 />
               </div>
 
               {/* Status */}
               <div>
-                <label className="block font-bold text-slate-700 mb-1">
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
                   {lang === 'ar' ? 'حالة الحضور/الغياب:' : 'Attendance Status:'}
                 </label>
                 <select
                   value={pastStatus}
                   onChange={(e) => setPastStatus(e.target.value as any)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-bold text-slate-900"
+                  className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 font-bold text-slate-900 dark:text-white"
                 >
                   <option value="absent">❌ غياب (Mark as Absent)</option>
                   <option value="on_time">🟢 حاضر بالموعد (Present / On Time)</option>
@@ -2376,23 +2376,23 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
 
               {/* Times if present/late */}
               {(pastStatus === 'on_time' || pastStatus === 'late') && (
-                <div className="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-2xl border border-slate-200">
+                <div className="grid grid-cols-2 gap-3 bg-slate-50 dark:bg-slate-800/50 p-3 rounded-2xl border border-slate-200 dark:border-slate-700">
                   <div>
-                    <label className="block font-bold text-slate-700 mb-1">وقت الحضور (Check-In)</label>
+                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">وقت الحضور (Check-In)</label>
                     <input
                       type="time"
                       value={pastCheckIn}
                       onChange={(e) => setPastCheckIn(e.target.value)}
-                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 font-mono"
+                      className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 font-mono"
                     />
                   </div>
                   <div>
-                    <label className="block font-bold text-slate-700 mb-1">وقت الانصراف (Check-Out)</label>
+                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">وقت الانصراف (Check-Out)</label>
                     <input
                       type="time"
                       value={pastCheckOut}
                       onChange={(e) => setPastCheckOut(e.target.value)}
-                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 font-mono"
+                      className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 font-mono"
                     />
                   </div>
                 </div>
@@ -2400,7 +2400,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
 
               {/* Administrative Note */}
               <div>
-                <label className="block font-bold text-slate-700 mb-1">
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
                   {lang === 'ar' ? 'ملاحظات إدارية:' : 'Administrative Notes:'}
                 </label>
                 <textarea
@@ -2408,7 +2408,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
                   value={pastNote}
                   onChange={(e) => setPastNote(e.target.value)}
                   placeholder={lang === 'ar' ? 'مثال: تم تسجيل غياب الموظف ليوم 2 شهر 2 بقرار التيم ليدر' : 'Reason for entry...'}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900"
+                  className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white"
                 />
               </div>
 
@@ -2416,7 +2416,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
                 <button
                   type="button"
                   onClick={() => setShowPastDateModal(false)}
-                  className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 font-bold"
+                  className="px-4 py-2 rounded-xl text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:bg-slate-800 font-bold"
                 >
                   {lang === 'ar' ? 'إلغاء' : 'Cancel'}
                 </button>
@@ -2444,13 +2444,13 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
       {/* Lightbox Modal: Medical Report Document Viewer */}
       {previewAttachment && (
         <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-white max-w-3xl w-full rounded-3xl p-6 shadow-2xl space-y-4 border border-slate-200">
+          <div className="bg-white dark:bg-slate-900 max-w-3xl w-full rounded-3xl p-6 shadow-2xl space-y-4 border border-slate-200 dark:border-slate-700">
             <div className="flex items-center justify-between border-b pb-3">
-              <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
+              <h3 className="font-bold text-slate-900 dark:text-white text-base flex items-center gap-2">
                 <Stethoscope className="w-5 h-5 text-rose-600" />
                 <span>{previewAttachment.title}</span>
               </h3>
-              <button onClick={() => setPreviewAttachment(null)} className="text-slate-400 hover:text-slate-600">
+              <button onClick={() => setPreviewAttachment(null)} className="text-slate-400 hover:text-slate-600 dark:text-slate-400">
                 <X className="w-6 h-6" />
               </button>
             </div>
@@ -2471,14 +2471,14 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
       {/* MODAL 4: EXCUSE PENALTY MODAL */}
       {showExcuseModal && selectedPenalty && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-white max-w-md w-full rounded-3xl p-6 shadow-2xl border border-slate-100 space-y-5 dir-rtl">
+          <div className="bg-white dark:bg-slate-900 max-w-md w-full rounded-3xl p-6 shadow-2xl border border-slate-100 space-y-5 dir-rtl">
             <div className="flex items-center justify-between border-b border-slate-100 pb-4">
               <div className="flex items-center gap-2.5">
                 <div className={`p-2.5 rounded-2xl ${isRestoringPenalty ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700'}`}>
                   {isRestoringPenalty ? <ShieldAlert className="w-5 h-5" /> : <ShieldCheck className="w-5 h-5" />}
                 </div>
                 <div>
-                  <h3 className="font-extrabold text-slate-900 text-base">
+                  <h3 className="font-extrabold text-slate-900 dark:text-white text-base">
                     {isRestoringPenalty
                       ? (lang === 'ar' ? 'إعادة احتساب الخصم والجزاء المالي' : 'Restore Penalty Deduction')
                       : (lang === 'ar' ? 'إلغاء الخصم والجزاء المالي (إعفاء)' : 'Waive Penalty Deduction')}
@@ -2490,16 +2490,16 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
               </div>
               <button
                 onClick={() => setShowExcuseModal(false)}
-                className="p-1.5 rounded-xl hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition"
+                className="p-1.5 rounded-xl hover:bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-slate-600 dark:text-slate-400 transition"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-2 text-xs">
+            <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-2xl border border-slate-100 space-y-2 text-xs">
               <div className="flex justify-between">
                 <span className="text-slate-500 font-bold">{lang === 'ar' ? 'نوع المخالفة:' : 'Type:'}</span>
-                <span className="font-extrabold text-slate-800">{selectedPenalty.titleAr}</span>
+                <span className="font-extrabold text-slate-800 dark:text-slate-200">{selectedPenalty.titleAr}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500 font-bold">{lang === 'ar' ? 'الجزاء المستحق:' : 'Penalty:'}</span>
@@ -2513,7 +2513,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
 
             {!isRestoringPenalty ? (
               <div className="space-y-2">
-                <label className="block font-bold text-xs text-slate-700">
+                <label className="block font-bold text-xs text-slate-700 dark:text-slate-300">
                   {lang === 'ar' ? 'سبب إلغاء الخصم (الإعفاء الإداري):' : 'Excuse Reason:'}
                 </label>
                 <textarea
@@ -2521,7 +2521,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
                   value={excuseReason}
                   onChange={(e) => setExcuseReason(e.target.value)}
                   placeholder={lang === 'ar' ? 'أدخل سبب إلغاء الخصم...' : 'Enter reason...'}
-                  className="w-full bg-slate-50 border border-slate-200 focus:bg-white focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 rounded-2xl p-3 text-xs font-bold text-slate-800 transition"
+                  className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 focus:bg-white dark:bg-slate-900 focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 rounded-2xl p-3 text-xs font-bold text-slate-800 dark:text-slate-200 transition"
                 />
               </div>
             ) : (
@@ -2534,7 +2534,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
               <button
                 type="button"
                 onClick={() => setShowExcuseModal(false)}
-                className="px-4 py-2.5 rounded-xl text-slate-600 hover:bg-slate-100 font-bold text-xs transition"
+                className="px-4 py-2.5 rounded-xl text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:bg-slate-800 font-bold text-xs transition"
               >
                 {lang === 'ar' ? 'تراجع (إلغاء)' : 'Cancel'}
               </button>
