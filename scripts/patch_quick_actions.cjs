@@ -75,12 +75,15 @@ const actions = `        {/* Quick Actions */}
           )}
         </div>`;
 
-const pattern = /        \/\* Quick Action Buttons \*\/\n        <div className="flex flex-wrap items-center gap-1\.5">[\s\S]*?\n        <\/div>\n      <\/div>\n\n      \/\* Metric KPI Cards Row \*\//;
+const startMarker = '        {/* Quick Action Buttons */}';
+const endMarker = '      {/* Metric KPI Cards Row */}';
+const start = source.indexOf(startMarker);
+const end = source.indexOf(endMarker, start + startMarker.length);
 
-if (!pattern.test(source)) {
-  throw new Error('Quick Action Buttons block not found');
+if (start === -1 || end === -1 || end <= start) {
+  throw new Error('Quick Actions section markers not found');
 }
 
-source = source.replace(pattern, `${actions}\n      </div>\n\n      {/* Metric KPI Cards Row */}`);
+source = source.slice(0, start) + actions + '\n      </div>\n\n' + source.slice(end);
 fs.writeFileSync(filePath, source, 'utf8');
 console.log('Quick actions menu applied');
