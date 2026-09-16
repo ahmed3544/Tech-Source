@@ -781,12 +781,9 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
       <div className="bg-[#0d2240] text-white p-6 rounded-3xl shadow-xl flex flex-col md:flex-row items-center justify-between gap-6 border border-slate-800">
         <div className="flex items-center gap-4">
           {/* Interactive Avatar */}
-          <div className="relative group cursor-pointer" onClick={() => setShowAvatarModal(true)}>
+          <div className="relative group">
             <UserAvatar name={emp.nameEn || emp.nameAr} code={emp.code} avatar={emp.avatar} size="xl" />
-            <div className="absolute inset-0 rounded-full bg-slate-950/60 backdrop-blur-xs flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white text-[10px] font-bold">
-              <Camera className="w-5 h-5 text-emerald-400 mb-0.5" />
-              <span>{lang === 'ar' ? 'تغيير' : 'Edit'}</span>
-            </div>
+            
           </div>
 
           <div>
@@ -799,13 +796,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
               </h2>
             </div>
             <p className="text-xs text-slate-300 mt-1">{emp.jobTitleAr} • قسم {emp.department}</p>
-            <button
-              onClick={() => setShowAvatarModal(true)}
-              className="mt-1.5 text-[11px] text-emerald-400 hover:text-emerald-300 flex items-center gap-1 font-bold underline decoration-dotted"
-            >
-              <Camera className="w-3.5 h-3.5 text-emerald-400" />
-              <span>{lang === 'ar' ? 'تغيير الصورة الشخصية' : 'Change Profile Photo'}</span>
-            </button>
+            
           </div>
         </div>
 

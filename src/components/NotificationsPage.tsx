@@ -31,24 +31,44 @@ const normalize = (items: unknown, currentUserId?: string): Notification[] => {
 };
 
 const notificationTitle = (n: Notification, lang: Language) => {
-  if (n.title?.trim()) return n.title;
+  if (lang === 'ar' && n.title?.trim()) return n.title;
   if (lang === 'ar') {
     const titles: Record<string, string> = {
-      leave_requested: 'طلب إجازة جديد',
-      leave_approved: 'تم قبول الإجازة',
-      leave_rejected: 'تم رفض الإجازة',
-      overtime_requested: 'طلب عمل إضافي جديد',
-      overtime_approved: 'تم اعتماد العمل الإضافي',
-      overtime_rejected: 'تم رفض العمل الإضافي',
-      shift_changed: 'تم تغيير الشفت',
-      shift_swap_requested: 'طلب تبديل شفت جديد',
-      shift_swap_accepted: 'تمت الموافقة على تبديل الشفت',
-      shift_swap_rejected: 'تم رفض تبديل الشفت',
-      admin_notice: 'إشعار إداري',
+      leave_requested: lang === 'ar' ? 'طلب إجازة جديد' : 'New Leave Request',
+      leave_approved: lang === 'ar' ? 'تم قبول الإجازة' : 'Leave Approved',
+      leave_rejected: lang === 'ar' ? 'تم رفض الإجازة' : 'Leave Rejected',
+      overtime_requested: lang === 'ar' ? 'طلب عمل إضافي جديد' : 'New Overtime Request',
+      overtime_approved: lang === 'ar' ? 'تم اعتماد العمل الإضافي' : 'Overtime Approved',
+      overtime_rejected: lang === 'ar' ? 'تم رفض العمل الإضافي' : 'Overtime Rejected',
+      shift_changed: lang === 'ar' ? 'تم تغيير الشفت' : 'Shift Changed',
+      shift_swap_requested: lang === 'ar' ? 'طلب تبديل شفت جديد' : 'New Shift Swap Request',
+      shift_swap_accepted: lang === 'ar' ? 'تمت الموافقة على تبديل الشفت' : 'Shift Swap Accepted',
+      shift_swap_rejected: lang === 'ar' ? 'تم رفض تبديل الشفت' : 'Shift Swap Rejected',
+      admin_notice: lang === 'ar' ? 'إشعار إداري' : 'Admin Notice',
     };
-    return titles[n.type] || 'إشعار جديد';
+    return titles[n.type] || lang === 'ar' ? 'إشعار جديد' : 'New Notification';
   }
   return n.type?.replace(/_/g, ' ') || 'Notification';
+};
+
+
+const notificationMessageFor = (n, lang) => {
+  const raw = String(n?.message || '');
+  if (lang === 'ar' || !/[\u0600-\u06FF]/.test(raw)) return raw;
+  const messages = {
+    leave_requested: 'A new leave request requires your review.',
+    leave_approved: 'Your leave request was approved.',
+    leave_rejected: 'Your leave request was rejected.',
+    overtime_requested: 'A new overtime request requires your review.',
+    overtime_approved: 'Your overtime request was approved.',
+    overtime_rejected: 'Your overtime request was rejected.',
+    shift_changed: 'Your shift was changed.',
+    shift_swap_requested: 'You received a new shift swap request.',
+    shift_swap_accepted: 'The shift swap was accepted and is ready for leader review.',
+    shift_swap_rejected: 'The shift swap request was rejected.',
+    admin_notice: 'You have a new administrative notice.',
+  };
+  return messages[n?.type] || 'You have a new notification.';
 };
 
 export const NotificationsPage: React.FC<Props> = ({ currentUserId, lang, onBack, onOpenNotification }) => {
@@ -196,9 +216,9 @@ export const NotificationsPage: React.FC<Props> = ({ currentUserId, lang, onBack
             id: `swap-${request.id}-${recipientId}-accepted`,
             recipientId,
             type: 'shift_swap_accepted',
-            title: lang === 'ar' ? 'تمت الموافقة على تبديل الشفت' : 'Shift Swap Accepted',
+            title: lang === 'ar' ? lang === 'ar' ? 'تمت الموافقة على تبديل الشفت' : 'Shift Swap Accepted' : 'Shift Swap Accepted',
             message: lang === 'ar'
-              ? `تمت الموافقة على طلب تبديل الشفت ليوم ${request.date}. الطلب الآن جاهز للمراجعة.`
+              ? lang === 'ar' ? `تمت الموافقة على طلب تبديل الشفت ليوم ${request.date}. الطلب الآن جاهز للمراجعة.` : `Shift swap for ${request.date} accepted. Ready for review.`
               : `The shift swap for ${request.date} is ready for leader review.`,
             relatedShiftSwapId: request.id,
             isRead: false,
@@ -280,7 +300,7 @@ export const NotificationsPage: React.FC<Props> = ({ currentUserId, lang, onBack
                       <div className={`h-9 w-9 shrink-0 rounded-lg flex items-center justify-center ${isUnread ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:bg-slate-800'}`}><Bell size={17} /></div>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-start justify-between gap-3">
-                          <div><h2 className="text-sm font-black text-slate-900 dark:text-white dark:text-white">{notificationTitle(notification, lang)}</h2><p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-400 dark:text-slate-400">{notification.message}</p></div>
+                          <div><h2 className="text-sm font-black text-slate-900 dark:text-white dark:text-white">{notificationTitle(notification, lang)}</h2><p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-400 dark:text-slate-400">{notificationMessageFor(notification, lang)}</p></div>
                           {isUnread && <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-emerald-500" />}
                         </div>
                         <div className="mt-3 flex flex-wrap items-center gap-2">

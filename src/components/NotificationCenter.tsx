@@ -44,7 +44,37 @@ const titleFor = (n: Notification, lang: Language) => {
     shift_swap_rejected: lang === 'ar' ? 'تم رفض تبديل الشفت' : 'Shift Swap Rejected',
     admin_notice: lang === 'ar' ? 'إشعار إداري' : 'Admin Notice',
   };
-  return n.title?.trim() || titles[n.type] || n.type.replace(/_/g, ' ');
+  if (lang === 'ar') return n.title?.trim() || titles[n.type] || n.type.replace(/_/g, ' ');
+  if (n.title?.includes('طلب إذن')) return 'New Permission Request';
+  if (n.title?.includes('إجازة مرضية')) return 'Sick Leave Request';
+  if (n.title?.includes('اعتماد الإذن')) return 'Permission Approved';
+  if (n.title?.includes('رفض الإذن')) return 'Permission Rejected';
+  return titles[n.type] || 'Notification';
+};
+
+
+const notificationMessageFor = (n, lang) => {
+  const raw = String(n?.message || '');
+  if (lang === 'ar') return raw;
+  if (!/[\u0600-\u06FF]/.test(raw)) return raw;
+  if (raw.includes('أرسل طلب إذن')) return 'A new permission request requires your review.';
+  if (raw.includes('تم اعتماد طلب إذن')) return 'Your permission request was approved.';
+  if (raw.includes('تم رفض طلب إذن')) return 'Your permission request was rejected.';
+
+  const messages = {
+    leave_requested: 'A new leave request requires your review.',
+    leave_approved: 'Your leave request was approved.',
+    leave_rejected: 'Your leave request was rejected.',
+    overtime_requested: 'A new overtime request requires your review.',
+    overtime_approved: 'Your overtime request was approved.',
+    overtime_rejected: 'Your overtime request was rejected.',
+    shift_changed: 'Your shift was changed.',
+    shift_swap_requested: 'You received a new shift swap request.',
+    shift_swap_accepted: 'The shift swap was accepted and is ready for leader review.',
+    shift_swap_rejected: 'The shift swap request was rejected.',
+    admin_notice: 'You have a new administrative notice.',
+  };
+  return messages[n?.type] || 'You have a new notification.';
 };
 
 const actionUrlFor = (n: Notification): string => {
@@ -186,7 +216,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ currentU
           <div className="max-h-[calc(100vh-150px)] overflow-y-auto overscroll-contain">
             {loading && items.length === 0 ? <div className="p-8 text-center text-sm text-slate-500 dark:text-slate-400">{lang === 'ar' ? 'جاري تحميل الإشعارات...' : 'Loading notifications...'}</div> : items.length > 0 ? items.slice(0, 6).map((notification) => {
               const unread = !notification.isRead; const ago = timeAgo(notification.createdAt, lang); const fullDate = dateLabel(notification.createdAt, lang);
-              return <button key={notification.id} type="button" onClick={() => void openNotification(notification)} title={fullDate} className={`group w-full text-start px-4 py-3.5 border-b border-slate-200 dark:border-slate-700/80 dark:border-slate-800 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-500 ${unread ? 'bg-emerald-50/70 dark:bg-emerald-950/20 hover:bg-emerald-100/80 dark:hover:bg-emerald-950/35' : 'bg-white dark:bg-slate-900 dark:bg-slate-900 hover:bg-slate-50 dark:bg-slate-800/50 dark:hover:bg-slate-800/70'}`}><div className="flex gap-3"><span className={`mt-1.5 h-2.5 w-2.5 rounded-full shrink-0 transition-transform group-hover:scale-110 ${unread ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'}`} /><div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><p className={`text-xs text-slate-900 dark:text-white dark:text-white ${unread ? 'font-black' : 'font-bold'}`}>{titleFor(notification, lang)}</p>{actionUrlFor(notification) && <ExternalLink size={13} className="mt-0.5 shrink-0 text-slate-400 group-hover:text-emerald-500 transition-colors" />}</div><p className="text-[11px] leading-5 text-slate-600 dark:text-slate-400 dark:text-slate-300 line-clamp-2 mt-0.5">{notification.message}</p><div className="flex items-center gap-2 mt-1.5 text-[10px] font-bold text-slate-400 dark:text-slate-500">{ago && <span>{ago}</span>}{ago && fullDate && <span aria-hidden="true">•</span>}{fullDate && <span className="truncate">{fullDate}</span>}</div></div></div></button>;
+              return <button key={notification.id} type="button" onClick={() => void openNotification(notification)} title={fullDate} className={`group w-full text-start px-4 py-3.5 border-b border-slate-200 dark:border-slate-700/80 dark:border-slate-800 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-500 ${unread ? 'bg-emerald-50/70 dark:bg-emerald-950/20 hover:bg-emerald-100/80 dark:hover:bg-emerald-950/35' : 'bg-white dark:bg-slate-900 dark:bg-slate-900 hover:bg-slate-50 dark:bg-slate-800/50 dark:hover:bg-slate-800/70'}`}><div className="flex gap-3"><span className={`mt-1.5 h-2.5 w-2.5 rounded-full shrink-0 transition-transform group-hover:scale-110 ${unread ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'}`} /><div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><p className={`text-xs text-slate-900 dark:text-white dark:text-white ${unread ? 'font-black' : 'font-bold'}`}>{titleFor(notification, lang)}</p>{actionUrlFor(notification) && <ExternalLink size={13} className="mt-0.5 shrink-0 text-slate-400 group-hover:text-emerald-500 transition-colors" />}</div><p className="text-[11px] leading-5 text-slate-600 dark:text-slate-400 dark:text-slate-300 line-clamp-2 mt-0.5">{notificationMessageFor(notification, lang)}</p><div className="flex items-center gap-2 mt-1.5 text-[10px] font-bold text-slate-400 dark:text-slate-500">{ago && <span>{ago}</span>}{ago && fullDate && <span aria-hidden="true">•</span>}{fullDate && <span className="truncate">{fullDate}</span>}</div></div></div></button>;
             }) : <div className="px-6 py-12 text-center"><div className="mx-auto mb-3 h-12 w-12 rounded-full bg-slate-100 dark:bg-slate-800 dark:bg-slate-800 flex items-center justify-center"><Inbox size={22} className="text-slate-400" /></div><p className="text-sm font-black text-slate-700 dark:text-slate-300 dark:text-slate-200">{error ? lang === 'ar' ? 'تعذر تحميل الإشعارات' : 'Unable to load notifications' : lang === 'ar' ? 'لا توجد إشعارات حالياً' : 'No notifications yet'}</p><p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">{lang === 'ar' ? 'ستظهر هنا أي تحديثات أو طلبات جديدة.' : 'New requests and updates will appear here.'}</p></div>}
           </div>
           <button type="button" onClick={openNotificationsPage} className="w-full px-4 py-3 border-t border-slate-200 dark:border-slate-700 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50/70 dark:bg-slate-900 text-xs font-black text-emerald-700 dark:text-emerald-400 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-800 transition-colors">{lang === 'ar' ? 'عرض كل الإشعارات' : 'View all notifications'} <ExternalLink size={14} className="inline align-[-2px]" /></button>

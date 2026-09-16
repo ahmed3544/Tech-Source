@@ -15,7 +15,7 @@ if (markerIndex !== -1) {
   // The second navigation row needs four closing divs here in the
   // generated Header: the notification row, its inner container,
   // the navigation strip, and the surrounding header row wrapper.
-  const normalizedBefore = beforeMarker.replace(/(?:      <\/div>\n){0,6}$/, '      </div>\n      </div>\n      </div>\n      </div>\n');
+  const normalizedBefore = beforeMarker.replace(/(?:      <\/div>\n){0,6}$/, '      </div>\n');
   source = normalizedBefore + afterMarker;
 }
 

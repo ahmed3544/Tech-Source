@@ -259,8 +259,8 @@ export const AttendanceLogTable: React.FC<AttendanceLogTableProps> = ({
       status: evaluated.status,
       verifiedByFace: true,
       isExcused: formIsExcused,
-      excusedBy: formIsExcused ? (currentUser?.nameAr || 'تيم ليدر') : undefined,
-      excusedReason: formIsExcused ? (formExcusedReason || 'إعفاء إداري من التيم ليدر') : undefined,
+      excusedBy: formIsExcused ? (currentUser?.[lang === 'ar' ? 'nameAr' : 'nameEn'] || (lang === 'ar' ? 'تيم ليدر' : 'Team Leader')) : undefined,
+      excusedReason: formIsExcused ? (formExcusedReason || (lang === 'ar' ? 'إعفاء إداري من التيم ليدر' : 'Admin Excuse')) : undefined,
       updatedAt: new Date().toISOString(),
     };
 
@@ -443,13 +443,13 @@ export const AttendanceLogTable: React.FC<AttendanceLogTableProps> = ({
             className="w-full text-xs bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-medium font-sans"
           >
             <option value="all">{lang === 'ar' ? 'جميع الحالات' : 'All Statuses'}</option>
-            <option value="on_time">حاضر (في الوقت)</option>
-            <option value="late">متأخر (بعد 09:00 AM)</option>
-            <option value="early_leave">انصراف مبكر</option>
-            <option value="overtime">ساعات إضافية</option>
-            <option value="weekend">عطلة أسبوعية 🏖️</option>
-            <option value="absent">غائب</option>
-            <option value="on_leave">في إجازة</option>
+            {lang === 'ar' ? <option value="on_time">حاضر (في الوقت)</option> : <option value="on_time">On Time</option>}
+            {lang === 'ar' ? <option value="late">متأخر (بعد 09:00 AM)</option> : <option value="late">Late (After 09:00 AM)</option>}
+            {lang === 'ar' ? <option value="early_leave">انصراف مبكر</option> : <option value="early_leave">Early Leave</option>}
+            {lang === 'ar' ? <option value="overtime">ساعات إضافية</option> : <option value="overtime">Overtime</option>}
+            {lang === 'ar' ? <option value="weekend">عطلة أسبوعية 🏖️</option> : <option value="weekend">Weekend 🏖️</option>}
+            {lang === 'ar' ? <option value="absent">غائب</option> : <option value="absent">Absent</option>}
+            {lang === 'ar' ? <option value="on_leave">في إجازة</option> : <option value="on_leave">On Leave</option>}
           </select>
         </div>
 
@@ -461,14 +461,14 @@ export const AttendanceLogTable: React.FC<AttendanceLogTableProps> = ({
             className="w-full text-xs bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-medium font-sans"
           >
             <option value="all">{lang === 'ar' ? 'جميع الشهور 📅' : 'All Months'}</option>
-            <option value="2026-08">أغسطس 2026 (الشهر الحالي)</option>
-            <option value="2026-07">يوليو 2026</option>
-            <option value="2026-06">يونيو 2026</option>
-            <option value="2026-05">مايو 2026</option>
-            <option value="2026-04">أبريل 2026</option>
-            <option value="2026-03">مارس 2026</option>
-            <option value="2026-02">فبراير 2026</option>
-            <option value="2026-01">يناير 2026</option>
+            {lang === 'ar' ? <option value="2026-08">أغسطس 2026 (الشهر الحالي)</option> : <option value="2026-08">August 2026 (Current Month)</option>}
+            {lang === 'ar' ? <option value="2026-07">يوليو 2026</option> : <option value="2026-07">July 2026</option>}
+            {lang === 'ar' ? <option value="2026-06">يونيو 2026</option> : <option value="2026-06">June 2026</option>}
+            {lang === 'ar' ? <option value="2026-05">مايو 2026</option> : <option value="2026-05">May 2026</option>}
+            {lang === 'ar' ? <option value="2026-04">أبريل 2026</option> : <option value="2026-04">April 2026</option>}
+            {lang === 'ar' ? <option value="2026-03">مارس 2026</option> : <option value="2026-03">March 2026</option>}
+            {lang === 'ar' ? <option value="2026-02">فبراير 2026</option> : <option value="2026-02">February 2026</option>}
+            {lang === 'ar' ? <option value="2026-01">يناير 2026</option> : <option value="2026-01">January 2026</option>}
           </select>
         </div>
 
@@ -616,7 +616,7 @@ export const AttendanceLogTable: React.FC<AttendanceLogTableProps> = ({
                                 })()}
                                 {isBreakActive && (
                                   <span className="inline-flex items-center gap-1.5 text-[10px] font-bold text-amber-900 bg-amber-200/80 px-2.5 py-1 rounded-full border border-amber-300">
-                                    <span>في استراحة:</span>
+                                    <span>{lang === 'ar' ? 'في استراحة:' : 'On break:'}</span>
                                     <BreakTimer breakStart={rec.breakStart} />
                                   </span>
                                 )}
@@ -661,7 +661,7 @@ export const AttendanceLogTable: React.FC<AttendanceLogTableProps> = ({
                               <button
                                 onClick={() => onForceEndBreak(emp.id)}
                                 className="px-2 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-bold shadow transition flex items-center gap-1"
-                                title="إرجاع الموظف من الاستراحة"
+                                title={lang === 'ar' ? "إرجاع الموظف من الاستراحة" : "End break"}
                               >
                                 <ShieldAlert className="w-3 h-3" />
                                 <span>{lang === 'ar' ? 'إرجاع من الاستراحة' : 'Force End Break'}</span>
@@ -670,7 +670,7 @@ export const AttendanceLogTable: React.FC<AttendanceLogTableProps> = ({
                             <button
                               onClick={() => openEditModal(rec)}
                               className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 transition-colors"
-                              title="تعديل السجل"
+                              title={lang === 'ar' ? "تعديل السجل" : "Edit record"}
                             >
                               <Edit3 className="w-4 h-4" />
                             </button>
@@ -682,7 +682,7 @@ export const AttendanceLogTable: React.FC<AttendanceLogTableProps> = ({
                                   }
                                 }}
                                 className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 transition-colors"
-                                title="حذف السجل"
+                                title={lang === 'ar' ? "حذف السجل" : "Delete record"}
                               >
                                 <Trash2 className="w-4 h-4" />
                               </button>

@@ -3,7 +3,7 @@ import { getMessaging, getToken, onMessage, isSupported, type Messaging } from '
 import { PushNotifications } from '@capacitor/push-notifications';
 
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || 'AIzaSyCULaavzAbW3_ZgvJP7W4nxD3s-X9WsPg',
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || '',
   authDomain: 'hidden-tesla-xt8c4.firebaseapp.com',
   projectId: 'hidden-tesla-xt8c4',
   storageBucket: 'hidden-tesla-xt8c4.firebasestorage.app',

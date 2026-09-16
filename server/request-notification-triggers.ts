@@ -37,10 +37,16 @@ async function emitForSync(body:any) {
     const employeeId = clean(r.employeeId), status = clean(r.status).toLowerCase(); if (!employeeId) continue;
     const start = clean(r.startDate), end = clean(r.endDate), kind = clean(r.type) || 'leave';
     if (status === 'pending') {
-      for (const recipientId of leaders) if (recipientId !== employeeId) await insertNotification(recipientId, 'leave_requested', 'طلب إجازة جديد', `${employeeName(employeeId)} أرسل طلب ${kind} من ${start} إلى ${end}.`, employeeId, id);
+      const isPermission = kind.toLowerCase() === 'permission';
+      const notifTitle = isPermission ? 'طلب إذن جديد' : 'طلب إجازة جديد';
+      const kindAr = isPermission ? 'إذن' : (kind === 'sick' ? 'إجازة مرضية' : 'إجازة');
+      for (const recipientId of leaders) if (recipientId !== employeeId) await insertNotification(recipientId, 'leave_requested', notifTitle, `${employeeName(employeeId)} أرسل طلب ${kindAr} من ${start} إلى ${end}.`, employeeId, id);
     } else if (status === 'approved' || status === 'rejected') {
       const approved = status === 'approved';
-      await insertNotification(employeeId, approved ? 'leave_approved' : 'leave_rejected', approved ? 'تم اعتماد طلب الإجازة' : 'تم رفض طلب الإجازة', approved ? `تم اعتماد طلب ${kind} من ${start} إلى ${end}.` : `تم رفض طلب ${kind} من ${start} إلى ${end}.${clean(r.reviewNotes) ? ` السبب: ${clean(r.reviewNotes)}` : ''}`, employeeId, id);
+      const isPermission = kind.toLowerCase() === 'permission';
+      const notifTitle = approved ? (isPermission ? 'تم اعتماد الإذن' : 'تم اعتماد طلب الإجازة') : (isPermission ? 'تم رفض الإذن' : 'تم رفض طلب الإجازة');
+      const kindAr = isPermission ? 'إذن' : (kind === 'sick' ? 'إجازة مرضية' : 'إجازة');
+      await insertNotification(employeeId, approved ? 'leave_approved' : 'leave_rejected', notifTitle, approved ? `تم اعتماد طلب ${kindAr} من ${start} إلى ${end}.` : `تم رفض طلب ${kindAr} من ${start} إلى ${end}.${clean(r.reviewNotes) ? ` السبب: ${clean(r.reviewNotes)}` : ''}`, employeeId, id);
     }
   }
 

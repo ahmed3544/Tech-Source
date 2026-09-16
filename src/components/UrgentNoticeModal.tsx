@@ -17,7 +17,7 @@ export const UrgentNoticeModal: React.FC<UrgentNoticeModalProps> = ({
   notice,
   onSaveNotice,
   lang,
-  authorName = 'الإدارة / Team Leader',
+  authorName = lang === 'ar' ? 'الإدارة / Team Leader' : 'Admin / Team Leader',
 }) => {
   const [title, setTitle] = useState('');
   const [message, setMessage] = useState('');
@@ -27,11 +27,11 @@ export const UrgentNoticeModal: React.FC<UrgentNoticeModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       if (notice) {
-        setTitle(notice.title || 'أمر عاجل وتنبيه هام');
+        setTitle(notice.title || lang === 'ar' ? 'أمر عاجل وتنبيه هام' : 'Urgent Notice');
         setMessage(notice.message || '');
         setActive(notice.active !== false);
       } else {
-        setTitle('أمر عاجل وتنبيه هام لجميع الموظفين');
+        setTitle(lang === 'ar' ? 'أمر عاجل وتنبيه هام لجميع الموظفين' : 'Urgent Notice to all staff');
         setMessage('');
         setActive(true);
       }
@@ -49,7 +49,7 @@ export const UrgentNoticeModal: React.FC<UrgentNoticeModalProps> = ({
 
     const updatedNotice: UrgentNotice = {
       id: notice?.id || `notice-${Date.now()}`,
-      title: title.trim() || 'أمر عاجل وتنبيه هام',
+      title: title.trim() || lang === 'ar' ? 'أمر عاجل وتنبيه هام' : 'Urgent Notice',
       message: message.trim(),
       updatedAt: new Date().toISOString(),
       active: active,
@@ -137,32 +137,32 @@ export const UrgentNoticeModal: React.FC<UrgentNoticeModalProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  setTitle('تنبيه هام جداً بخصوص الالتزام بمواعيد العمل');
-                  setMessage('برجاء من جميع الموظفين الالتزام التام بالبصمة في تمام الساعة 09:00 صباحاً وعدم التأخير لتجنب تطبيق الجزاءات الآلية وفق لائحة العمل.');
+                  setTitle(lang === 'ar' ? 'تنبيه هام جداً بخصوص الالتزام بمواعيد العمل' : 'Important Notice regarding attendance');
+                  setMessage(lang === 'ar' ? 'برجاء من جميع الموظفين الالتزام التام بالبصمة في تمام الساعة 09:00 صباحاً وعدم التأخير لتجنب تطبيق الجزاءات الآلية وفق لائحة العمل.' : 'Please ensure to punch in exactly at 09:00 AM.');
                 }}
                 className="text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 px-2.5 py-1 rounded-lg transition"
               >
-                الالتزام بالمواعيد
+                {lang === 'ar' ? 'الالتزام بالمواعيد' : 'Attendance'}
               </button>
               <button
                 type="button"
                 onClick={() => {
-                  setTitle('أمر عاجل بخصوص تسليم التخارير الأسبوعية');
-                  setMessage('يرجى من جميع موظفي الأقسام إنهاء وتسليم التقارير المطلوبة قبل نهاية الدوام اليوم بدون تأخير.');
+                  setTitle(lang === 'ar' ? 'أمر عاجل بخصوص تسليم التقارير الأسبوعية' : 'Urgent notice regarding reports');
+                  setMessage(lang === 'ar' ? 'يرجى من جميع موظفي الأقسام إنهاء وتسليم التقارير المطلوبة قبل نهاية الدوام اليوم بدون تأخير.' : 'Please finish and deliver required reports before end of shift.');
                 }}
                 className="text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 px-2.5 py-1 rounded-lg transition"
               >
-                تسليم التقارير
+                {lang === 'ar' ? 'تسليم التقارير' : 'Submit Reports'}
               </button>
               <button
                 type="button"
                 onClick={() => {
-                  setTitle('اجتماع طارئ لجميع فريق العمل');
-                  setMessage('يرجى حضور جميع الموظفين اجتماع عاجل اليوم في تمام الساعة 02:00 مساءً لمناقشة خطة العمل.');
+                  setTitle(lang === 'ar' ? 'اجتماع طارئ لجميع فريق العمل' : 'Urgent team meeting');
+                  setMessage(lang === 'ar' ? 'يرجى حضور جميع الموظفين اجتماع عاجل اليوم في تمام الساعة 02:00 مساءً لمناقشة خطة العمل.' : 'Please attend the urgent team meeting today at 02:00 PM.');
                 }}
                 className="text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 px-2.5 py-1 rounded-lg transition"
               >
-                اجتماع طارئ
+                {lang === 'ar' ? 'اجتماع طارئ' : 'Urgent Meeting'}
               </button>
             </div>
           </div>

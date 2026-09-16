@@ -156,7 +156,8 @@ textarea:focus-visible {
 
 #root table th,
 #root table td {
-  white-space: nowrap;
+  white-space: normal;
+  word-break: break-word;
 }
 
 #root .flex,

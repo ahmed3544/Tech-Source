@@ -103,7 +103,7 @@ export const AvatarModal: React.FC<AvatarModalProps> = ({
               {lang === 'ar' ? employee.nameAr : employee.nameEn}
             </span>
             <span className="text-[10px] text-slate-400 font-mono">
-              #{employee.code} • {isLeader ? 'تيم ليدر' : employee.jobTitleAr}
+              #{employee.code} • {isLeader ? lang === 'ar' ? 'تيم ليدر' : 'Team Leader' : employee.jobTitleAr}
             </span>
           </div>
         </div>
