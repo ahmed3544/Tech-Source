@@ -36,7 +36,7 @@ export const CompanyRulesModal: React.FC<CompanyRulesModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-950/70 backdrop-blur-sm animate-fadeIn">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-950/70  animate-fadeIn">
       <div className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-700 w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden text-right">
         
         {/* Modal Header */}
@@ -164,7 +164,7 @@ export const CompanyRulesModal: React.FC<CompanyRulesModalProps> = ({
                   </div>
 
                   {/* Contact Links Box */}
-                  <div className="flex flex-col gap-2 shrink-0 bg-white dark:bg-slate-900/10 backdrop-blur-md p-3 rounded-xl border border-white/15 text-xs">
+                  <div className="flex flex-col gap-2 shrink-0 bg-white dark:bg-slate-900/10  p-3 rounded-xl border border-white/15 text-xs">
                     <a
                       href={COMPANY_CONTACTS.website}
                       target="_blank"

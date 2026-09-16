@@ -1655,7 +1655,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
             </div>
 
             <div className="overflow-x-auto border border-slate-200 dark:border-slate-700 rounded-2xl">
-              <table className="w-full text-xs text-right border-collapse">
+              <table className="w-full text-xs text-right border-collapse" style={{ tableLayout: "auto" }}>
                 <thead>
   <tr className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-bold border-b border-slate-200 dark:border-slate-700 ">
 
@@ -1804,7 +1804,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
             </div>
 
             <div className="overflow-x-auto border border-slate-200 dark:border-slate-700 rounded-2xl">
-              <table className="w-full text-xs text-right border-collapse">
+              <table className="w-full text-xs text-right border-collapse" style={{ tableLayout: "auto" }}>
                 <thead>
                   <tr className="bg-slate-900 text-white font-bold">
                     <th className="py-3 px-4">تاريخ المخالفة</th>
@@ -1995,7 +1995,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
 
       {/* MODAL 1: PERMISSION REQUEST MODAL (Max 2 per month, Max 2h each) */}
       {showPermissionModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-4 animate-fadeIn">
           <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-3xl p-6 shadow-2xl border border-slate-200 dark:border-slate-700 space-y-5">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
@@ -2150,7 +2150,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
 
       {/* MODAL 2: LEAVE REQUEST MODAL */}
       {showLeaveModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-4 animate-fadeIn">
           <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-3xl p-6 shadow-2xl border border-slate-200 dark:border-slate-700 space-y-5">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h3 className="font-bold text-slate-900 dark:text-white text-lg">
@@ -2281,7 +2281,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
 
       {/* MODAL 4: TEAM LEADER BACKDATED ATTENDANCE ENTRY MODAL */}
       {showPastDateModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-4 animate-fadeIn">
           <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-3xl p-6 shadow-2xl border border-slate-200 dark:border-slate-700 space-y-5">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
@@ -2434,7 +2434,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
 
       {/* Lightbox Modal: Medical Report Document Viewer */}
       {previewAttachment && (
-        <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in">
+        <div className="fixed inset-0 z-50 bg-slate-900/80  flex items-center justify-center p-4 animate-in fade-in">
           <div className="bg-white dark:bg-slate-900 max-w-3xl w-full rounded-3xl p-6 shadow-2xl space-y-4 border border-slate-200 dark:border-slate-700">
             <div className="flex items-center justify-between border-b pb-3">
               <h3 className="font-bold text-slate-900 dark:text-white text-base flex items-center gap-2">
@@ -2461,7 +2461,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
       )}
       {/* MODAL 4: EXCUSE PENALTY MODAL */}
       {showExcuseModal && selectedPenalty && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-4 animate-in fade-in">
           <div className="bg-white dark:bg-slate-900 max-w-md w-full rounded-3xl p-6 shadow-2xl border border-slate-100 space-y-5 dir-rtl">
             <div className="flex items-center justify-between border-b border-slate-100 pb-4">
               <div className="flex items-center gap-2.5">

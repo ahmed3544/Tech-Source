@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { localizeBackendValue } from '../i18n';
 import { 
   Users, 
@@ -11,7 +11,9 @@ CheckCircle2,
   ArrowUpRight,
   UserPlus,
   AlertTriangle,
-  Trash2
+  Trash2,
+  Zap,
+  ChevronDown
 } from 'lucide-react';
 import { Employee, AttendanceRecord, LeaveRequest, Language, LeaveStatus } from '../types';
 import { UserAvatar } from './UserAvatar';
@@ -50,6 +52,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
   onForceEndBreak,
   currentUser,
 }) => {
+  const [quickActionsOpen, setQuickActionsOpen] = useState(false);
   const todayStr = getTodayString();
   const todayRecords = attendanceRecords.filter(r => r.date === todayStr);
 
@@ -102,6 +105,11 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
 
   const pendingLeaves = leaveRequests.filter(l => l.status === 'pending');
 
+  const handleQuickAction = (action: () => void) => {
+    setQuickActionsOpen(false);
+    action();
+  };
+
   return (
     <div className="max-w-7xl mx-auto p-3 sm:p-4 space-y-3 animate-fade-in">
       {/* Top Welcome & Quick Actions Header */}
@@ -121,39 +129,51 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
           </p>
         </div>
 
-        {/* Quick Action Buttons */}
-        <div className="flex flex-wrap items-center gap-1.5">
+        {/* Quick Actions */}
+        <div className="relative shrink-0" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
           <button
-            onClick={onOpenManualPunch}
-            className="flex items-center gap-1 px-2.5 py-2 rounded-lg bg-[#0d2240] hover:bg-[#153460] text-white font-bold text-[11px] shadow transition border border-blue-900"
+            type="button"
+            onClick={() => setQuickActionsOpen(prev => !prev)}
+            aria-expanded={quickActionsOpen}
+            aria-haspopup="menu"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#0d2240] hover:bg-[#153460] text-white font-bold text-[11px] shadow transition border border-blue-900"
           >
-            <Plus className="w-3.5 h-3.5 text-emerald-400" />
-            <span>{lang === 'ar' ? 'تسجيل يدوي (يوم)' : 'Manual Punch'}</span>
+            <Zap className="w-3.5 h-3.5 text-emerald-400" />
+            <span>{lang === 'ar' ? 'الإجراءات السريعة' : 'Quick Actions'}</span>
+            <ChevronDown className={`w-3.5 h-3.5 transition-transform ${quickActionsOpen ? 'rotate-180' : ''}`} />
           </button>
 
-          <button
-            onClick={() => setActiveTab('attendance')}
-            className="flex items-center gap-1 px-2.5 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-[11px] shadow transition border border-emerald-800"
-          >
-            <Users className="w-3.5 h-3.5 text-white" />
-            <span>{lang === 'ar' ? 'تسجيل حضور جماعي (إجمالي الأيام)' : 'Bulk Manual Entry'}</span>
-          </button>
-
-          <button
-            onClick={onOpenAddEmployee}
-            className="flex items-center gap-1 px-2.5 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-bold text-[11px] shadow transition"
-          >
-            <UserPlus className="w-3.5 h-3.5 text-emerald-400" />
-            <span>{lang === 'ar' ? 'إضافة موظف' : 'Add Employee'}</span>
-          </button>
-
-          <button
-            onClick={onExportCSV}
-            className="flex items-center gap-1 px-2.5 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 font-bold text-[11px] border border-slate-200 dark:border-slate-700 transition"
-          >
-            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-            <span>{lang === 'ar' ? 'تصدير اكسل' : 'Export CSV'}</span>
-          </button>
+          {quickActionsOpen && (
+            <>
+              <button
+                type="button"
+                aria-label={lang === 'ar' ? 'إغلاق الإجراءات السريعة' : 'Close quick actions'}
+                className="fixed inset-0 z-30 cursor-default"
+                onClick={() => setQuickActionsOpen(false)}
+              />
+              <div
+                role="menu"
+                className="absolute top-full mt-2 end-0 z-40 w-64 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-1.5 shadow-xl"
+              >
+                <button type="button" role="menuitem" onClick={() => handleQuickAction(onOpenManualPunch)} className="w-full flex items-center gap-2 rounded-lg px-3 py-2.5 text-right hover:bg-slate-100 dark:hover:bg-slate-800 transition text-[11px] font-bold text-slate-800 dark:text-slate-100">
+                  <span className="flex items-center justify-center w-7 h-7 rounded-md bg-[#0d2240] text-emerald-400 shrink-0"><Plus className="w-3.5 h-3.5" /></span>
+                  <span className="flex-1">{lang === 'ar' ? 'تسجيل يدوي (يوم)' : 'Manual Punch'}</span>
+                </button>
+                <button type="button" role="menuitem" onClick={() => handleQuickAction(() => setActiveTab('attendance'))} className="w-full flex items-center gap-2 rounded-lg px-3 py-2.5 text-right hover:bg-slate-100 dark:hover:bg-slate-800 transition text-[11px] font-bold text-slate-800 dark:text-slate-100">
+                  <span className="flex items-center justify-center w-7 h-7 rounded-md bg-emerald-700 text-white shrink-0"><Users className="w-3.5 h-3.5" /></span>
+                  <span className="flex-1">{lang === 'ar' ? 'تسجيل حضور جماعي (إجمالي الأيام)' : 'Bulk Manual Entry'}</span>
+                </button>
+                <button type="button" role="menuitem" onClick={() => handleQuickAction(onOpenAddEmployee)} className="w-full flex items-center gap-2 rounded-lg px-3 py-2.5 text-right hover:bg-slate-100 dark:hover:bg-slate-800 transition text-[11px] font-bold text-slate-800 dark:text-slate-100">
+                  <span className="flex items-center justify-center w-7 h-7 rounded-md bg-slate-900 text-emerald-400 shrink-0"><UserPlus className="w-3.5 h-3.5" /></span>
+                  <span className="flex-1">{lang === 'ar' ? 'إضافة موظف' : 'Add Employee'}</span>
+                </button>
+                <button type="button" role="menuitem" onClick={() => handleQuickAction(onExportCSV)} className="w-full flex items-center gap-2 rounded-lg px-3 py-2.5 text-right hover:bg-slate-100 dark:hover:bg-slate-800 transition text-[11px] font-bold text-slate-800 dark:text-slate-100">
+                  <span className="flex items-center justify-center w-7 h-7 rounded-md bg-slate-100 dark:bg-slate-800 text-emerald-600 shrink-0"><FileSpreadsheet className="w-3.5 h-3.5" /></span>
+                  <span className="flex-1">{lang === 'ar' ? 'تصدير اكسل' : 'Export CSV'}</span>
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
@@ -258,7 +278,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-right text-xs">
+            <table className="w-full text-right text-xs" style={{ tableLayout: "auto" }}>
               <thead>
                 <tr className="border-b border-slate-100 text-slate-400 font-semibold bg-slate-50 dark:bg-slate-800/50/50 whitespace-nowrap">
                   <th className="py-2 px-2 whitespace-nowrap">{lang === 'ar' ? 'الموظف' : 'Employee'}</th>
@@ -308,7 +328,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                   }
 
                   return (
-                    <tr key={emp.id} className="hover:bg-slate-50 dark:bg-slate-800/50/80 transition-colors">
+                    <tr key={emp.id} className="hover:bg-slate-50 transition-colors">
                       <td className="py-2 px-2">
                         <div className="flex items-center gap-2">
                           <UserAvatar name={emp.nameEn || emp.nameAr} code={emp.code} avatar={emp.avatar} size="sm" />
@@ -320,7 +340,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                           </div>
                         </div>
                       </td>
-                      <td className="py-2 px-2 text-slate-600 dark:text-slate-400 font-medium">{localizeBackendValue(emp.department, lang)}</td>
+                      <td className="py-2 px-2 text-slate-600 dark:text-slate-400 font-medium whitespace-normal break-words max-w-[120px]">{localizeBackendValue(emp.department, lang)}</td>
                       <td className="py-2 px-2 font-mono text-slate-800 dark:text-slate-200">
                         {rec?.checkIn ? (
                           <div>

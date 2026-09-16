@@ -487,7 +487,7 @@ export const AttendanceLogTable: React.FC<AttendanceLogTableProps> = ({
       {/* Main Records Table Card */}
       <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-right text-xs">
+          <table className="w-full text-right text-xs" style={{ tableLayout: "auto" }}>
             <thead>
               <tr className="bg-[#0d2240] text-white font-bold border-b border-blue-900 ">
                 <th className="py-4 px-4 ">{lang === 'ar' ? 'التاريخ' : 'Date'}</th>
@@ -510,8 +510,8 @@ export const AttendanceLogTable: React.FC<AttendanceLogTableProps> = ({
 
                   return (
                     <tr key={rec.id} className={`hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors ${isBreakActive ? 'bg-amber-50/40' : ''}`}>
-                      <td className="py-3.5 px-4 font-mono font-semibold text-slate-700 dark:text-slate-300">{toWesternDigits(rec.date)}</td>
-                      <td className="py-3.5 px-4">
+                      <td className="py-3.5 px-4 font-mono font-semibold text-slate-700 dark:text-slate-300 ">{toWesternDigits(rec.date)}</td>
+                      <td className="py-3.5 px-4 ">
                         <div className="flex items-center gap-2.5">
                           <UserAvatar name={emp.nameEn || emp.nameAr} code={emp.code} avatar={emp.avatar} size="sm" />
                           <div>
@@ -567,7 +567,7 @@ export const AttendanceLogTable: React.FC<AttendanceLogTableProps> = ({
                                 <span className="text-slate-400 font-mono">-</span>
                               )}
                             </td>
-                            <td className="py-3.5 px-4">
+                            <td className="py-3.5 px-4 ">
                               <div className="flex flex-col gap-1">
                                 {(() => {
                                   if (matchingApprovedPerm) {
@@ -708,7 +708,7 @@ export const AttendanceLogTable: React.FC<AttendanceLogTableProps> = ({
 
       {/* Manual Punch Modal */}
       {showModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-3xl p-6 shadow-2xl border border-slate-200 dark:border-slate-700 space-y-5 animate-in fade-in zoom-in-95">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <h3 className="font-bold text-slate-900 dark:text-white text-lg">
@@ -1043,7 +1043,7 @@ export const AttendanceLogTable: React.FC<AttendanceLogTableProps> = ({
 
       {/* EXCUSE PENALTY MODAL */}
       {showExcuseModal && selectedRecordToExcuse && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-4 animate-in fade-in">
           <div className="bg-white dark:bg-slate-900 max-w-md w-full rounded-3xl p-6 shadow-2xl border border-slate-100 space-y-5 dir-rtl">
             <div className="flex items-center justify-between border-b border-slate-100 pb-4">
               <div className="flex items-center gap-2.5">

@@ -269,7 +269,7 @@ export const BulkAttendanceModal: React.FC<BulkAttendanceModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60  animate-fade-in">
       <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-2xl max-w-3xl w-full overflow-hidden flex flex-col max-h-[90vh]">
         {/* Header */}
         <div className="bg-[#0d2240] text-white p-5 flex items-center justify-between border-b border-blue-900 shrink-0">

@@ -521,7 +521,7 @@ export function DataImportModal({
         flex items-center justify-center
         p-4
         bg-slate-950/75
-        backdrop-blur-md
+        
         animate-fade-in
         overflow-y-auto
       "

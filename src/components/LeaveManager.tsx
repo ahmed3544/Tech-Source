@@ -648,7 +648,7 @@ export const LeaveManager: React.FC<LeaveManagerProps> = ({
 
       {/* Submit New Request Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-3xl p-6 shadow-2xl border border-slate-200 dark:border-slate-700 space-y-5 max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <h3 className="font-bold text-slate-900 dark:text-white text-lg">
@@ -810,7 +810,7 @@ export const LeaveManager: React.FC<LeaveManagerProps> = ({
 
       {/* Modal: Add Official Holiday */}
       {showAddHolidayModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-3xl p-6 shadow-2xl border border-slate-200 dark:border-slate-700 space-y-4 animate-in fade-in zoom-in-95">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <h3 className="font-bold text-slate-900 dark:text-white text-base flex items-center gap-2">
@@ -893,7 +893,7 @@ export const LeaveManager: React.FC<LeaveManagerProps> = ({
 
       {/* Lightbox Modal: Medical Report Document Viewer */}
       {previewAttachment && (
-        <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in">
+        <div className="fixed inset-0 z-50 bg-slate-900/80  flex items-center justify-center p-4 animate-in fade-in">
           <div className="bg-white dark:bg-slate-900 max-w-3xl w-full rounded-3xl p-6 shadow-2xl space-y-4 border border-slate-200 dark:border-slate-700">
             <div className="flex items-center justify-between border-b pb-3">
               <h3 className="font-bold text-slate-900 dark:text-white text-base flex items-center gap-2">

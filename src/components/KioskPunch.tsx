@@ -886,7 +886,7 @@ export const KioskPunch: React.FC<KioskPunchProps> = ({
 
       {/* Warning Modal when attempting to check out during break */}
       {breakWarningModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80  animate-fade-in">
           <div className="bg-slate-900 border border-rose-500/50 rounded-3xl p-6 max-w-md w-full text-center space-y-4 shadow-2xl">
             <div className="w-14 h-14 rounded-2xl bg-rose-500/20 text-rose-400 flex items-center justify-center mx-auto border border-rose-500/30">
               <AlertTriangle className="w-8 h-8 animate-bounce" />
@@ -913,7 +913,7 @@ export const KioskPunch: React.FC<KioskPunchProps> = ({
 
       {/* Leave Request Modal */}
       {showLeaveModal && selectedEmp && (
-        <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-slate-900/70  flex items-center justify-center p-4">
           <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-3xl p-6 shadow-2xl border border-slate-200 dark:border-slate-700 space-y-5 animate-in fade-in zoom-in-95">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div>

@@ -68,7 +68,7 @@ export const UrgentNoticeModal: React.FC<UrgentNoticeModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80  animate-in fade-in duration-200">
       <div className="bg-slate-900 border border-rose-500/40 rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl">
         {/* Header */}
         <div className="bg-gradient-to-r from-rose-950 via-slate-900 to-amber-950 p-5 border-b border-rose-500/30 flex items-center justify-between">
