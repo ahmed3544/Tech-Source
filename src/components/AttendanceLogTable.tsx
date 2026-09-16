@@ -489,16 +489,16 @@ export const AttendanceLogTable: React.FC<AttendanceLogTableProps> = ({
         <div className="overflow-x-auto">
           <table className="w-full text-right text-xs">
             <thead>
-              <tr className="bg-[#0d2240] text-white font-bold border-b border-blue-900 whitespace-nowrap">
-                <th className="py-4 px-4 whitespace-nowrap">{lang === 'ar' ? 'التاريخ' : 'Date'}</th>
-                <th className="py-4 px-4 whitespace-nowrap">{lang === 'ar' ? 'الموظف' : 'Employee'}</th>
-                <th className="py-4 px-4 whitespace-nowrap">{lang === 'ar' ? 'القسم' : 'Department'}</th>
-                <th className="py-4 px-4 whitespace-nowrap">{lang === 'ar' ? 'وقت الحضور (12H)' : 'Check-In'}</th>
-                <th className="py-4 px-4 whitespace-nowrap">{lang === 'ar' ? 'وقت الانصراف (12H)' : 'Check-Out'}</th>
-                <th className="py-4 px-4 whitespace-nowrap">{lang === 'ar' ? 'ساعات العمل' : 'Worked Hrs'}</th>
-                <th className="py-4 px-4 whitespace-nowrap">{lang === 'ar' ? 'التأخير (بعد 9AM)' : 'Late Time'}</th>
-                <th className="py-4 px-4 whitespace-nowrap">{lang === 'ar' ? 'الحالة' : 'Status'}</th>
-                {isLeader && <th className="py-4 px-4 text-center whitespace-nowrap">{lang === 'ar' ? 'إجراءات الليدر' : 'Actions'}</th>}
+              <tr className="bg-[#0d2240] text-white font-bold border-b border-blue-900 ">
+                <th className="py-4 px-4 ">{lang === 'ar' ? 'التاريخ' : 'Date'}</th>
+                <th className="py-4 px-4 ">{lang === 'ar' ? 'الموظف' : 'Employee'}</th>
+                <th className="py-4 px-4 ">{lang === 'ar' ? 'القسم' : 'Department'}</th>
+                <th className="py-4 px-4 ">{lang === 'ar' ? 'وقت الحضور (12H)' : 'Check-In'}</th>
+                <th className="py-4 px-4 ">{lang === 'ar' ? 'وقت الانصراف (12H)' : 'Check-Out'}</th>
+                <th className="py-4 px-4 ">{lang === 'ar' ? 'ساعات العمل' : 'Worked Hrs'}</th>
+                <th className="py-4 px-4 ">{lang === 'ar' ? 'التأخير (بعد 9AM)' : 'Late Time'}</th>
+                <th className="py-4 px-4 ">{lang === 'ar' ? 'الحالة' : 'Status'}</th>
+                {isLeader && <th className="py-4 px-4 text-center ">{lang === 'ar' ? 'إجراءات الليدر' : 'Actions'}</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -509,13 +509,13 @@ export const AttendanceLogTable: React.FC<AttendanceLogTableProps> = ({
                   const isBreakActive = Boolean(rec.breakStart && !rec.breakEnd);
 
                   return (
-                    <tr key={rec.id} className={`hover:bg-slate-50 dark:bg-slate-800/50/80 transition-colors ${isBreakActive ? 'bg-amber-50/40' : ''}`}>
+                    <tr key={rec.id} className={`hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors ${isBreakActive ? 'bg-amber-50/40' : ''}`}>
                       <td className="py-3.5 px-4 font-mono font-semibold text-slate-700 dark:text-slate-300">{toWesternDigits(rec.date)}</td>
                       <td className="py-3.5 px-4">
                         <div className="flex items-center gap-2.5">
                           <UserAvatar name={emp.nameEn || emp.nameAr} code={emp.code} avatar={emp.avatar} size="sm" />
                           <div>
-                            <div className="font-bold text-slate-900 dark:text-white whitespace-nowrap" title={lang === 'ar' ? emp.nameAr : emp.nameEn}>
+                            <div className="font-bold text-slate-900 dark:text-white " title={lang === 'ar' ? emp.nameAr : emp.nameEn}>
                               {getFirstTwoNames(lang === 'ar' ? emp.nameAr : emp.nameEn)}
                             </div>
                             <div className="text-[10px] text-slate-500 font-mono font-bold">{emp.code}</div>

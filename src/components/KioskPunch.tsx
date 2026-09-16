@@ -455,7 +455,7 @@ export const KioskPunch: React.FC<KioskPunchProps> = ({
                       <UserAvatar name={emp.nameEn || emp.nameAr} code={emp.code} size="md" />
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 flex-nowrap min-w-0">
-                          <span className="font-bold text-sm text-slate-900 dark:text-white whitespace-nowrap" title={lang === 'ar' ? emp.nameAr : emp.nameEn}>
+                          <span className="font-bold text-sm text-slate-900 dark:text-white " title={lang === 'ar' ? emp.nameAr : emp.nameEn}>
                             {getFirstTwoNames(lang === 'ar' ? emp.nameAr : emp.nameEn)}
                           </span>
                           <span className="text-[10px] font-mono font-bold bg-[#0d2240] text-white px-1.5 py-0.5 rounded shrink-0">
@@ -531,17 +531,17 @@ export const KioskPunch: React.FC<KioskPunchProps> = ({
                   <UserAvatar name={selectedEmp.nameEn || selectedEmp.nameAr} code={selectedEmp.code} size="lg" />
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 flex-nowrap min-w-0">
-                      <h4 className="font-extrabold text-base sm:text-lg text-slate-900 dark:text-white whitespace-nowrap" title={lang === 'ar' ? selectedEmp.nameAr : selectedEmp.nameEn}>
+                      <h4 className="font-extrabold text-base sm:text-lg text-slate-900 dark:text-white " title={lang === 'ar' ? selectedEmp.nameAr : selectedEmp.nameEn}>
                         {getFirstTwoNames(lang === 'ar' ? selectedEmp.nameAr : selectedEmp.nameEn)}
                       </h4>
                       {selectedEmp.role === 'leader' && (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-[#0d2240] text-amber-300 border border-blue-900 shadow-sm whitespace-nowrap shrink-0">
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-[#0d2240] text-amber-300 border border-blue-900 shadow-sm  shrink-0">
                           <ShieldCheck className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                           <span>{lang === 'ar' ? 'تيم ليدر' : 'Team Leader'}</span>
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-slate-500 font-medium mt-0.5 whitespace-nowrap truncate">
+                    <p className="text-xs text-slate-500 font-medium mt-0.5  truncate">
                       {lang === 'ar' ? 'كود الموظف' : 'Code'}: <span className="font-mono font-bold text-slate-900 dark:text-white">{selectedEmp.code}</span> • {selectedEmp.department}
                     </p>
                   </div>
@@ -556,7 +556,7 @@ export const KioskPunch: React.FC<KioskPunchProps> = ({
                     <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
                       {lang === 'ar' ? 'حالة الحضور اليوم' : 'Today Attendance'}
                     </div>
-                    <div className="text-xs font-mono font-bold flex items-center gap-1.5 whitespace-nowrap w-full min-w-0 overflow-visible">
+                    <div className="text-xs font-mono font-bold flex items-center gap-1.5  w-full min-w-0 overflow-visible">
                       {(() => {
                         const todayStr = getTodayString();
                         const selLeaveObj = leaveRequests.find(
@@ -836,7 +836,7 @@ export const KioskPunch: React.FC<KioskPunchProps> = ({
                     </span>
                   </button>
                   {isBreakActive && !isOnLeaveToday && (
-                    <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-rose-700 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow pointer-events-none whitespace-nowrap">
+                    <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-rose-700 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow pointer-events-none ">
                       {lang === 'ar' ? 'إنهاء الاستراحة أولاً ' : 'End Break First '}
                     </div>
                   )}

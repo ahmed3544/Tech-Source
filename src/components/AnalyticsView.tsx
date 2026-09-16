@@ -1473,7 +1473,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
 
               <thead>
 
-                <tr className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-bold border-b border-slate-200 dark:border-slate-700 whitespace-nowrap">
+                <tr className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-bold border-b border-slate-200 dark:border-slate-700 ">
 
                   <th className="py-3 px-4">
                     {lang === 'ar'
@@ -2308,7 +2308,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
 
               <thead>
 
-                <tr className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-bold border-b border-slate-200 dark:border-slate-700 whitespace-nowrap">
+                <tr className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-bold border-b border-slate-200 dark:border-slate-700 ">
 
                   <th className="py-3 px-4">
                     {lang === 'ar'
@@ -2454,7 +2454,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
 
                         <td className="py-3 px-4">
 
-                          <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-[10px] font-bold whitespace-nowrap">
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-[10px] font-bold ">
 
                             {getStatusText(
                               record.status,

@@ -1579,7 +1579,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
           <div className="space-y-1">
             <h4 className="font-bold text-sm sm:text-base text-white flex items-center gap-2">
               <span>{lang === 'ar' ? 'الإجازات والعطلات الرسمية للدولة هذا الشهر' : 'Official Public Holidays This Month'}</span>
-              <span className="bg-amber-400 text-slate-950 text-[11px] font-black px-2.5 py-0.5 rounded-full font-mono shadow-sm inline-flex items-center whitespace-nowrap shrink-0 leading-none">
+              <span className="bg-amber-400 text-slate-950 text-[11px] font-black px-2.5 py-0.5 rounded-full font-mono shadow-sm inline-flex items-center  shrink-0 leading-none">
                 {selectedMonth}
               </span>
             </h4>
@@ -1609,7 +1609,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
         <div className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700 p-3 flex items-center gap-2 overflow-x-auto scrollbar-none">
           <button
             onClick={() => setActiveDashboardTab('attendance')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all  ${
               activeDashboardTab === 'attendance'
                 ? 'bg-slate-900 text-white shadow-sm'
                 : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200'
@@ -1625,7 +1625,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
 
           <button
             onClick={() => setActiveDashboardTab('penalties')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all  ${
               activeDashboardTab === 'penalties'
                 ? 'bg-slate-900 text-white shadow-sm'
                 : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200'
@@ -1657,7 +1657,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
             <div className="overflow-x-auto border border-slate-200 dark:border-slate-700 rounded-2xl">
               <table className="w-full text-xs text-right border-collapse">
                 <thead>
-  <tr className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-bold border-b border-slate-200 dark:border-slate-700 whitespace-nowrap">
+  <tr className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-bold border-b border-slate-200 dark:border-slate-700 ">
 
     <th className="py-3 px-4">
       {lang === 'ar' ? 'التاريخ (Day)' : 'Date (Day)'}

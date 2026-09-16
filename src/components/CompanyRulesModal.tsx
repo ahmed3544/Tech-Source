@@ -54,14 +54,14 @@ export const CompanyRulesModal: React.FC<CompanyRulesModalProps> = ({
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="text-base sm:text-xl font-extrabold text-white whitespace-nowrap">
+                <h3 className="text-base sm:text-xl font-extrabold text-white ">
                   {lang === 'ar' ? 'معلومات وسياسات شركة Tech Source GDS' : 'Tech Source GDS Info & Policies'}
                 </h3>
-                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-400 text-slate-950 whitespace-nowrap">
+                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-400 text-slate-950 ">
                   {lang === 'ar' ? 'قانون العمل 14 / 2025' : 'Labor Law 14 / 2025'}
                 </span>
               </div>
-              <p className="text-xs text-slate-300 mt-0.5 whitespace-nowrap truncate">
+              <p className="text-xs text-slate-300 mt-0.5  truncate">
                 {lang === 'ar' ? 'شركة تيك سورس لخدمات تطوير الأعمال العالمية (TECH SOURCE GDS)' : 'TECH SOURCE Global Business Development Services'}
               </p>
             </div>
@@ -79,7 +79,7 @@ export const CompanyRulesModal: React.FC<CompanyRulesModalProps> = ({
         <div className="bg-slate-100 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 p-2 flex items-center gap-1 overflow-x-auto shrink-0 scrollbar-none">
           <button
             onClick={() => setActiveSubTab('companyInfo')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all  ${
               activeSubTab === 'companyInfo'
                 ? 'bg-[#0d2240] text-white shadow-sm'
                 : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200'
@@ -91,7 +91,7 @@ export const CompanyRulesModal: React.FC<CompanyRulesModalProps> = ({
 
           <button
             onClick={() => setActiveSubTab('violations')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all  ${
               activeSubTab === 'violations'
                 ? 'bg-[#0d2240] text-white shadow-sm'
                 : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200'
@@ -103,7 +103,7 @@ export const CompanyRulesModal: React.FC<CompanyRulesModalProps> = ({
 
           <button
             onClick={() => setActiveSubTab('leaves')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all  ${
               activeSubTab === 'leaves'
                 ? 'bg-[#0d2240] text-white shadow-sm'
                 : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200'
@@ -114,7 +114,7 @@ export const CompanyRulesModal: React.FC<CompanyRulesModalProps> = ({
 
           <button
             onClick={() => setActiveSubTab('conduct')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all  ${
               activeSubTab === 'conduct'
                 ? 'bg-[#0d2240] text-white shadow-sm'
                 : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200'
@@ -126,7 +126,7 @@ export const CompanyRulesModal: React.FC<CompanyRulesModalProps> = ({
 
           <button
             onClick={() => setActiveSubTab('general')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all  ${
               activeSubTab === 'general'
                 ? 'bg-[#0d2240] text-white shadow-sm'
                 : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200'
