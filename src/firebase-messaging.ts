@@ -3,7 +3,7 @@ import { getMessaging, getToken, onMessage, isSupported, type Messaging } from '
 import { PushNotifications } from '@capacitor/push-notifications';
 
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || 'AIzaSyCULaavzAbW3_ZgvJP7W4nxD3sX-P9WsPg',
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || 'AIzaSyCULaavzAbW3_ZgvJP7W4nxD3s-X9WsPg',
   authDomain: 'hidden-tesla-xt8c4.firebaseapp.com',
   projectId: 'hidden-tesla-xt8c4',
   storageBucket: 'hidden-tesla-xt8c4.firebasestorage.app',
@@ -25,58 +25,51 @@ export async function registerPushNotifications(employeeId?: string) {
     if (permission.receive !== 'granted') return;
 
     await PushNotifications.createChannel({
-      id: 'tech-source-notifications',
-      name: 'TECH SOURCE Notifications',
-      description: 'Attendance, leave and shift notifications',
-      importance: 5,
-      visibility: 1,
-      sound: 'default',
-      vibration: true,
+      id: 'tech-source-notifications', name: 'TECH SOURCE Notifications',
+      description: 'Attendance, leave and shift notifications', importance: 5,
+      visibility: 1, sound: 'default', vibration: true,
     }).catch((error) => console.warn('[FCM] channel creation failed', error));
 
     const listener = await PushNotifications.addListener('registration', async ({ value }) => {
       await fetch(`${PUSH_API_BASE}/api/push/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ employeeId, token: value, platform: 'android' })
       }).catch((error) => console.warn('[FCM] token registration failed', error));
       listener.remove();
     });
-
-    await PushNotifications.addListener('registrationError', (error) => {
-      console.warn('[FCM] native registration error', error);
-    });
-
-    await PushNotifications.addListener('pushNotificationReceived', (notification) => {
-      console.info('[FCM] notification received', notification.title);
-    });
-
+    await PushNotifications.addListener('registrationError', (error) => console.warn('[FCM] native registration error', error));
+    await PushNotifications.addListener('pushNotificationReceived', (notification) => console.info('[FCM] notification received', notification.title));
     await PushNotifications.register();
     return;
   }
 
   if (!(await isSupported().catch(() => false))) return;
-  const vapidKey = 'BFLM0Qo8dmGfOzaM_4RUsjCmay3KDk2Af-zwc2vUaSftDi1Udpmv3YNsrD25y8An_MeXlTU5Sl19a9tzHocF4WA';
   if (!('Notification' in window)) return;
+  const vapidKey = 'BFLM0Qo8dmGfOzaM_4RUsjCmay3KDk2Af-zwc2vUaSftDi1Udpmv3YNsrD25y8An_MeXlTU5Sl19a9tzHocF4WA';
   const permission = await Notification.requestPermission();
   if (permission !== 'granted') return;
-  const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
-  webMessaging = getMessaging(app);
-  const token = await getToken(webMessaging, { vapidKey, serviceWorkerRegistration: registration });
-  if (token) {
-    await fetch(`${PUSH_API_BASE}/api/push/register`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ employeeId, token, platform: 'web' })
-    }).catch((error) => console.warn('[FCM] web token registration failed', error));
-  }
-  onMessage(webMessaging, (payload) => {
-    if (Notification.permission === 'granted') {
-      new Notification(payload.notification?.title || 'TECH SOURCE', {
-        body: payload.notification?.body || ''
-      });
+
+  try {
+    const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+    webMessaging = getMessaging(app);
+    const token = await getToken(webMessaging, { vapidKey, serviceWorkerRegistration: registration });
+    if (token) {
+      await fetch(`${PUSH_API_BASE}/api/push/register`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ employeeId, token, platform: 'web' })
+      }).catch((error) => console.warn('[FCM] web token registration failed', error));
     }
-  });
+    onMessage(webMessaging, (payload) => {
+      if (Notification.permission === 'granted') {
+        new Notification(payload.notification?.title || 'TECH SOURCE', { body: payload.notification?.body || '' });
+      }
+    });
+  } catch (error: any) {
+    // Web push is optional. Do not let a Firebase auth/configuration problem
+    // break attendance sync or flood the browser console with an unhandled
+    // messaging/token-subscribe-failed exception.
+    console.warn('[FCM] web push unavailable:', error?.code || error?.message || error);
+  }
 }
 
 // Firebase project: tech-source-attendance; web and Android use the same project.
