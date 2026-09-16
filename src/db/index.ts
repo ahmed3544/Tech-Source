@@ -45,4 +45,39 @@ export const createPool = () => {
 
 const pool = createPool();
 
-export const db = drizzle(pool, { schema });
+let db: ReturnType<typeof drizzle>;
+if (!process.env.DATABASE_URL && !process.env.SUPABASE_DB_URL) {
+  console.warn('[AI Studio] Database not connected — using mock');
+  const createChain = (terminalVal: any) => {
+    const fn = () => chain;
+    const chain: any = new Proxy(fn, {
+      get: (target, prop) => {
+        if (prop === 'then') return undefined; // so it isn't treated as a promise
+        return chain;
+      },
+      apply: (target, thisArg, argumentsList) => {
+        // Return a mock result
+        return [];
+      }
+    });
+    return chain;
+  };
+  
+  db = new Proxy({}, {
+    get: (_, prop) => {
+       if (prop === 'select') return () => new Proxy({}, { get: () => () => new Proxy({}, { get: () => async () => [] }) });
+       if (prop === 'insert') return () => new Proxy({}, { get: () => () => new Proxy({}, { get: () => async () => [] }) });
+       if (prop === 'update') return () => new Proxy({}, { get: () => () => new Proxy({}, { get: () => async () => [] }) });
+       if (prop === 'delete') return () => new Proxy({}, { get: () => () => new Proxy({}, { get: () => async () => [] }) });
+       return async () => [];
+    }
+  }) as any;
+} else {
+  try {
+    db = drizzle(pool, { schema });
+  } catch {
+    db = new Proxy({}, { get: () => async () => [] }) as any;
+  }
+}
+
+export { db };

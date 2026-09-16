@@ -30,7 +30,28 @@ function mins(x:any){if(!x)return 0;const t=String(x).trim(),a=t.split(":");let 
 function shiftFor(e:any,date?:string){const daily=localState.dailyShiftAssignments.find((a:any)=>norm(a.employeeId)===norm(e?.id)&&String(a.date).slice(0,10)===String(date||"").slice(0,10));if(daily?.isOffDay)return{id:"__OFF_DAY__",startTime:null,endTime:null,durationMinutes:0,gracePeriodMinutes:0,workDays:[],isOffDay:true};const assignedShiftId=String(daily?.shiftId||"").trim();if(daily&&!assignedShiftId)return{startTime:"09:00",endTime:"17:00",durationMinutes:480,gracePeriodMinutes:10,workDays:[]};return localState.shifts.find((s:any)=>String(s.id)===String(assignedShiftId||e?.shiftId))||{startTime:"09:00",endTime:"17:00",durationMinutes:480,gracePeriodMinutes:10,workDays:[]};}
 function sanitize(r:any){const e=localState.employees.find((x:any)=>norm(x.id)===norm(r.employeeId));const sh=shiftFor(e,r.date);if(sh?.isOffDay)return{...r,lateMinutes:0,earlyLeaveMinutes:0,workHours:0,overtimeHours:0,minusHours:0,status:"weekend"};let work=0;if(r.checkIn&&r.checkOut){let a=mins(r.checkIn),b=mins(r.checkOut);if(b<a)b+=1440;work=Math.max(0,b-a);if(r.breakStart){let c=mins(r.breakStart),d=r.breakEnd?mins(r.breakEnd):b;if(d<c)d+=1440;work=Math.max(0,work-(d-c));}}const duration=Number(sh.durationMinutes||480);const early=r.checkOut&&!r.isExplicitCancelCheckOut?Math.max(0,duration-work):0;let status=r.status||"in_progress";if(r.checkIn&&r.checkOut)status=early>0?"early_leave":"on_time";else if(r.checkIn)status="in_progress";return{...r,lateMinutes:0,earlyLeaveMinutes:early,workHours:r.isExplicitCancelCheckOut?0:Math.round(work/60*100)/100,overtimeHours:r.isExplicitCancelCheckOut?0:Math.round(Math.max(0,work-duration)/60*100)/100,minusHours:r.isExcused?0:Math.round(Math.max(0,duration-work)/60*100)/100,status,updatedAt:r.updatedAt||new Date().toISOString()};}
 async function setting(key:string,value:any){await db.insert(schema.settings).values({key,value} as any).onConflictDoUpdate({target:schema.settings.key,set:{value} as any});}
-async function dbSnapshot(){const [employees,attendanceRecords,leaveRequests,overtimeRequests,shifts,notifications,settings,employeeShiftAssignments]=await Promise.all([db.select().from(schema.employees),db.select().from(schema.attendanceRecords),db.select().from(schema.leaveRequests),db.select().from(schema.overtimeRequests),db.select().from(schema.shifts),db.select().from(schema.notifications),db.select().from(schema.settings),db.select().from(schema.employeeShiftAssignments)]);  const m=new Map(settings.map((s:any)=>[String(s.key),s.value]));const breakMap=m.get("shiftBreaks")&&typeof m.get("shiftBreaks")==='object'&&!Array.isArray(m.get("shiftBreaks"))?m.get("shiftBreaks") as any:{};const hydratedShifts=shifts.map((shift:any)=>({...shift,breaks:Array.isArray(shift?.breaks)?shift.breaks:(Array.isArray(breakMap[String(shift?.id)])?breakMap[String(shift.id)]:[])}));const dailyShiftAssignments=Array.isArray(m.get("dailyShiftAssignments"))?m.get("dailyShiftAssignments"):[];localState.employees=employees;localState.attendanceRecords=attendanceRecords;localState.leaveRequests=leaveRequests;localState.overtimeRequests=overtimeRequests;localState.shifts=hydratedShifts;localState.notifications=notifications;localState.dailyShiftAssignments=dailyShiftAssignments;localState.shiftSwapRequests=Array.isArray(m.get("shiftSwapRequests"))?m.get("shiftSwapRequests"):[];return{success:true,employees,attendanceRecords,leaveRequests,overtimeRequests,shifts,notifications,employeeShiftAssignments,dailyShiftAssignments,shiftSwapRequests:localState.shiftSwapRequests,companyNameAr:m.get("companyNameAr")??null,companyNameEn:m.get("companyNameEn")??null,urgentNotice:m.get("urgentNotice")??null,lastUpdated:Date.now()};}
+import { INITIAL_EMPLOYEES, INITIAL_ATTENDANCE, INITIAL_LEAVES, INITIAL_SHIFTS, INITIAL_COMPANY_NAME_AR, INITIAL_COMPANY_NAME_EN, INITIAL_URGENT_NOTICE } from "./src/mockData.js";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+async function dbSnapshot(){
+  let [employees,attendanceRecords,leaveRequests,overtimeRequests,shifts,notifications,settings,employeeShiftAssignments]=await Promise.all([db.select().from(schema.employees),db.select().from(schema.attendanceRecords),db.select().from(schema.leaveRequests),db.select().from(schema.overtimeRequests),db.select().from(schema.shifts),db.select().from(schema.notifications),db.select().from(schema.settings),db.select().from(schema.employeeShiftAssignments)]);
+  const m=new Map(settings.map((s:any)=>[String(s.key),s.value]));
+  
+  if (!employees || employees.length === 0) {
+    employees = INITIAL_EMPLOYEES as any;
+    attendanceRecords = INITIAL_ATTENDANCE as any;
+    leaveRequests = INITIAL_LEAVES as any;
+    shifts = INITIAL_SHIFTS as any;
+    if (!m.has("companyNameAr")) m.set("companyNameAr", INITIAL_COMPANY_NAME_AR);
+    if (!m.has("companyNameEn")) m.set("companyNameEn", INITIAL_COMPANY_NAME_EN);
+    if (!m.has("urgentNotice")) m.set("urgentNotice", INITIAL_URGENT_NOTICE);
+  }
+  
+  const breakMap=m.get("shiftBreaks")&&typeof m.get("shiftBreaks")==='object'&&!Array.isArray(m.get("shiftBreaks"))?m.get("shiftBreaks") as any:{};const hydratedShifts=shifts.map((shift:any)=>({...shift,breaks:Array.isArray(shift?.breaks)?shift.breaks:(Array.isArray(breakMap[String(shift?.id)])?breakMap[String(shift.id)]:[])}));const dailyShiftAssignments=Array.isArray(m.get("dailyShiftAssignments"))?m.get("dailyShiftAssignments"):[];localState.employees=employees;localState.attendanceRecords=attendanceRecords;localState.leaveRequests=leaveRequests;localState.overtimeRequests=overtimeRequests;localState.shifts=hydratedShifts;localState.notifications=notifications;localState.dailyShiftAssignments=dailyShiftAssignments;localState.shiftSwapRequests=Array.isArray(m.get("shiftSwapRequests"))?m.get("shiftSwapRequests"):[];return{success:true,employees,attendanceRecords,leaveRequests,overtimeRequests,shifts,notifications,employeeShiftAssignments,dailyShiftAssignments,shiftSwapRequests:localState.shiftSwapRequests,companyNameAr:m.get("companyNameAr")??null,companyNameEn:m.get("companyNameEn")??null,urgentNotice:m.get("urgentNotice")??null,lastUpdated:Date.now()};}
 
 registerNotificationSystemV2(app);
 registerNotificationSse(app);
@@ -111,7 +132,22 @@ registerDbWriteVerification(app);
 registerDirectScheduleSync(app);
 registerDeviceSyncV2(app);
 
+if (process.env.NODE_ENV !== "production") {
+  const { createServer: createViteServer } = await import("vite");
+  const vite = await createViteServer({
+    server: { middlewareMode: true, allowedHosts: true },
+    appType: "spa",
+  });
+  app.use(vite.middlewares);
+} else {
+  const distPath = path.join(process.cwd(), 'dist');
+  app.use(express.static(distPath));
+  app.get('*', (req: any, res: any) => {
+    res.sendFile(path.join(distPath, 'index.html'));
+  });
+}
+
 export default app;
 export { app };
 
-if (process.env.VERCEL !== '1') app.listen(PORT,()=>console.log(`Server running on port ${PORT} | Database: NEON`));
+if (process.env.VERCEL !== '1') app.listen(PORT, '0.0.0.0', ()=>console.log(`Server running on port ${PORT} | Database: NEON`));

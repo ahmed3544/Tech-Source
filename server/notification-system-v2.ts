@@ -139,7 +139,7 @@ async function markRead(id: string, recipientId: string) {
   if (!target) { const byId = await db.select().from(schema.notifications).where(eq(schema.notifications.id, notificationId)); target = byId[0]; }
   if (!target || String(target.recipientId) !== userId) return false;
   const key = semanticKey(target); const matches = rows.filter((row: any) => semanticKey(row) === key); const ids = new Set(matches.map((row: any) => String(row.id))); ids.add(String(target.id));
-  await Promise.all(Array.from(ids).map((notificationIdToUpdate) => db.update(schema.notifications).set({ isRead: true, updatedAt: nowIso() }).where(eq(schema.notifications.id, notificationIdToUpdate))));
+  await Promise.all(Array.from(ids).map((notificationIdToUpdate: string) => db.update(schema.notifications).set({ isRead: true, updatedAt: nowIso() }).where(eq(schema.notifications.id, notificationIdToUpdate))));
   return true;
 }
 async function markAllRead(recipientId: string) {
