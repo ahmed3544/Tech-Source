@@ -48,7 +48,7 @@ export function registerNotificationSse(app: Express) {
     const clients = subscribers.get(userId) || new Set<Response>();
     clients.add(res);
     subscribers.set(userId, clients);
-    const heartbeat = setInterval(() => { try { res.write(': heartbeat\\n\\n'); } catch { removeSubscriber(userId, res); } }, 25000);
+    const heartbeat = setInterval(() => { try { res.write(': heartbeat\n\n'); } catch { removeSubscriber(userId, res); } }, 25000);
     const cleanup = () => { clearInterval(heartbeat); removeSubscriber(userId, res); };
     req.on('close', cleanup);
     res.on('error', cleanup);

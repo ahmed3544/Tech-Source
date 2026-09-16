@@ -109,17 +109,14 @@ app.use(async (req:any,res:any,next:any)=>{
   const items = Array.isArray(req.body?.notifications) ? req.body.notifications : [];
   if (!items.length) return next();
   try {
-    await ensureNotificationStorage();
+    const { saveOne } = await import('./server/notification-system-v2.js');
+    const { publishNotification } = await import('./server/notification-sse.js');
     for (const item of items) {
       if (!item?.id || !item?.recipientId) continue;
-      const id = String(item.id); const values:any = {};
+      const values:any = {};
       for (const key of ['id','recipientId','type','title','message','relatedEmployeeId','relatedLeaveId','relatedOvertimeId','relatedShiftSwapId','isRead','createdAt','updatedAt']) if (item[key] !== undefined) values[key] = item[key];
-      const existing = await db.select().from(schema.notifications).where(eq(schema.notifications.id,id));
-      if (!existing[0]) await db.insert(schema.notifications).values(values as any);
-      else {
-        const incoming = new Date(String(values.updatedAt || values.createdAt || '')).getTime(); const current = new Date(String((existing[0] as any).updatedAt || (existing[0] as any).createdAt || '')).getTime();
-        if (Number.isFinite(incoming) && (!Number.isFinite(current) || incoming >= current)) await db.update(schema.notifications).set(values as any).where(eq(schema.notifications.id,id));
-      }
+      const saved = await saveOne(values);
+      if (saved) publishNotification(saved);
     }
   } catch (error:any) {
     console.error('[sync-bridge] notification persistence failed:', error);

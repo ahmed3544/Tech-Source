@@ -110,7 +110,7 @@ async function listForUser(userId: string): Promise<NotificationRecord[]> {
   }
   return mergeDuplicates(readLocal().filter(item => item.recipientId === id).map(item => normalize(item)).filter((item): item is NotificationRecord => Boolean(item)));
 }
-async function saveOne(input: any): Promise<NotificationRecord | null> {
+export async function saveOne(input: any): Promise<NotificationRecord | null> {
   const item = normalize(input); if (!item) return null; await ensureReady();
   if (!USE_DATABASE) {
     const items = readLocal(); const key = semanticKey(item); const index = items.findIndex(existing => semanticKey(existing) === key || existing.id === item.id);
