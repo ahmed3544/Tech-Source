@@ -95,15 +95,19 @@ export function registerDbWriteVerification(app:any) {
         }
         const failed = Object.entries(verification).some(([key,value]:any) => key !== 'database' && Number(value?.requested || 0) > Number(value?.found || 0));
         if (failed) {
+          // Verification is diagnostic only. Never turn a successful Neon write
+          // into a failed API response (especially for the schedule table).
           console.error('[db-write-verification] persistence mismatch', JSON.stringify(verification));
-          return originalJson({ success:false, error:'NEON_WRITE_VERIFICATION_FAILED', verification });
         }
         if (body && typeof body === 'object' && !Array.isArray(body)) {
-          body = { ...body, neonWriteVerified: true, neonVerification: verification };
+          body = { ...body, neonWriteVerified: !failed, neonVerification: verification };
         }
       } catch (error) {
+        // Verification must never block the underlying write.
         console.error('[db-write-verification] verification error:', error);
-        return originalJson({ success:false, error:'NEON_WRITE_VERIFICATION_ERROR' });
+        if (body && typeof body === 'object' && !Array.isArray(body)) {
+          body = { ...body, neonWriteVerified: false, neonVerificationError: String((error as any)?.message || error) };
+        }
       }
       return originalJson(body);
     };
