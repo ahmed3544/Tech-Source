@@ -27,7 +27,10 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: 24
-          cache: npm
+          package-manager-cache: false
+
+      - name: Generate package lock
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
 
       - name: Setup Java
         uses: actions/setup-java@v5
@@ -39,7 +42,7 @@ jobs:
         uses: android-actions/setup-android@v4
 
       - name: Install dependencies
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
 
       - name: Ensure Capacitor Android platform is installed
         run: npm install @capacitor/android@^8.0.0 --save --no-audit --no-fund
