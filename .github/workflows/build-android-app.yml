@@ -56,10 +56,16 @@ jobs:
           rm -rf android
           npx cap add android
           test -d android
-          mkdir -p android/app
-          cp firebase/android/google-services.json android/app/google-services.json
+          if [ -f firebase/android/google-services.json ]; then
+            mkdir -p android/app
+            cp firebase/android/google-services.json android/app/google-services.json
+            echo "Firebase Android configuration copied."
+          else
+            echo "::warning::firebase/android/google-services.json is not present; building APK without native Firebase/FCM configuration."
+          fi
 
       - name: Configure Firebase Android
+        if: ${{ hashFiles('firebase/android/google-services.json') != '' }}
         run: |
           set -euo pipefail
           test -f firebase/android/google-services.json
