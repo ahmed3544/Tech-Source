@@ -4,11 +4,12 @@ import { PushNotifications } from '@capacitor/push-notifications';
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || '',
-  authDomain: 'hidden-tesla-xt8c4.firebaseapp.com',
-  projectId: 'hidden-tesla-xt8c4',
-  storageBucket: 'hidden-tesla-xt8c4.firebasestorage.app',
-  messagingSenderId: '501556944186',
-  appId: '1:501556944186:web:6ca49a703d63de2561c403'
+  authDomain: 'tech-source-attendance.firebaseapp.com',
+  projectId: 'tech-source-attendance',
+  storageBucket: 'tech-source-attendance.firebasestorage.app',
+  messagingSenderId: '745139448493',
+  appId: '1:745139448493:web:57dd3cd719cffba47f3424',
+  measurementId: 'G-LG6NZZ2PYL'
 };
 
 const app = getApps()[0] ?? initializeApp(firebaseConfig);
