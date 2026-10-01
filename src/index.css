@@ -166,7 +166,9 @@ textarea:focus-visible {
 #root h3,
 #root h4 {
   max-width: 100%;
-  overflow-wrap: anywhere;
+  word-break: normal;
+  overflow-wrap: break-word;
+  hyphens: none;
 }
 
 @media (pointer: coarse) {
