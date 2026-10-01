@@ -473,7 +473,7 @@ export function DataImportModal({
     const csvContent = `كود الموظف,اسم الموظف بالعربي,English Name,القسم,المسمى الوظيفي,English Job,البريد الإلكتروني,رقم الهاتف,رمز PIN
 101,محمد أحمد,Mohammed Ahmed,CX,موظف,Employee,mohammed@company.com,+201012345678,1234
 102,سارة خالد,Sara Khaled,CX,موظف,Employee,sara@company.com,+201012345679,2345
-103,عبدالله علي,Abdullah Ali,E-Commerce,موظف,Employee,abdullah@company.com,+201012345680,3456`;
+103,عبدالله علي,Abdullah Ali,CX,موظف,Employee,abdullah@company.com,+201012345680,3456`;
 
     const blob = new Blob(
       ['\uFEFF' + csvContent],
