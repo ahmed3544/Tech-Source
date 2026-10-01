@@ -4,7 +4,6 @@ export const INITIAL_SHIFTS: Shift[] = [];
 
 export const INITIAL_DEPARTMENTS: Department[] = [
   { id: "dep-2", nameAr: "CX", nameEn: "CX", managerName: "Mostafa Mohamed Kamel" },
-  { id: "dep-3", nameAr: "E-Commerce", nameEn: "E-Commerce", managerName: "-" },
   { id: "dep-4", nameAr: "Quality", nameEn: "Quality", managerName: "-" },
 ];
 
