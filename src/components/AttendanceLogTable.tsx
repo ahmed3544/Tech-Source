@@ -308,7 +308,6 @@ export const AttendanceLogTable: React.FC<AttendanceLogTableProps> = ({
     if (currentUser?.role === 'employee') {
       if (rec.employeeId !== currentUser.id) return false;
     } else if (currentUser?.role === 'leader') {
-      // If a specific department filter is chosen (e.g. 'E-Commerce'), honor the department selection
       if (selectedDept === 'all' && !activeSearch) {
         const hasExplicitTeam = employees.some(e => e.teamLeaderId === currentUser.id);
         if (hasExplicitTeam) {
