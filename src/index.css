@@ -567,5 +567,15 @@ html[dir="rtl"] #root .bg-white.rounded-3xl.border.border-slate-200.shadow-sm.ov
 #root table th,
 #root table td {
   white-space: normal !important;
-  word-break: break-word !important;
+  word-break: normal !important;
+  overflow-wrap: normal !important;
+}
+
+/* Reports: keep Arabic words intact inside the wide report tables. */
+#root .analytics-report-view table th,
+#root .analytics-report-view table td {
+  white-space: nowrap !important;
+  word-break: normal !important;
+  overflow-wrap: normal !important;
+  hyphens: none !important;
 }
