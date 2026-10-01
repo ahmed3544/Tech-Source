@@ -1164,7 +1164,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
 
   return (
     <div
-      className="max-w-7xl mx-auto p-4 sm:p-6 space-y-6 animate-fade-in"
+      className="analytics-report-view max-w-7xl mx-auto p-4 sm:p-6 space-y-6 animate-fade-in"
       dir={
         lang === 'ar'
           ? 'rtl'
