@@ -1170,6 +1170,10 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
           ? 'rtl'
           : 'ltr'
       }
+      style={{
+        wordBreak: 'keep-all',
+        overflowWrap: 'normal'
+      }}
     >
 
       {/* =====================================================
