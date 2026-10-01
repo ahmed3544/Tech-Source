@@ -1885,10 +1885,6 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
                 CX
               </option>
 
-              <option value="E-Commerce">
-                E-Commerce
-              </option>
-
               <option value="Quality">
                 Quality
               </option>
