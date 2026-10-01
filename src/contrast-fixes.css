@@ -96,6 +96,9 @@ html:not(.dark) #root .bg-gray-100 { color: #0f172a !important; }
   padding-inline: 0.75rem !important;
   text-align: right !important;
   white-space: nowrap !important;
+  word-break: normal !important;
+  overflow-wrap: normal !important;
+  writing-mode: horizontal-tb !important;
   overflow: visible !important;
   box-sizing: border-box;
 }
