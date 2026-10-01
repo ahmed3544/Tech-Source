@@ -429,7 +429,7 @@ export const AttendanceLogTable: React.FC<AttendanceLogTableProps> = ({
           >
             <option value="all">{lang === 'ar' ? 'جميع الأقسام' : 'All Departments'}</option>
             <option value="CX">CX</option>
-            <option value="E-Commerce">E-Commerce</option>
+            <option value="Department">Department</option>
             <option value="Quality">Quality</option>
           </select>
         </div>
