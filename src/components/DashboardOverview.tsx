@@ -546,7 +546,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
               {lang === 'ar' ? 'توزيع الحضور حسب الأقسام' : 'Department Attendance'}
             </h3>
 
-            {['CX', 'E-Commerce', 'Quality'].map((dept) => {
+            {['CX', 'Quality'].map((dept) => {
               const deptEmps = employees.filter(e => e.department === dept);
               const deptPresent = todayRecords.filter(r => deptEmps.some(e => e.id === r.employeeId) && r.checkIn).length;
               const pct = deptEmps.length > 0 ? Math.round((deptPresent / deptEmps.length) * 100) : 0;
