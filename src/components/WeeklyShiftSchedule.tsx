@@ -96,8 +96,32 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
     }
   }, [suppliedEmployees, suppliedShifts, suppliedAssignments, suppliedUser, isLeader]);
 
-\n  // The schedule has its own authoritative sync channel so an employee device\n  // receives leader/admin changes even when the general /api/data poll is stale.\n  useEffect(() => {\n    let cancelled = false;\n    const pullSchedule = async () => {\n      try {\n        const response = await fetch(`/api/schedule-sync?_=${Date.now()}`, {\n          method: 'GET',\n          cache: 'no-store',\n          headers: { Accept: 'application/json', 'Cache-Control': 'no-cache', Pragma: 'no-cache' },\n        });\n        if (!response.ok) return;\n        const data = await response.json();\n        if (!cancelled && Array.isArray(data?.dailyShiftAssignments)) {\n          setAssignments(data.dailyShiftAssignments);\n          try { localStorage.setItem('daily_shift_assignments', JSON.stringify(data.dailyShiftAssignments)); } catch {}\n        }\n      } catch {}\n    };\n    void pullSchedule();\n    const interval = window.setInterval(pullSchedule, 1500);\n    return () => { cancelled = true; window.clearInterval(interval); };\n  }, []);\n
-  const visibleEmployees = useMemo(() => {
+
+  // The schedule has its own authoritative sync channel so an employee device
+  // receives leader/admin changes even when the general /api/data poll is stale.
+  useEffect(() => {
+    let cancelled = false;
+    const pullSchedule = async () => {
+      try {
+        const response = await fetch(`/api/schedule-sync?_=${Date.now()}`, {
+          method: 'GET',
+          cache: 'no-store',
+          headers: { Accept: 'application/json', 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
+        });
+        if (!response.ok) return;
+        const data = await response.json();
+        if (!cancelled && Array.isArray(data?.dailyShiftAssignments)) {
+          setAssignments(data.dailyShiftAssignments);
+          try { localStorage.setItem('daily_shift_assignments', JSON.stringify(data.dailyShiftAssignments)); } catch {}
+        }
+      } catch {}
+    };
+    void pullSchedule();
+    const interval = window.setInterval(pullSchedule, 1500);
+    return () => { cancelled = true; window.clearInterval(interval); };
+  }, []);
+
+    const visibleEmployees = useMemo(() => {
     if (!isLeader) return employees.filter(e => sameId(e.id, currentUser?.id));
     if (currentUser?.role === 'admin') return employees;
     const team = employees.filter(e => sameId(e.teamLeaderId, currentUser?.id));
