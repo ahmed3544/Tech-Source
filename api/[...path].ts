@@ -22,6 +22,95 @@ async function directData(res: any) {
   return res.json({ success: true, employees, attendanceRecords, leaveRequests, overtimeRequests, shifts: hydratedShifts, notifications, employeeShiftAssignments, dailyShiftAssignments: Array.isArray(settingsMap.get('dailyShiftAssignments')) ? settingsMap.get('dailyShiftAssignments') : [], shiftSwapRequests: Array.isArray(settingsMap.get('shiftSwapRequests')) ? settingsMap.get('shiftSwapRequests') : [], companyNameAr: settingsMap.get('companyNameAr') ?? null, companyNameEn: settingsMap.get('companyNameEn') ?? null, urgentNotice: settingsMap.get('urgentNotice') ?? null, lastUpdated: Date.now() });
 }
 
+function normalizeDirectSchedule(item: any, fallbackUpdatedAt: string) {
+  const employeeId = String(item?.employeeId ?? item?.employee_id ?? '').trim();
+  const date = String(item?.date ?? item?.scheduleDate ?? item?.schedule_date ?? '').slice(0, 10);
+  const shiftId = String(item?.shiftId ?? item?.shift_id ?? '').trim();
+  const status = String(item?.status ?? '').trim().toUpperCase();
+  const clear = Boolean(item?.clear || item?.isClear || item?.is_clear || status === 'CLEAR');
+  const isOffDay = !clear && !shiftId && (
+    item?.isOffDay === true ||
+    item?.is_off_day === true ||
+    String(item?.isOffDay ?? item?.is_off_day ?? '').toLowerCase() === 'true' ||
+    status === 'OFF'
+  );
+  return {
+    employeeId,
+    date,
+    shiftId: clear || isOffDay ? '' : shiftId,
+    isOffDay,
+    clear,
+    assignedBy: item?.assignedBy ?? item?.assigned_by ?? null,
+    updatedAt: String(item?.updatedAt ?? item?.updated_at ?? fallbackUpdatedAt),
+  };
+}
+
+async function directScheduleSync(req: any, res: any) {
+  const incomingRaw = req.body?.dailyShiftAssignments;
+  if (!Array.isArray(incomingRaw)) {
+    return res.status(400).json({ success: false, error: 'dailyShiftAssignments must be an array' });
+  }
+
+  const stamp = new Date().toISOString();
+  const incoming = incomingRaw
+    .map((item: any) => normalizeDirectSchedule(item, stamp))
+    .filter((item: any) => item.employeeId && /^\d{4}-\d{2}-\d{2}$/.test(item.date));
+
+  const rows = await db.select().from(schema.settings).where(eq(schema.settings.key, 'dailyShiftAssignments'));
+  const existing = Array.isArray(rows[0]?.value) ? rows[0].value : [];
+  const merged = new Map<string, any>();
+
+  for (const item of existing) {
+    const normalized = normalizeDirectSchedule(item, stamp);
+    if (normalized.employeeId && /^\d{4}-\d{2}-\d{2}$/.test(normalized.date)) {
+      merged.set(normalized.employeeId + '|' + normalized.date, normalized);
+    }
+  }
+
+  for (const item of incoming) {
+    const key = item.employeeId + '|' + item.date;
+    const previous = merged.get(key);
+    const previousTime = new Date(String(previous?.updatedAt || '')).getTime();
+    const incomingTime = new Date(String(item.updatedAt || stamp)).getTime();
+    if (!previous || !Number.isFinite(previousTime) || !Number.isFinite(incomingTime) || incomingTime >= previousTime) {
+      if (item.clear) merged.delete(key);
+      else merged.set(key, item);
+    }
+  }
+
+  const assignments = Array.from(merged.values()).map((item: any) => ({
+    employeeId: item.employeeId,
+    date: item.date,
+    shiftId: item.shiftId || '',
+    isOffDay: Boolean(item.isOffDay),
+    assignedBy: item.assignedBy ?? undefined,
+    updatedAt: item.updatedAt || stamp,
+  }));
+
+  if (rows[0]) {
+    await db.update(schema.settings).set({ value: assignments } as any).where(eq(schema.settings.key, 'dailyShiftAssignments'));
+  } else {
+    await db.insert(schema.settings).values({ key: 'dailyShiftAssignments', value: assignments } as any);
+  }
+
+  const stampKey = '__sync_updated_at:dailyShiftAssignments';
+  const stampRows = await db.select().from(schema.settings).where(eq(schema.settings.key, stampKey));
+  if (stampRows[0]) {
+    await db.update(schema.settings).set({ value: stamp } as any).where(eq(schema.settings.key, stampKey));
+  } else {
+    await db.insert(schema.settings).values({ key: stampKey, value: stamp } as any);
+  }
+
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  return res.json({
+    success: true,
+    dailyShiftAssignments: assignments,
+    updatedAt: stamp,
+    lastUpdated: Date.now(),
+  });
+}
+
 async function directNotifications(req: any, res: any) {
   const userId = String(req.query?.userId || '').trim();
   if (!userId) return res.json({ success: true, notifications: [] });
@@ -114,6 +203,7 @@ function enrichLeaveAttendance(body: any) {
 export default async function handler(req: any, res: any) {
   if (isPushRegister(req)) return registerPushToken(req, res);
   try {
+    if (req.method === 'POST' && isPath(req, '/api/schedule-sync')) return await directScheduleSync(req, res);
     if (req.method === 'GET' && isPath(req, '/api/data')) { res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate'); res.setHeader('Pragma', 'no-cache'); return await directData(res); }
     if (req.method === 'GET' && isPath(req, '/api/notifications')) { res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate'); res.setHeader('Pragma', 'no-cache'); return await directNotifications(req, res); }
     if (req.method === 'PUT' && isPath(req, '/api/notifications/mark-all-read')) return await directMarkAllRead(req, res);
