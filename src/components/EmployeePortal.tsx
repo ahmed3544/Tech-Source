@@ -7,7 +7,6 @@ import {
   CheckCircle2, 
 Calendar, 
   FilePlus, 
-  Coffee,
     RotateCcw,
   Camera,
   Upload,
@@ -926,7 +925,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
               ) : todayRecord?.checkOut ? (
                 <span className="text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded-full border border-slate-200 dark:border-slate-700">تم الانصراف ({formatTime(todayRecord.checkOut, lang)})</span>
               ) : (
-                <span className="text-amber-700 bg-amber-100 px-3 py-1 rounded-full border border-amber-200">لم يتم التسجيل</span>
+                <span className="text-amber-700 bg-amber-100 px-3 py-1 rounded-full border border-amber-200">{lang === 'ar' ? 'لم يتم التسجيل' : 'Not Registered'}</span>
               )}
             </div>
           </div>
@@ -1164,11 +1163,10 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
                 : 'bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 shadow-xs'
             }`}
           >
-            <Coffee className="w-4 h-4 text-amber-600" />
             <span>
               {isOnLeaveToday
                 ? (lang === 'ar' ? 'الاستراحة معطلة (إجازة )' : 'Break Disabled (Leave)')
-                : (lang === 'ar' ? 'بدء استراحة ☕' : 'Start Break ☕')}
+                : (lang === 'ar' ? 'بدء استراحة' : 'Start Break')}
             </span>
           </button>
 
