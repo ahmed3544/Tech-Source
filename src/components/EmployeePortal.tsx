@@ -794,7 +794,7 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
                 {lang === 'ar' ? emp.nameAr : emp.nameEn}
               </h2>
             </div>
-            <p className="text-xs text-slate-300 mt-1">{emp.jobTitleAr} • قسم {emp.department}</p>
+            <p className="text-xs text-slate-300 mt-1">{lang === 'ar' ? `${emp.jobTitleAr} • قسم ${emp.department}` : `${emp.jobTitleEn || emp.jobTitleAr} • Department ${emp.department}`}</p>
             
           </div>
         </div>
