@@ -106,6 +106,7 @@ export interface Company {
 
 export interface Employee {
   id: string;
+  companyId?: string;
   code: string; // e.g. "EMP001"
   nameAr: string;
   nameEn: string;
