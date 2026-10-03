@@ -84,7 +84,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [selectedBreak, setSelectedBreak] = useState<{ name: string; startTime: string; endTime: string; durationMinutes: number } | null>(null);
 
-  const isLeader = currentUser?.role === 'leader' || currentUser?.role === 'admin';
+  const isLeader = ['leader','admin','company_admin','platform_admin'].includes(String(currentUser?.role || ''));
 
   useEffect(() => {
     setEmployees(suppliedEmployees || []);
