@@ -78,7 +78,7 @@ export const Header: React.FC<HeaderProps> = (props) => {
   useEffect(() => { const timer = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(timer); }, []);
   const timeStr = formatTime(now, lang);
   const dateStr = formatDate(now.toISOString(), lang);
-  const isLeader = currentUser?.role === 'leader' || !currentUser;
+  const isLeader = !currentUser || ['leader','admin','company_admin','platform_admin'].includes(String(currentUser.role || ''));
   const matchingEmployees = React.useMemo(() => { if (!searchTerm.trim() || !employees.length) return []; const q = searchTerm.trim().toLowerCase(); return employees.filter(e => (e.nameAr && e.nameAr.toLowerCase().includes(q)) || (e.nameEn && e.nameEn.toLowerCase().includes(q)) || (e.code && e.code.toLowerCase().includes(q)) || (e.department && e.department.toLowerCase().includes(q)) || (e.jobTitleAr && e.jobTitleAr.toLowerCase().includes(q))); }, [searchTerm, employees]);
 
   return (
