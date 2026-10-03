@@ -22,6 +22,7 @@ export const INITIAL_URGENT_NOTICE: UrgentNotice | null = {
 export const INITIAL_EMPLOYEES: Employee[] = [
   {
     "id": "emp-002",
+    "companyId": "tech-source",
     "code": "EMP002",
     "nameAr": "Ahmed Mahmoud Ahmed Mahmoud",
     "nameEn": "Ahmed Mahmoud Ahmed Mahmoud",
@@ -43,6 +44,7 @@ export const INITIAL_EMPLOYEES: Employee[] = [
   },
   {
     "id": "emp-004",
+    "companyId": "tech-source",
     "code": "EMP004",
     "nameAr": "Eslam Mashref Shehata",
     "nameEn": "Eslam Mashref Shehata",
@@ -64,6 +66,7 @@ export const INITIAL_EMPLOYEES: Employee[] = [
   },
   {
     "id": "emp-005",
+    "companyId": "tech-source",
     "code": "EMP005",
     "nameAr": "Goyes Emad George Ebrahim",
     "nameEn": "Goyes Emad George Ebrahim",
@@ -86,6 +89,7 @@ export const INITIAL_EMPLOYEES: Employee[] = [
 
   {
     "id": "emp-008",
+    "companyId": "tech-source",
     "code": "EMP008",
     "nameAr": "Mohamed Ehab Osman Ahmed",
     "nameEn": "Mohamed Ehab Osman Ahmed",
@@ -107,6 +111,7 @@ export const INITIAL_EMPLOYEES: Employee[] = [
   },
   {
     "id": "emp-011",
+    "companyId": "tech-source",
     "code": "EMP011",
     "nameAr": "Mostafa mohamed kamel abou Seada",
     "nameEn": "Mostafa mohamed kamel abou Seada",
@@ -128,6 +133,7 @@ export const INITIAL_EMPLOYEES: Employee[] = [
   },
   {
     "id": "emp-012",
+    "companyId": "tech-source",
     "code": "EMP012",
     "nameAr": "Nihal Gamal Omeira Hassan",
     "nameEn": "Nihal Gamal Omeira Hassan",
@@ -149,6 +155,7 @@ export const INITIAL_EMPLOYEES: Employee[] = [
   },
   {
     "id": "emp-015",
+    "companyId": "tech-source",
     "code": "EMP015",
     "nameAr": "Zeinab Mohamed Saber Saeed",
     "nameEn": "Zeinab Mohamed Saber Saeed",
