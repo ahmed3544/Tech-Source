@@ -33,6 +33,8 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
   const [deletingEmployeeId, setDeletingEmployeeId] = useState<string | null>(null);
   const [showAvatarModal, setShowAvatarModal] = useState(false);
   const [showCompanyManager, setShowCompanyManager] = useState(false);
+  const viewerRole = (() => { try { return JSON.parse(localStorage.getItem('logged_in_user') || 'null')?.role || ''; } catch { return ''; } })();
+  const canManageCompanies = ['leader','admin','platform_admin'].includes(String(viewerRole));
   const [form, setForm] = useState({ nameAr:'', nameEn:'', code:'', department:'CX', jobTitleAr:'', jobTitleEn:'', email:'', phone:'', pin:'Tech_123', shiftId:'', role:'employee' as 'employee'|'leader', annualLeaveBalance:15, avatar:'' });
 
   const activeSearch = globalSearchTerm !== undefined && globalSearchTerm !== '' ? globalSearchTerm : searchTerm;
@@ -73,7 +75,7 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
         </div>
         <div className="flex items-center gap-2">
           {onOpenImportModal && <button onClick={onOpenImportModal} className="px-4 py-2.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold text-xs">{lang === 'ar' ? 'استيراد Excel / CSV' : 'Import Excel / CSV'}</button>}
-          <button onClick={() => setShowCompanyManager(true)} className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold text-xs"><Building2 className="w-4 h-4" />{lang === 'ar' ? 'إدارة الشركات' : 'Companies'}</button>
+          {canManageCompanies && <button onClick={() => setShowCompanyManager(true)} className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold text-xs"><Building2 className="w-4 h-4" />{lang === 'ar' ? 'إدارة الشركات' : 'Companies'}</button>}
           <button onClick={openAdd} className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 text-white font-bold text-xs"><Plus className="w-4 h-4" />{lang === 'ar' ? 'إضافة موظف جديد' : 'Add New Employee'}</button>
         </div>
       </div>
