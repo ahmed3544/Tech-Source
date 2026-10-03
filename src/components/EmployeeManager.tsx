@@ -55,7 +55,7 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
     e.preventDefault();
     if (!form.nameAr.trim() || !form.code.trim()) return;
     if (editingEmployee) onUpdateEmployee({ ...editingEmployee, ...form, nameAr:form.nameAr.trim(), nameEn:form.nameEn.trim() || form.nameAr.trim(), annualLeaveBalance:Number(form.annualLeaveBalance) || 0 });
-    else onAddEmployee({ id:`emp-${Date.now()}`, ...form, nameAr:form.nameAr.trim(), nameEn:form.nameEn.trim() || form.nameAr.trim(), avatar:form.avatar || '', email:form.email || `${form.code.toLowerCase()}@techsource-gds.com`, phone:form.phone || '', joinedDate:getTodayString(), status:'active', annualLeaveBalance:Number(form.annualLeaveBalance) || 0 });
+    else onAddEmployee({ id:`emp-${Date.now()}`, companyId: 'tech-source', ...form, nameAr:form.nameAr.trim(), nameEn:form.nameEn.trim() || form.nameAr.trim(), avatar:form.avatar || '', email:form.email || `${form.code.toLowerCase()}@techsource-gds.com`, phone:form.phone || '', joinedDate:getTodayString(), status:'active', annualLeaveBalance:Number(form.annualLeaveBalance) || 0 });
     setEditingEmployee(null); setShowAddModal(false);
   };
   const shiftFor = (emp: Employee) => shifts.find(s => s.id === emp.shiftId) || shifts[0] || { startTime:'09:00', endTime:'17:00', nameAr:'الوردية الصباحية', nameEn:'Morning Shift' } as Shift;
