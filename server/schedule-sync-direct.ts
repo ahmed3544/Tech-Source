@@ -42,7 +42,30 @@ export function registerDirectScheduleSync(app:any) {
   app.post('/api/rotation-patterns',async(req:any,res:any)=>{try{await persistRotationPatterns(Array.isArray(req.body?.rotationPatterns)?req.body.rotationPatterns:(req.body?.pattern?[req.body.pattern]:[]),Array.isArray(req.body?.rotationPatternItems)?req.body.rotationPatternItems:[]);await deleteRotationRows(req.body?.deletedRotationPatternIds,req.body?.deletedRotationPatternItemIds);return res.json({success:true,...(await rotationSnapshot())});}catch(error){console.error('[rotation-patterns] POST failed',error);return res.status(500).json({success:false,error:'ROTATION_PATTERNS_SAVE_FAILED'});}});
   app.use(async(req:any,res:any,next:any)=>{const pathName=String(req.path||'').split('?')[0];if(req.method!=='POST'||!['/api/sync','/sync'].includes(pathName))return next();const body=req.body||{};const hasRotationPayload=Array.isArray(body.rotationPatterns)||Array.isArray(body.rotationPatternItems)||Array.isArray(body.deletedRotationPatternIds)||Array.isArray(body.deletedRotationPatternItemIds);if(!hasRotationPayload)return next();try{await persistRotationPatterns(body.rotationPatterns||[],body.rotationPatternItems||[]);await deleteRotationRows(body.deletedRotationPatternIds,body.deletedRotationPatternItemIds);return next();}catch(error){console.error('[rotation-sync] persistence failed',error);return res.status(500).json({success:false,error:'Rotation sync failed'});}});
 
-  app.get('/api/schedule-sync',async(_req:any,res:any)=>{\n    try {\n      const rows=await db.select().from(schema.settings).where(eq(schema.settings.key,'dailyShiftAssignments'));\n      const assignments=Array.isArray(rows[0]?.value)?rows[0].value.map(normalizeAssignment).filter((x:any)=>x.employeeId&&/^\\d{4}-\\d{2}-\\d{2}$/.test(x.date)).map((x:any)=>({employeeId:x.employeeId,date:x.date,shiftId:x.shiftId||'',isOffDay:Boolean(x.isOffDay),assignedBy:x.assignedBy,updatedAt:x.updatedAt})):[];\n      return res.json({success:true,dailyShiftAssignments:assignments});\n    } catch(error){\n      console.error('[schedule-sync] GET failed',error);\n      return res.status(500).json({success:false,error:'DIRECT_SCHEDULE_READ_FAILED'});\n    }\n  });\n\n  app.post('/api/schedule-sync',async(req:any,res:any)=>{
+  app.get('/api/schedule-sync', async (_req:any, res:any) => {
+    try {
+      const rows = await db.select().from(schema.settings).where(eq(schema.settings.key, 'dailyShiftAssignments'));
+      const assignments = Array.isArray(rows[0]?.value)
+        ? rows[0].value
+            .map(normalizeAssignment)
+            .filter((x:any) => x.employeeId && /^\d{4}-\d{2}-\d{2}$/.test(x.date))
+            .map((x:any) => ({
+              employeeId: x.employeeId,
+              date: x.date,
+              shiftId: x.shiftId || '',
+              isOffDay: Boolean(x.isOffDay),
+              assignedBy: x.assignedBy,
+              updatedAt: x.updatedAt,
+            }))
+        : [];
+      return res.json({ success: true, dailyShiftAssignments: assignments });
+    } catch (error) {
+      console.error('[schedule-sync] GET failed', error);
+      return res.status(500).json({ success: false, error: 'DIRECT_SCHEDULE_READ_FAILED' });
+    }
+  });
+
+  app.post('/api/schedule-sync',async(req:any,res:any)=>{
     const requestId = `${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
     try {
       console.log(`[schedule-sync] ${requestId} POST received`, { count: Array.isArray(req.body?.dailyShiftAssignments) ? req.body.dailyShiftAssignments.length : -1 });
