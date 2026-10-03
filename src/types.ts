@@ -1,6 +1,6 @@
 export type Language = 'ar' | 'en';
 
-export type Role = 'leader' | 'employee' | 'admin';
+export type Role = 'leader' | 'employee' | 'admin' | 'company_admin' | 'platform_admin';
 
 export type PunchType = 'check_in' | 'check_out' | 'break_start' | 'break_end';
 
@@ -91,6 +91,17 @@ export interface ShiftSwapRequest {
   reviewedBy?: string;
   reviewedAt?: string;
   targetRespondedAt?: string;
+}
+
+export interface Company {
+  id: string;
+  code: string;
+  nameAr: string;
+  nameEn: string;
+  logo?: string;
+  status: 'active' | 'inactive';
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Employee {
