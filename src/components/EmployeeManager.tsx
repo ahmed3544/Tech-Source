@@ -35,7 +35,7 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
   const [showCompanyManager, setShowCompanyManager] = useState(false);
   const viewerRole = (() => { try { return JSON.parse(localStorage.getItem('logged_in_user') || 'null')?.role || ''; } catch { return ''; } })();
   const canManageCompanies = ['leader','admin','platform_admin'].includes(String(viewerRole));
-  const [form, setForm] = useState({ nameAr:'', nameEn:'', code:'', department:'CX', jobTitleAr:'', jobTitleEn:'', email:'', phone:'', pin:'Tech_123', shiftId:'', role:'employee' as 'employee'|'leader', annualLeaveBalance:15, avatar:'' });
+  const [form, setForm] = useState({ nameAr:'', nameEn:'', code:'', department:'CX', jobTitleAr:'', jobTitleEn:'', email:'', phone:'', pin:'Tech_123', role:'employee' as 'employee'|'leader', annualLeaveBalance:15, avatar:'' });
 
   const activeSearch = globalSearchTerm !== undefined && globalSearchTerm !== '' ? globalSearchTerm : searchTerm;
   const departments = useMemo(() => Array.from(new Set(employees.map(e => e.department).filter(Boolean))), [employees]);
@@ -47,11 +47,11 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
     });
   }, [employees, activeSearch, selectedDept]);
 
-  const resetForm = () => setForm({ nameAr:'', nameEn:'', code:`EMP${String(employees.length + 1).padStart(3,'0')}`, department:'CX', jobTitleAr:'', jobTitleEn:'', email:'', phone:'', pin:'Tech_123', shiftId:shifts[0]?.id || 'shift-1', role:'employee', annualLeaveBalance:15, avatar:'' });
+  const resetForm = () => setForm({ nameAr:'', nameEn:'', code:`EMP${String(employees.length + 1).padStart(3,'0')}`, department:'CX', jobTitleAr:'', jobTitleEn:'', email:'', phone:'', pin:'Tech_123', role:'employee', annualLeaveBalance:15, avatar:'' });
   const openAdd = () => { resetForm(); setShowAddModal(true); };
   const openEdit = (emp: Employee) => {
     setEditingEmployee(emp);
-    setForm({ nameAr:emp.nameAr || '', nameEn:emp.nameEn || '', code:emp.code || '', department:emp.department || 'CX', jobTitleAr:emp.jobTitleAr || '', jobTitleEn:emp.jobTitleEn || '', email:emp.email || '', phone:emp.phone || '', pin:emp.pin || 'Tech_123', shiftId:emp.shiftId || shifts[0]?.id || 'shift-1', role:emp.role === 'leader' ? 'leader' : 'employee', annualLeaveBalance:Number(emp.annualLeaveBalance ?? ((emp.casualLeaveBalance ?? 7) + (emp.regularLeaveBalance ?? 8))), avatar:emp.avatar || '' });
+    setForm({ nameAr:emp.nameAr || '', nameEn:emp.nameEn || '', code:emp.code || '', department:emp.department || 'CX', jobTitleAr:emp.jobTitleAr || '', jobTitleEn:emp.jobTitleEn || '', email:emp.email || '', phone:emp.phone || '', pin:emp.pin || 'Tech_123', role:emp.role === 'leader' ? 'leader' : 'employee', annualLeaveBalance:Number(emp.annualLeaveBalance ?? ((emp.casualLeaveBalance ?? 7) + (emp.regularLeaveBalance ?? 8))), avatar:emp.avatar || '' });
   };
   const saveEmployee = (e: React.FormEvent) => {
     e.preventDefault();
