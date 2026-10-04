@@ -803,8 +803,8 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
         {(currentUser?.role === 'admin' || currentUser?.role === 'leader') && employees.length > 1 ? (
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 shrink-0 w-full md:w-auto">
             {/* Searchable Employee Dropdown */}
-            <div className="bg-slate-800/90 p-3 rounded-2xl border border-slate-700/80 space-y-1 relative w-full sm:w-72">
-              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+            <div className="bg-white p-3 rounded-2xl border border-slate-200 space-y-1 relative w-full sm:w-72">
+              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                 {lang === 'ar' ? 'استعراض ورصد حساب موظف:' : 'Inspect & Manage Employee:'}
               </label>
               <div className="relative">
@@ -818,13 +818,13 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
                   }}
                   onFocus={() => setShowEmpDropdown(true)}
                   placeholder={lang === 'ar' ? 'بحث بالاسم أو الكود (EMP001)...' : 'Search by name or code...'}
-                  className="bg-slate-900 border border-slate-700 rounded-xl pr-8 pl-3 py-1.5 text-xs font-bold text-white w-full focus:outline-none focus:border-emerald-500 font-sans"
+                  className="bg-white border border-slate-200 rounded-xl pr-8 pl-3 py-1.5 text-xs font-bold text-slate-800 w-full focus:outline-none focus:border-emerald-500 font-sans"
                 />
               </div>
 
               {/* Autocomplete Dropdown List */}
               {showEmpDropdown && (
-                <div className="absolute left-0 right-0 top-full mt-1 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50 max-h-64 overflow-y-auto divide-y divide-slate-800">
+                <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-2xl z-[9999] max-h-64 overflow-y-auto divide-y divide-slate-100 pointer-events-auto">
                   {employees
                     .filter(e => {
                       if (!empSearchTerm.trim()) return true;
@@ -845,8 +845,8 @@ onUpdateRecord?.(recordData);    setShowPastDateModal(false);
                           setEmpSearchTerm(`${e.code} - ${e.nameAr}`);
                           setShowEmpDropdown(false);
                         }}
-                        className={`w-full text-right px-3 py-2 text-xs flex items-center justify-between hover:bg-slate-800 transition ${
-                          e.id === currentEmpId ? 'bg-emerald-950/80 text-emerald-400 font-bold' : 'text-slate-200'
+                        className={`w-full text-right px-3 py-2 text-xs flex items-center justify-between hover:bg-slate-50 transition ${
+                          e.id === currentEmpId ? 'bg-emerald-50 text-emerald-700 font-bold' : 'text-slate-700'
                         }`}
                       >
                         <div>
