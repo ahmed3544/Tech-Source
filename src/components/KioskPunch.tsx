@@ -330,45 +330,6 @@ export const KioskPunch: React.FC<KioskPunchProps> = ({
         </div>
       </div>
 
-      {/* Warning Notice: Check in after 09:00 AM late or after 10:00 AM absent indicator */}
-      {(() => {
-        const currentTotalMins = currentTime.getHours() * 60 + currentTime.getMinutes();
-        if (currentTotalMins >= 600) {
-          return (
-            <div className="p-4 rounded-2xl bg-red-600 text-white border-2 border-red-700 shadow-xl flex items-center justify-between gap-3 text-xs sm:text-sm font-bold">
-              <div className="flex items-center gap-2.5">
-                <ShieldAlert className="w-5 h-5 shrink-0 text-white animate-bounce" />
-                <span className="leading-relaxed">
-                  {lang === 'ar' 
-                    ? 'تجاوز وقت التسجيل الساعة 10:00 صباحًا. سيتم تسجيل الحضور كـ "غائب".' 
-                    : 'Check-in after 10:00 AM will be recorded as "Absent".'}
-                </span>
-              </div>
-              <span className="font-mono font-black bg-white dark:bg-slate-900 text-red-700 px-3 py-1.5 rounded-xl shadow-md text-xs shrink-0">
-                +10:00 AM (غائب)
-              </span>
-            </div>
-          );
-        } else if (lateCheck.isLate) {
-          return (
-            <div className="p-4 rounded-2xl bg-amber-500 text-slate-950 border-2 border-amber-600 shadow-xl flex items-center justify-between gap-3 text-xs sm:text-sm font-bold">
-              <div className="flex items-center gap-2.5">
-                <AlertTriangle className="w-5 h-5 shrink-0 text-slate-950 animate-bounce" />
-                <span className="leading-relaxed">
-                  {lang === 'ar' 
-                    ? `التسجيل بعد الساعة 09:10 صباحًا يُسجل كـ "متأخر" (${lateCheck.lateMinutes} دقيقة و${lateCheck.lateSeconds} ثانية).`
-                    : `Check-in after 09:00 AM is recorded as "Late" (${lateCheck.formattedLateDuration}).`}
-                </span>
-              </div>
-              <span className="font-mono font-black bg-slate-950 text-amber-300 px-3 py-1.5 rounded-xl shadow-md text-xs shrink-0">
-                +09:00 AM (تأخير)
-              </span>
-            </div>
-          );
-        }
-        return null;
-      })()}
-
       {/* Success Notification Banner */}
       <AnimatePresence>
         {successToast && (
