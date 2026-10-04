@@ -253,7 +253,10 @@ export const NotificationsPage: React.FC<Props> = ({ currentUserId, lang, onBack
   };
 
   return (
-    <section dir={lang === 'ar' ? 'rtl' : 'ltr'} className="min-h-[calc(100vh-72px)] w-full bg-slate-50 dark:bg-slate-800/50 dark:bg-slate-950 px-3 sm:px-6 py-4 sm:py-6">
+    <section
+      dir={lang === 'ar' ? 'rtl' : 'ltr'}
+      className="relative z-10 w-full min-h-[calc(100dvh-72px)] bg-slate-50 dark:bg-slate-950 px-3 sm:px-6 py-4 sm:py-6 pb-20 overflow-visible"
+    >
       <div className="max-w-5xl mx-auto">
         <div className="flex items-center justify-between gap-3 mb-5">
           <div className="flex items-center gap-3">
