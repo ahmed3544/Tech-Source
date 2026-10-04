@@ -3,6 +3,32 @@ import { db } from "../src/db/index.js";
 import * as schema from "../src/db/schema.js";
 import { eq } from "drizzle-orm";
 
+async function directEmployeeUpdate(req: any, res: any) {
+  const id = String(req.url || '').split('?')[0].split('/').filter(Boolean).pop()?.trim() || '';
+  if (!id || !req.body || typeof req.body !== 'object') return res.status(400).json({ success:false, error:'Invalid employee payload' });
+  const allowed = ['code','nameAr','nameEn','avatar','email','phone','department','jobTitleAr','jobTitleEn','pin','role','joinedDate','status','annualLeaveBalance','casualLeaveBalance','regularLeaveBalance','sickLeaveBalance','isPhotoRemoved'];
+  const values:any = {};
+  for (const key of allowed) {
+    if (req.body[key] !== undefined && !(key === 'pin' && String(req.body[key]) === '***')) values[key] = req.body[key];
+  }
+  if (values.role !== undefined) {
+    const role = String(values.role).trim().toLowerCase();
+    values.role = role === 'leader' || role === 'team_leader' || role === 'team-leader' || role === 'tl' ? 'leader' : role === 'admin' ? 'admin' : 'employee';
+  }
+  values.updatedAt = new Date().toISOString();
+  try {
+    const existing = await db.select().from(schema.employees).where(eq(schema.employees.id, id));
+    if (!existing[0]) return res.status(404).json({ success:false, error:'Employee not found' });
+    await db.update(schema.employees).set(values as any).where(eq(schema.employees.id, id));
+    const employee = (await db.select().from(schema.employees).where(eq(schema.employees.id, id)))[0];
+    res.setHeader('Cache-Control','no-store, no-cache, must-revalidate, proxy-revalidate');
+    return res.json({ success:true, employee, lastUpdated:Date.now() });
+  } catch (error:any) {
+    console.error('[direct-api] employee update failed:', error);
+    return res.status(500).json({ success:false, error:String(error?.message || error) });
+  }
+}
+
 async function directData(res: any) {
   const [employees, attendanceRecords, leaveRequests, overtimeRequests, shifts, notifications, settings] = await Promise.all([
     db.select().from(schema.employees),
@@ -204,6 +230,7 @@ export default async function handler(req: any, res: any) {
   if (isPushRegister(req)) return registerPushToken(req, res);
   try {
     if (req.method === 'POST' && isPath(req, '/api/schedule-sync')) return await directScheduleSync(req, res);
+    if (req.method === 'PUT' && /^\/api\/employees\/[^/]+$/.test(String(req.url || '').split('?')[0])) return await directEmployeeUpdate(req, res);
     if (req.method === 'GET' && isPath(req, '/api/data')) { res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate'); res.setHeader('Pragma', 'no-cache'); return await directData(res); }
     if (req.method === 'GET' && isPath(req, '/api/notifications')) { res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate'); res.setHeader('Pragma', 'no-cache'); return await directNotifications(req, res); }
     if (req.method === 'PUT' && isPath(req, '/api/notifications/mark-all-read')) return await directMarkAllRead(req, res);
