@@ -3063,12 +3063,12 @@ const pushSync = async (
 
       try {
 
-        const updatedEmployee =
-          nextEmps.find(
-            e =>
-              e.id ===
-              updatedEmp.id
-          );
+        const updatedEmployee = nextEmps.find(
+          e => e.id === updatedEmp.id
+        );
+        if (updatedEmployee) {
+          updatedEmployee.updatedAt = new Date().toISOString();
+        }
 
 
         const res =
