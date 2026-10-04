@@ -3099,43 +3099,22 @@ const pushSync = async (
           await res.json();
 
 
-        if (
-          data?.employee
-        ) {
-
-          const confirmedEmps =
-            employeesRef.current.map(
-              e =>
-                e.id ===
-                updatedEmp.id
-                  ? {
-                      ...e,
-                      ...data.employee
-                    }
-                  : e
-            );
-
-
-          employeesRef.current =
-            confirmedEmps;
-
-          setEmployees(
-            confirmedEmps
-          );
-
-
-          localStorage.setItem(
-            'attendance_employees',
-            JSON.stringify(
-              confirmedEmps
-            )
-          );
+        if (!data?.success || !data?.employee) {
+          throw new Error(data?.error || 'Employee update was not confirmed by server');
         }
 
+        const confirmedEmps = employeesRef.current.map(
+          e => e.id === updatedEmp.id ? { ...e, ...data.employee } : e
+        );
 
-        // Employee updates are persisted by PUT /api/employees/:id.
-        // Do not send the full employee collection through the legacy sync path,
-        // because it can overwrite a freshly saved role with stale client data.
+        employeesRef.current = confirmedEmps;
+        setEmployees(confirmedEmps);
+        localStorage.setItem('attendance_employees', JSON.stringify(confirmedEmps));
+        lastLocalUpdateRef.current = Date.now();
+
+        // Employee edits are persisted only through PUT /api/employees/:id.
+        // Never push the full employee collection here because that legacy sync
+        // path can overwrite a freshly saved edit with stale client data.
 
       } catch (err) {
 
