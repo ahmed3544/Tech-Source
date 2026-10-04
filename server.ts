@@ -61,10 +61,19 @@ app.put('/api/employees/:id', async (req:any, res:any) => {
     const id = String(req.params.id || '').trim();
     if (!id || !req.body || typeof req.body !== 'object') return res.status(400).json({ success:false, error:'Invalid employee payload' });
 
+    let requestBody = req.body;
+    if (typeof requestBody === 'string') { try { requestBody = JSON.parse(requestBody); } catch {} }
+    if (!requestBody && req.rawBody) { try { requestBody = JSON.parse(Buffer.from(req.rawBody).toString('utf8')); } catch {} }
+    if (!requestBody || typeof requestBody !== 'object') return res.status(400).json({ success:false, error:'Invalid employee payload' });
+
     const allowed = ['code','nameAr','nameEn','avatar','email','phone','department','jobTitleAr','jobTitleEn','pin','role','joinedDate','status','annualLeaveBalance','casualLeaveBalance','regularLeaveBalance','sickLeaveBalance','isPhotoRemoved'];
     const values:any = {};
     for (const key of allowed) {
       if (requestBody[key] !== undefined && !(key === 'pin' && String(requestBody[key]) === '***')) values[key] = requestBody[key];
+    }
+    if (values.role !== undefined) {
+      const role = String(values.role).trim().toLowerCase();
+      values.role = role === 'leader' || role === 'team_leader' || role === 'team-leader' || role === 'tl' ? 'leader' : role === 'admin' ? 'admin' : 'employee';
     }
     // Employee shifts are managed only by the weekly schedule.
     values.updatedAt = new Date().toISOString();
