@@ -64,7 +64,7 @@ app.put('/api/employees/:id', async (req:any, res:any) => {
     const allowed = ['code','nameAr','nameEn','avatar','email','phone','department','jobTitleAr','jobTitleEn','pin','role','joinedDate','status','annualLeaveBalance','casualLeaveBalance','regularLeaveBalance','sickLeaveBalance','isPhotoRemoved'];
     const values:any = {};
     for (const key of allowed) {
-      if (req.body[key] !== undefined && !(key === 'pin' && String(req.body[key]) === '***')) values[key] = req.body[key];
+      if (requestBody[key] !== undefined && !(key === 'pin' && String(requestBody[key]) === '***')) values[key] = requestBody[key];
     }
     // Employee shifts are managed only by the weekly schedule.
     values.updatedAt = new Date().toISOString();
