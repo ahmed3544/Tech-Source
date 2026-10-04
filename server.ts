@@ -59,28 +59,25 @@ registerNotificationSse(app);
 app.put('/api/employees/:id', async (req:any, res:any) => {
   try {
     const id = String(req.params.id || '').trim();
-    if (!id || !req.body || typeof req.body !== 'object') {
-      return res.status(400).json({ success: false, error: 'Invalid employee payload' });
-    }
+    if (!id || !req.body || typeof req.body !== 'object') return res.status(400).json({ success:false, error:'Invalid employee payload' });
 
-    const allowed = ['code','nameAr','nameEn','avatar','email','phone','department','jobTitleAr','jobTitleEn','shiftId','pin','role','joinedDate','status','annualLeaveBalance','casualLeaveBalance','regularLeaveBalance','sickLeaveBalance','isPhotoRemoved'];
+    const allowed = ['code','nameAr','nameEn','avatar','email','phone','department','jobTitleAr','jobTitleEn','pin','role','joinedDate','status','annualLeaveBalance','casualLeaveBalance','regularLeaveBalance','sickLeaveBalance','isPhotoRemoved'];
     const values:any = {};
     for (const key of allowed) {
-      if (req.body[key] !== undefined && !(key === 'pin' && String(req.body[key]) === '***')) {
-        values[key] = req.body[key];
-      }
+      if (req.body[key] !== undefined && !(key === 'pin' && String(req.body[key]) === '***')) values[key] = req.body[key];
     }
+    // Employee shifts are managed only by the weekly schedule.
     values.updatedAt = new Date().toISOString();
 
     const existing = await db.select().from(schema.employees).where(eq(schema.employees.id, id));
-    if (!existing[0]) return res.status(404).json({ success: false, error: 'Employee not found' });
+    if (!existing[0]) return res.status(404).json({ success:false, error:'Employee not found' });
 
     await db.update(schema.employees).set(values as any).where(eq(schema.employees.id, id));
     const updated = await db.select().from(schema.employees).where(eq(schema.employees.id, id));
-    return res.json({ success: true, employee: updated[0], lastUpdated: Date.now() });
+    return res.json({ success:true, employee:updated[0], lastUpdated:Date.now() });
   } catch (error:any) {
     console.error('[EMPLOYEE-UPDATE-ERROR]', error);
-    return res.status(500).json({ success: false, error: String(error?.message || error) });
+    return res.status(500).json({ success:false, error:String(error?.message || error) });
   }
 });
 
