@@ -106,19 +106,10 @@ export const NotificationsPage: React.FC<Props> = ({ currentUserId, lang, onBack
   useEffect(() => {
     void load(false);
     if (!currentUserId) return;
-    let connected = false;
-    const stream = new EventSource(`/api/notifications/stream?userId=${encodeURIComponent(String(currentUserId).trim())}`);
-    stream.onopen = () => { connected = true; };
-    stream.addEventListener('notification', (event) => {
-      try {
-        const incoming = JSON.parse((event as MessageEvent).data) as Notification;
-        if (String(incoming.recipientId).trim() !== String(currentUserId).trim()) return;
-        setItems((current) => normalize([incoming, ...current], currentUserId));
-      } catch (err: unknown) { void load(true); }
-    });
-    stream.onerror = () => { connected = false; };
-    const timer = window.setInterval(() => { if (!connected) void load(true); }, 2000);
-    return () => { window.clearInterval(timer); stream.close(); };
+    // Use polling on the full notifications page instead of a persistent SSE connection.
+    // This avoids Vercel/serverless connection issues that can freeze or break the page.
+    const timer = window.setInterval(() => { void load(true); }, 5000);
+    return () => { window.clearInterval(timer); };
   }, [currentUserId]);
 
   const list = useMemo(() => items, [items]);
