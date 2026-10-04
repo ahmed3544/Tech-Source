@@ -5722,10 +5722,11 @@ try {
 
 
       <main
-        className="
-          py-6
-          pb-16
-        "
+        className={
+          activeTab === 'notifications'
+            ? 'pb-0'
+            : 'py-6 pb-16'
+        }
       >
 
         {activeTab ===
