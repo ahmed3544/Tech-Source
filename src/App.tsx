@@ -3133,10 +3133,9 @@ const pushSync = async (
         }
 
 
-        await pushSync({
-          employees:
-            employeesRef.current
-        });
+        // Employee updates are persisted by PUT /api/employees/:id.
+        // Do not send the full employee collection through the legacy sync path,
+        // because it can overwrite a freshly saved role with stale client data.
 
       } catch (err) {
 
