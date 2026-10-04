@@ -5,11 +5,14 @@ import { eq } from "drizzle-orm";
 
 async function directEmployeeUpdate(req: any, res: any) {
   const id = String(req.url || '').split('?')[0].split('/').filter(Boolean).pop()?.trim() || '';
-  if (!id || !req.body || typeof req.body !== 'object') return res.status(400).json({ success:false, error:'Invalid employee payload' });
+  let requestBody = req.body;
+  if (typeof requestBody === 'string') { try { requestBody = JSON.parse(requestBody); } catch {} }
+  if (!requestBody && req.rawBody) { try { requestBody = JSON.parse(Buffer.from(req.rawBody).toString('utf8')); } catch {} }
+  if (!id || !requestBody || typeof requestBody !== 'object') return res.status(400).json({ success:false, error:'Invalid employee payload' });
   const allowed = ['code','nameAr','nameEn','avatar','email','phone','department','jobTitleAr','jobTitleEn','pin','role','joinedDate','status','annualLeaveBalance','casualLeaveBalance','regularLeaveBalance','sickLeaveBalance','isPhotoRemoved'];
   const values:any = {};
   for (const key of allowed) {
-    if (req.body[key] !== undefined && !(key === 'pin' && String(req.body[key]) === '***')) values[key] = req.body[key];
+    if (requestBody[key] !== undefined && !(key === 'pin' && String(requestBody[key]) === '***')) values[key] = requestBody[key];
   }
   if (values.role !== undefined) {
     const role = String(values.role).trim().toLowerCase();
