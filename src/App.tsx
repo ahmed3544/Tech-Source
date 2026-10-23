@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { CalendarDays, Users, Plus, LogOut, Languages } from 'lucide-react';
+import { CalendarDays, Users, Plus, LogOut, Languages, Pencil, Trash2, Save, X } from 'lucide-react';
 import { LoginModal } from './components/LoginModal';
 import { WeeklyShiftSchedule } from './components/WeeklyShiftSchedule';
 import { Employee, Language, Shift, DailyShiftAssignment } from './types';
@@ -69,6 +69,10 @@ export default function App() {
   const [newName, setNewName] = useState('');
   const [newCode, setNewCode] = useState('');
   const [newPin, setNewPin] = useState('');
+  const [editingEmployeeId, setEditingEmployeeId] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editCode, setEditCode] = useState('');
+  const [editPin, setEditPin] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -157,6 +161,63 @@ export default function App() {
     finally { setBusy(false); }
   };
 
+  const startEditEmployee = (employee: Employee) => {
+    setEditingEmployeeId(employee.id);
+    setEditName(employee.nameAr || employee.nameEn || '');
+    setEditCode(employee.code || '');
+    setEditPin('');
+    setError('');
+  };
+
+  const saveEmployeeEdits = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!isAdmin || !editingEmployeeId || !editName.trim() || !editCode.trim()) return;
+    const normalizedCode = editCode.trim().toLowerCase();
+    if (employees.some(e => e.id !== editingEmployeeId && e.code.trim().toLowerCase() === normalizedCode)) {
+      setError(lang === 'ar' ? 'كود الموظف مستخدم بالفعل.' : 'Employee code is already in use.');
+      return;
+    }
+    setBusy(true); setError('');
+    try {
+      const payload: Record<string, string> = { code: editCode.trim().toUpperCase(), nameAr: editName.trim(), nameEn: editName.trim() };
+      if (editPin.trim()) payload.pin = editPin.trim();
+      const response = await fetch('/api/employees/' + encodeURIComponent(editingEmployeeId), {
+        method: 'PUT', credentials: 'include',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'Cache-Control': 'no-cache' },
+        body: JSON.stringify(payload),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result?.success === false) throw new Error(result?.error || (lang === 'ar' ? 'تعذر تعديل الموظف.' : 'Could not update employee.'));
+      const next = employees.map(e => e.id === editingEmployeeId ? {
+        ...e, code: editCode.trim().toUpperCase(), nameAr: editName.trim(), nameEn: editName.trim(),
+        ...(editPin.trim() ? { pin: editPin.trim() } : {}),
+      } : e);
+      setEmployees(next);
+      localStorage.setItem('attendance_employees', JSON.stringify(next));
+      setEditingEmployeeId(null); setEditName(''); setEditCode(''); setEditPin('');
+    } catch (e: any) {
+      setError(e?.message || (lang === 'ar' ? 'حدث خطأ أثناء تعديل الموظف.' : 'Failed to update employee.'));
+    } finally { setBusy(false); }
+  };
+
+  const deleteEmployee = async (employee: Employee) => {
+    if (!isAdmin || employee.id === ADMIN_ID || employee.id === currentUser?.id) return;
+    const confirmed = window.confirm(lang === 'ar'
+      ? `هل أنت متأكد من حذف حساب ${employee.nameAr || employee.nameEn}؟ لا يمكن التراجع عن الحذف.`
+      : `Delete account for ${employee.nameEn || employee.nameAr}? This cannot be undone.`);
+    if (!confirmed) return;
+    setBusy(true); setError('');
+    try {
+      await persist({ deletedEmployeeIds: [employee.id] });
+      const next = employees.filter(e => e.id !== employee.id);
+      setEmployees(next);
+      localStorage.setItem('attendance_employees', JSON.stringify(next));
+      if (editingEmployeeId === employee.id) setEditingEmployeeId(null);
+    } catch (e: any) {
+      setError(e?.message || (lang === 'ar' ? 'تعذر حذف الموظف.' : 'Could not delete employee.'));
+    } finally { setBusy(false); }
+  };
+
   const saveShifts = async (next: Shift[], deletedShiftIds: string[] = []) => {
     setError('');
     try {
@@ -206,7 +267,24 @@ export default function App() {
           <button disabled={busy} className="w-full rounded-lg bg-slate-900 px-3 py-2 text-sm font-bold text-white disabled:opacity-50">{busy ? (lang === 'ar' ? 'جاري الحفظ...' : 'Saving...') : (lang === 'ar' ? 'حفظ الموظف' : 'Save employee')}</button>
         </form>}
         {error && <p className="mt-3 rounded-lg bg-red-50 p-3 text-xs text-red-700">{error}</p>}
-        <div className="mt-4 space-y-2">{visibleEmployees.filter(e => e.id !== ADMIN_ID).map(e => <div key={e.id} className="rounded-lg bg-slate-50 px-3 py-2"><div className="text-sm font-bold">{lang === 'ar' ? e.nameAr : e.nameEn}</div><div className="text-xs text-slate-500">{e.code}</div></div>)}</div>
+        <div className="mt-4 space-y-2">{visibleEmployees.filter(e => e.id !== ADMIN_ID).map(e => <div key={e.id} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
+          {editingEmployeeId === e.id ? <form onSubmit={saveEmployeeEdits} className="space-y-2">
+            <input required value={editName} onChange={event => setEditName(event.target.value)} placeholder={lang === 'ar' ? 'اسم الموظف' : 'Employee name'} className="w-full rounded-lg border bg-white px-3 py-2 text-sm" />
+            <input required value={editCode} onChange={event => setEditCode(event.target.value)} placeholder={lang === 'ar' ? 'كود الموظف' : 'Employee code'} className="w-full rounded-lg border bg-white px-3 py-2 text-sm" />
+            <input value={editPin} onChange={event => setEditPin(event.target.value)} placeholder={lang === 'ar' ? 'كلمة مرور جديدة (اتركها فارغة دون تغيير)' : 'New password (leave blank to keep current)'} className="w-full rounded-lg border bg-white px-3 py-2 text-sm" autoComplete="new-password" />
+            <div className="flex gap-2">
+              <button disabled={busy} className="flex flex-1 items-center justify-center gap-1 rounded-lg bg-emerald-600 px-2 py-2 text-xs font-bold text-white disabled:opacity-50"><Save className="h-3.5 w-3.5" />{lang === 'ar' ? 'حفظ' : 'Save'}</button>
+              <button type="button" onClick={() => setEditingEmployeeId(null)} className="flex items-center justify-center gap-1 rounded-lg border bg-white px-2 py-2 text-xs"><X className="h-3.5 w-3.5" />{lang === 'ar' ? 'إلغاء' : 'Cancel'}</button>
+            </div>
+          </form> : <>
+            <div className="text-sm font-bold">{lang === 'ar' ? e.nameAr : e.nameEn}</div>
+            <div className="mt-1 text-xs text-slate-500">{lang === 'ar' ? 'الكود:' : 'Code:'} <span className="font-mono font-bold">{e.code}</span> · {e.status === 'inactive' ? (lang === 'ar' ? 'غير مفعّل' : 'Inactive') : (lang === 'ar' ? 'مفعّل' : 'Active')}</div>
+            <div className="mt-2 flex gap-2">
+              <button type="button" onClick={() => startEditEmployee(e)} className="flex items-center gap-1 rounded-lg border bg-white px-2 py-1.5 text-xs font-semibold"><Pencil className="h-3.5 w-3.5" />{lang === 'ar' ? 'تعديل الكود / الباسورد' : 'Edit code / password'}</button>
+              <button type="button" disabled={busy} onClick={() => void deleteEmployee(e)} className="flex items-center gap-1 rounded-lg border border-red-200 bg-white px-2 py-1.5 text-xs font-semibold text-red-700 disabled:opacity-50"><Trash2 className="h-3.5 w-3.5" />{lang === 'ar' ? 'حذف' : 'Delete'}</button>
+            </div>
+          </>}
+        </div>)}</div>
       </aside>}
     </div>
   </main>;
