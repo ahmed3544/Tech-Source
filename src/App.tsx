@@ -148,15 +148,22 @@ export default function App() {
     finally { setBusy(false); }
   };
 
-  const saveShifts = async (next: Shift[]) => {
-    setShifts(next);
-    localStorage.setItem('attendance_shifts', JSON.stringify(next));
-    try { await persist({ shifts: next }); } catch (e: any) { setError(e?.message || 'تعذر حفظ الورديات'); }
+  const saveShifts = async (next: Shift[], deletedShiftIds: string[] = []) => {
+    setError('');
+    try {
+      // Persist deletions explicitly: the sync API otherwise only upserts shifts,
+      // which makes deleted shifts reappear after a page refresh.
+      await persist({ shifts: next, ...(deletedShiftIds.length ? { deletedShiftIds } : {}) });
+      setShifts(next);
+      localStorage.setItem('attendance_shifts', JSON.stringify(next));
+    } catch (e: any) {
+      setError(e?.message || 'تعذر حفظ الورديات');
+    }
   };
 
   const handleAddShift = (shift: Shift) => { void saveShifts([...shifts, shift]); };
   const handleUpdateShift = (shift: Shift) => { void saveShifts(shifts.map(s => s.id === shift.id ? shift : s)); };
-  const handleDeleteShift = (shiftId: string) => { void saveShifts(shifts.filter(s => s.id !== shiftId)); };
+  const handleDeleteShift = (shiftId: string) => { void saveShifts(shifts.filter(s => s.id !== shiftId), [shiftId]); };
 
   const visibleEmployees = useMemo(() => employees.filter(e => e.id !== ADMIN_ID || e.role === 'admin'), [employees]);
 
