@@ -8,6 +8,22 @@ import { INITIAL_EMPLOYEES, INITIAL_SHIFTS } from './mockData';
 const ADMIN_ID = 'emp-002';
 const ADMIN_EMAIL = 'ahmed.mahmoud@techsource-gds.com';
 
+const readableError = (value: unknown, fallback = 'حدث خطأ غير متوقع') => {
+  if (typeof value === 'string' && value.trim()) return value;
+  if (value && typeof value === 'object') {
+    const item = value as Record<string, unknown>;
+    for (const key of ['message', 'error', 'detail', 'reason']) {
+      const candidate = item[key];
+      if (typeof candidate === 'string' && candidate.trim()) return candidate;
+      if (candidate && typeof candidate === 'object') {
+        const nested = candidate as Record<string, unknown>;
+        if (typeof nested.message === 'string' && nested.message.trim()) return nested.message;
+      }
+    }
+  }
+  return fallback;
+};
+
 const normalizeRole = (value: unknown): Employee['role'] => {
   const role = String(value || 'employee').trim().toLowerCase();
   if (role === 'admin' || role === 'company_admin' || role === 'platform_admin') return role as Employee['role'];
@@ -86,7 +102,7 @@ export default function App() {
       body: JSON.stringify({ ...payload, lastUpdated: Date.now() }),
     });
     const result = await response.json().catch(() => ({}));
-    if (!response.ok || result?.success === false) throw new Error(result?.error || result?.message || 'تعذر حفظ البيانات');
+    if (!response.ok || result?.success === false) throw new Error(readableError(result, 'تعذر حفظ البيانات. تحقق من الاتصال والصلاحيات ثم حاول مرة أخرى.'));
     return result;
   };
 
@@ -157,7 +173,7 @@ export default function App() {
       setEmployees(next);
       localStorage.setItem('attendance_employees', JSON.stringify(next));
       setNewName(''); setNewCode(''); setNewPin(''); setShowAddEmployee(false);
-    } catch (e: any) { setError(e?.message || 'تعذر إضافة الموظف'); }
+    } catch (e: any) { setError(readableError(e, 'تعذر إضافة الموظف')); }
     finally { setBusy(false); }
   };
 
@@ -187,7 +203,7 @@ export default function App() {
         body: JSON.stringify(payload),
       });
       const result = await response.json().catch(() => ({}));
-      if (!response.ok || result?.success === false) throw new Error(result?.error || (lang === 'ar' ? 'تعذر تعديل الموظف.' : 'Could not update employee.'));
+      if (!response.ok || result?.success === false) throw new Error(readableError(result, lang === 'ar' ? 'تعذر تعديل الموظف. تحقق من الاتصال والصلاحيات.' : 'Could not update employee. Check the connection and permissions.'));
       const next = employees.map(e => e.id === editingEmployeeId ? {
         ...e, code: editCode.trim().toUpperCase(), nameAr: editName.trim(), nameEn: editName.trim(),
         ...(editPin.trim() ? { pin: editPin.trim() } : {}),
@@ -196,7 +212,7 @@ export default function App() {
       localStorage.setItem('attendance_employees', JSON.stringify(next));
       setEditingEmployeeId(null); setEditName(''); setEditCode(''); setEditPin('');
     } catch (e: any) {
-      setError(e?.message || (lang === 'ar' ? 'حدث خطأ أثناء تعديل الموظف.' : 'Failed to update employee.'));
+      setError(readableError(e, lang === 'ar' ? 'حدث خطأ أثناء تعديل الموظف.' : 'Failed to update employee.'));
     } finally { setBusy(false); }
   };
 
@@ -214,7 +230,7 @@ export default function App() {
       localStorage.setItem('attendance_employees', JSON.stringify(next));
       if (editingEmployeeId === employee.id) setEditingEmployeeId(null);
     } catch (e: any) {
-      setError(e?.message || (lang === 'ar' ? 'تعذر حذف الموظف.' : 'Could not delete employee.'));
+      setError(readableError(e, lang === 'ar' ? 'تعذر حذف الموظف.' : 'Could not delete employee.'));
     } finally { setBusy(false); }
   };
 
