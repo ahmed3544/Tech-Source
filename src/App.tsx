@@ -8,6 +8,13 @@ import { INITIAL_EMPLOYEES, INITIAL_SHIFTS } from './mockData';
 const ADMIN_ID = 'emp-002';
 const ADMIN_EMAIL = 'ahmed.mahmoud@techsource-gds.com';
 
+const normalizeRole = (value: unknown): Employee['role'] => {
+  const role = String(value || 'employee').trim().toLowerCase();
+  if (role === 'admin' || role === 'company_admin' || role === 'platform_admin') return role as Employee['role'];
+  if (role === 'leader' || role === 'team_leader' || role === 'team-leader' || role === 'tl') return 'leader';
+  return 'employee';
+};
+
 const normalizeEmployee = (raw: any): Employee => ({
   id: String(raw?.id || ''),
   companyId: raw?.companyId ?? raw?.company_id ?? 'tech-source',
@@ -22,7 +29,7 @@ const normalizeEmployee = (raw: any): Employee => ({
   jobTitleEn: String(raw?.jobTitleEn ?? raw?.job_title_en ?? ''),
   shiftId: String(raw?.shiftId ?? raw?.shift_id ?? ''),
   pin: String(raw?.pin || ''),
-  role: String(raw?.email || '').toLowerCase() === ADMIN_EMAIL ? 'admin' : (raw?.role || 'employee'),
+  role: String(raw?.email || '').toLowerCase() === ADMIN_EMAIL || String(raw?.id || '') === ADMIN_ID ? 'admin' : normalizeRole(raw?.role),
   joinedDate: String(raw?.joinedDate ?? raw?.joined_date ?? new Date().toISOString().slice(0,10)),
   status: raw?.status === 'inactive' ? 'inactive' : 'active',
   teamLeaderId: raw?.teamLeaderId ?? raw?.team_leader_id,
@@ -54,7 +61,7 @@ export default function App() {
       const saved = localStorage.getItem('logged_in_user');
       if (!saved) return null;
       const user = normalizeEmployee(JSON.parse(saved));
-      return user.id === ADMIN_ID || user.email.toLowerCase() === ADMIN_EMAIL ? { ...user, role: 'admin' } : null;
+      return user.id && user.status === 'active' ? { ...user, role: user.id === ADMIN_ID || user.email.toLowerCase() === ADMIN_EMAIL ? 'admin' : normalizeRole(user.role) } : null;
     } catch { return null; }
   });
   const [loginOpen, setLoginOpen] = useState(!currentUser);
@@ -113,13 +120,15 @@ export default function App() {
 
   const handleLogin = (raw: Employee) => {
     const user = normalizeEmployee(raw);
-    if (user.id !== ADMIN_ID && user.email.toLowerCase() !== ADMIN_EMAIL) {
-      setError(lang === 'ar' ? 'النظام مخصص حاليًا لحساب الإدارة فقط.' : 'Only the administrator account is enabled during setup.');
+    if (!user.id || user.status !== 'active') {
+      setError(lang === 'ar' ? 'الحساب غير صالح أو غير مفعّل.' : 'This account is invalid or inactive.');
       return;
     }
-    const admin = { ...user, id: ADMIN_ID, role: 'admin' as const, email: ADMIN_EMAIL, nameAr: 'Ahmed Mahmoud Ahmed Mahmoud', nameEn: 'Ahmed Mahmoud Ahmed Mahmoud', status: 'active' as const };
-    setCurrentUser(admin);
-    localStorage.setItem('logged_in_user', JSON.stringify(admin));
+    const signedInUser = user.id === ADMIN_ID || user.email.toLowerCase() === ADMIN_EMAIL
+      ? { ...user, id: ADMIN_ID, role: 'admin' as const, email: ADMIN_EMAIL, nameAr: 'Ahmed Mahmoud Ahmed Mahmoud', nameEn: 'Ahmed Mahmoud Ahmed Mahmoud', status: 'active' as const }
+      : { ...user, role: normalizeRole(user.role) };
+    setCurrentUser(signedInUser);
+    localStorage.setItem('logged_in_user', JSON.stringify(signedInUser));
     setLoginOpen(false);
     setError('');
   };

@@ -130,7 +130,8 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
       const sameTeam = employees.filter(e => e.teamId === currentUser.teamId);
       if (sameTeam.length) return sameTeam;
     }
-    return employees;
+    // Never expose the whole roster to a team leader when no team mapping exists.
+    return employees.filter(e => sameId(e.id, currentUser?.id));
   }, [employees, isLeader, currentUser]);
 
   const employee = visibleEmployees.find(e => sameId(e.id, selectedEmployeeId)) || visibleEmployees[0] || null;
