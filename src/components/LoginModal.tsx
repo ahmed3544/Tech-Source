@@ -54,55 +54,43 @@ export const LoginModal: React.FC<LoginModalProps> = ({
       return;
     }
     
-    const findLocalEmployee = () => {
-      const normalizedCode = rawInput.toLowerCase();
-      const numericCode = normalizedCode.replace(/\D/g, '').replace(/^0+/, '') || '0';
-      const employee = employees.find((candidate) => {
-        const candidateCode = String(candidate.code || '').toLowerCase();
-        const candidateNumericCode = candidateCode.replace(/\D/g, '').replace(/^0+/, '') || '0';
-        return candidateCode === normalizedCode || candidateNumericCode === numericCode || (normalizedCode === 'leader' && candidate.role === 'leader');
-      });
 
-      if (!employee || employee.status === 'inactive') return null;
-      const employeeNumber = String(employee.code || '').replace(/\D/g, '');
-      const validPassword = cleanPass === String(employee.pin || '').toLowerCase()
-        || cleanPass === `emp${employeeNumber}`.toLowerCase()
-        || cleanPass === `emp${employeeNumber.padStart(3, '0')}`.toLowerCase()
-        || cleanPass === '1234'
-        || cleanPass === 'tech_123'
-        || (employee.role === 'leader' && cleanPass === 'leader123');
-      return validPassword ? employee : null;
-    };
 
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 12000);
     try {
       const res = await fetch('/api/login', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: rawInput, password: cleanPass })
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'Cache-Control': 'no-cache' },
+        body: JSON.stringify({ code: rawInput, password: cleanPass }),
+        signal: controller.signal,
       });
-      
-      const data = await res.json();
-      if (data.success && data.employee) {
+
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success && data.employee) {
         setLoading(false);
         onLoginSuccess(data.employee);
       } else {
         setError(
           data.error === 'ACCOUNT_INACTIVE'
             ? (lang === 'ar' ? 'هذا الحساب غير مفعّل. يرجى التواصل مع الإدارة لتفعيله.' : 'This account is inactive. Please contact management to activate it.')
-            : (lang === 'ar' ? 'بيانات الدخول غير صحيحة. يرجى التأكد من كود الموظف وكلمة المرور' : 'Invalid login credentials.')
+            : data.error === 'LOGIN_SERVER_ERROR'
+              ? (lang === 'ar' ? 'حدث خطأ في الخادم أثناء تسجيل الدخول. حاول مرة أخرى بعد قليل.' : 'The login server encountered an error. Please try again.')
+              : (lang === 'ar' ? 'بيانات الدخول غير صحيحة. تأكد من الكود وكلمة المرور.' : 'Invalid employee code or password.')
         );
         setLoading(false);
       }
     } catch (err) {
       console.error('Login error', err);
-      const localEmployee = findLocalEmployee();
-      if (localEmployee) {
-        setLoading(false);
-        onLoginSuccess(localEmployee);
-        return;
-      }
-      setError(lang === 'ar' ? 'بيانات الدخول غير صحيحة أو الخادم غير متاح' : 'Invalid credentials or server unavailable');
+      setError(
+        err instanceof DOMException && err.name === 'AbortError'
+          ? (lang === 'ar' ? 'الخادم لم يستجب خلال 12 ثانية. جرّب مرة أخرى، وإذا تكرر الأمر فالمشكلة تحتاج فحص الخادم.' : 'The server did not respond within 12 seconds. Please try again.')
+          : (lang === 'ar' ? 'تعذر الاتصال بخادم تسجيل الدخول. تحقق من الاتصال وحاول مرة أخرى.' : 'Could not reach the login server. Check the connection and try again.')
+      );
       setLoading(false);
+    } finally {
+      window.clearTimeout(timeoutId);
     }
   };
 
