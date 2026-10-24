@@ -1,7 +1,8 @@
 import { eq } from 'drizzle-orm';
-import { db } from '../src/db/index.js';
+import { db, createPool } from '../src/db/index.js';
 import * as schema from '../src/db/schema.js';
 import { passwordMatches } from './passwords.js';
+import { ensureSchema } from './ensure-schema.js';
 
 /**
  * Server-side permission guard.
@@ -45,15 +46,30 @@ export async function authenticateRequest(req: any): Promise<
     return { ok: false, status: 401, error: 'Authentication required. Please sign in again.' };
   }
 
-  let rows: any[] = [];
+  // Self-heal first: makes sure the additive schema pieces (employee_breaks,
+  // team_leader_id, team_id) exist even if the migration was never applied.
+  // Cached no-op after the first success.
+  await ensureSchema();
+
+  let employee: any = null;
   try {
-    rows = await db.select().from(schema.employees).where(eq(schema.employees.id, headerId));
+    const rows = await db.select().from(schema.employees).where(eq(schema.employees.id, headerId));
+    employee = rows[0] ?? null;
   } catch (error: any) {
-    console.error('[auth] employee lookup failed:', error?.message || error);
-    return { ok: false, status: 500, error: 'Authentication backend unavailable.' };
+    // Full-schema lookup failed (e.g. migration columns missing and DDL was
+    // not permitted). Fall back to a raw query limited to columns that predate
+    // the feature migration so authentication still works in degraded mode.
+    console.error('[auth] full employee lookup failed, trying minimal fallback:', error?.message || error);
+    const fallback = await loadEmployeeMinimal(headerId);
+    if (fallback.state === 'error') {
+      return { ok: false, status: 500, error: 'Authentication backend unavailable.' };
+    }
+    if (fallback.state === 'missing') {
+      return { ok: false, status: 401, error: 'Invalid or inactive account.' };
+    }
+    employee = fallback.employee;
   }
 
-  const employee = rows[0];
   if (!employee || String(employee.status ?? 'active') !== 'active') {
     return { ok: false, status: 401, error: 'Invalid or inactive account.' };
   }
@@ -110,8 +126,49 @@ export function canManageEmployee(manager: AuthedEmployee, targetEmployee: any):
   return false;
 }
 
-/** Loads an employee row by id, returning null when not found. */
+/**
+ * Degraded-mode lookup used when the full drizzle select fails.
+ * Returns a discriminated result so the caller can distinguish
+ * "database down" (500) from "unknown employee" (401).
+ */
+async function loadEmployeeMinimal(
+  id: string
+): Promise<{ state: 'found'; employee: any } | { state: 'missing' } | { state: 'error' }> {
+  try {
+    const result = await createPool().query(
+      'SELECT id, role, status, pin, code FROM employees WHERE id = $1 LIMIT 1',
+      [id]
+    );
+    const row: any = result?.rows?.[0];
+    if (!row) return { state: 'missing' };
+    // Team scoping columns may not exist in degraded mode; leaders fall back
+    // to admin-only management until the schema heals (ensureSchema retries).
+    return { state: 'found', employee: { ...row, teamLeaderId: null, teamId: null } };
+  } catch (error: any) {
+    console.error('[auth] minimal employee lookup failed:', error?.message || error);
+    return { state: 'error' };
+  }
+}
+
+/**
+ * Loads an employee row by id, returning null when not found.
+ * Falls back to a raw SELECT * when the drizzle-mapped columns are unavailable
+ * (pre-migration database), mapping the snake_case team columns manually.
+ */
 export async function findEmployeeById(id: string): Promise<any | null> {
-  const rows = await db.select().from(schema.employees).where(eq(schema.employees.id, id));
-  return rows[0] ?? null;
+  try {
+    const rows = await db.select().from(schema.employees).where(eq(schema.employees.id, id));
+    return rows[0] ?? null;
+  } catch (error: any) {
+    console.error('[auth] findEmployeeById full lookup failed, using raw fallback:', error?.message || error);
+    try {
+      const result = await createPool().query('SELECT * FROM employees WHERE id = $1 LIMIT 1', [id]);
+      const row: any = result?.rows?.[0];
+      if (!row) return null;
+      return { ...row, teamLeaderId: row.team_leader_id ?? null, teamId: row.team_id ?? null };
+    } catch (fallbackError: any) {
+      console.error('[auth] findEmployeeById fallback failed:', fallbackError?.message || fallbackError);
+      return null;
+    }
+  }
 }

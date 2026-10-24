@@ -385,6 +385,71 @@ await test('Pending (not approved) leave does NOT change a working day', () => {
 });
 
 // ---------------------------------------------------------------------------
+// 7. Self-healing schema (auto-migration) — "Authentication backend
+//    unavailable." production-incident regression
+// ---------------------------------------------------------------------------
+console.log('\n— Self-healing schema —');
+const { ensureSchema, resetEnsureSchemaForTests } = await import('../server/ensure-schema.js');
+const { authenticateRequest, findEmployeeById } = await import('../server/auth.js');
+const { db, createPool: unusedCreatePool } = await import('../src/db/index.js');
+const testSchema = await import('../src/db/schema.js');
+
+async function dropAdditiveSchema() {
+  await client.query('DROP TABLE IF EXISTS employee_breaks');
+  await client.query('ALTER TABLE employees DROP COLUMN IF EXISTS team_leader_id');
+  await client.query('ALTER TABLE employees DROP COLUMN IF EXISTS team_id');
+}
+
+await test('ensureSchema re-applies the additive migration (idempotent)', async () => {
+  resetEnsureSchemaForTests();
+  assert.equal(await ensureSchema(), true);
+  assert.equal(await ensureSchema(), true); // cached, still true
+  const cols = (await client.query(
+    `SELECT column_name FROM information_schema.columns WHERE table_name='employees' AND column_name IN ('team_leader_id','team_id')`
+  )).rows.length;
+  assert.equal(cols, 2);
+});
+
+await test('Pre-migration database breaks full drizzle select (regression precondition)', async () => {
+  await dropAdditiveSchema();
+  resetEnsureSchemaForTests();
+  let broke = false;
+  try { await db.select().from(testSchema.employees); } catch { broke = true; }
+  assert.ok(broke, 'expected full drizzle select to fail before self-heal');
+});
+
+await test('authenticateRequest SELF-HEALS a pre-migration database (the "Authentication backend unavailable" fix)', async () => {
+  const result: any = await authenticateRequest({ headers: { 'x-auth-employee-id': 'admin-1', 'x-auth-pin': '1234' } });
+  assert.equal(result.ok, true, `auth should succeed after self-heal: ${JSON.stringify(result)}`);
+  assert.equal(result.employee?.role, 'admin');
+  // The previously broken full select works again after the heal.
+  const employees = await db.select().from(testSchema.employees);
+  assert.ok(employees.length >= 5);
+  // employee_breaks table was recreated as well.
+  const breaksTable = (await client.query(`SELECT to_regclass('employee_breaks') AS t`)).rows[0]?.t;
+  assert.equal(breaksTable, 'employee_breaks');
+});
+
+await test('findEmployeeById falls back to raw SELECT * in degraded mode', async () => {
+  // The previous self-heal re-added the team columns with NULLs (dropping a
+  // column destroys its data — simulation artifact only). Restore the relation
+  // data, then drop a column the drizzle schema maps (is_photo_removed) so the
+  // FULL select fails while the raw fallback's SELECT * still returns team columns.
+  await client.query(`UPDATE employees SET team_leader_id = 'leader-1' WHERE id = 'emp-a'`);
+  await client.query('ALTER TABLE employees DROP COLUMN IF EXISTS is_photo_removed');
+  const found: any = await findEmployeeById('emp-a');
+  assert.ok(found, 'raw fallback should still find the employee');
+  assert.equal(String(found.id), 'emp-a');
+  assert.equal(found.teamLeaderId ?? null, 'leader-1'); // snake_case → camelCase mapping
+  // emp-a's code was renamed to EMP101A by an earlier CRUD test.
+  assert.ok(String(found.code).startsWith('EMP101'), `unexpected code: ${found.code}`);
+  // Restore the schema for anything that runs afterwards.
+  await client.query('ALTER TABLE employees ADD COLUMN IF NOT EXISTS is_photo_removed boolean');
+  resetEnsureSchemaForTests();
+  assert.equal(await ensureSchema(), true);
+});
+
+// ---------------------------------------------------------------------------
 server.close();
 await client.end();
 await pg.stop();

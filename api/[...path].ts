@@ -3,6 +3,7 @@ import { db } from "../src/db/index.js";
 import * as schema from "../src/db/schema.js";
 import { eq } from "drizzle-orm";
 import { updateEmployeeHandler, createEmployeeHandler, deleteEmployeeHandler } from "../server/employees.js";
+import { ensureSchema } from "../server/ensure-schema.js";
 
 async function directData(res: any) {
   const [employees, attendanceRecords, leaveRequests, overtimeRequests, shifts, notifications, settings] = await Promise.all([
@@ -202,6 +203,9 @@ function enrichLeaveAttendance(body: any) {
 }
 
 export default async function handler(req: any, res: any) {
+  // Self-heal the additive schema pieces on cold start / first request
+  // (cached no-op afterwards) so missing migrations never 500 the API.
+  try { await ensureSchema(); } catch { /* logged inside ensureSchema */ }
   if (isPushRegister(req)) return registerPushToken(req, res);
   // Shared, permission-checked employee + breaks handlers (same as server.ts).
   const employeeMatch = /^\/api\/employees\/([^/]+)$/.exec(String(req.url || '').split('?')[0]);

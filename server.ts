@@ -14,6 +14,7 @@ import { registerDirectScheduleSync } from "./server/schedule-sync-direct.js";
 import { registerDbWriteVerification } from "./server/db-write-verification.js";
 import { updateEmployeeHandler, createEmployeeHandler, deleteEmployeeHandler } from "./server/employees.js";
 import { registerEmployeeBreaks } from "./server/employee-breaks.js";
+import { ensureSchema } from "./server/ensure-schema.js";
 import loginHandler from "./api/login.js";
 
 const app = express();
@@ -158,4 +159,8 @@ if (process.env.NODE_ENV !== "production") {
 export default app;
 export { app };
 
-if (process.env.VERCEL !== '1') app.listen(PORT, '0.0.0.0', ()=>console.log(`Server running on port ${PORT} | Database: NEON`));
+if (process.env.VERCEL !== '1') app.listen(PORT, '0.0.0.0', ()=>{
+  console.log(`Server running on port ${PORT} | Database: NEON`);
+  // Self-heal additive schema pieces at boot (idempotent, safe to re-run).
+  ensureSchema().then((ok) => { if (!ok) console.warn('[ensure-schema] not verified yet — will retry on first guarded request'); });
+});
