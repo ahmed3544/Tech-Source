@@ -741,14 +741,24 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
                 <div className="flex items-end justify-center border-e border-slate-200 bg-slate-50 pb-1 text-center text-[10px] font-black text-slate-500 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-400">{monthName}</div>
                 {weekResults.map(({ day, resolved }) => {
                   const isToday = day.key === todayKey;
+                  const shift = resolved.status === 'working' ? resolved.shift : undefined;
+                  const headerTone = resolved.status === 'working'
+                    ? 'bg-emerald-100 text-emerald-900 dark:bg-emerald-500/20 dark:text-emerald-200'
+                    : resolved.status === 'off'
+                      ? 'bg-pink-100 text-pink-900 dark:bg-pink-500/20 dark:text-pink-200'
+                      : resolved.status === 'holiday'
+                        ? 'bg-red-100 text-red-900 dark:bg-red-500/20 dark:text-red-200'
+                        : resolved.status === 'annual'
+                          ? 'bg-yellow-100 text-yellow-900 dark:bg-yellow-500/20 dark:text-yellow-200'
+                          : 'bg-slate-50 text-slate-600 dark:bg-slate-900/60 dark:text-slate-300';
                   return (
-                    <div key={day.key} className={`border-e border-slate-200 px-1 py-1.5 text-center last:border-e-0 dark:border-slate-800 ${isToday ? 'bg-blue-50 dark:bg-blue-500/15' : 'bg-slate-50 dark:bg-slate-900/60'}`}>
-                      <div className={`text-[9px] font-black uppercase tracking-wide ${isToday ? 'text-blue-600 dark:text-blue-400' : 'text-slate-500 dark:text-slate-400'}`}>{lang === 'ar' ? day.ar : day.en}</div>
-                      <div className={`text-base font-black leading-tight ${isToday ? 'text-blue-700 dark:text-blue-300' : 'text-slate-800 dark:text-slate-100'}`}>{day.date.getDate()}</div>
-                      <div className={`mt-0.5 inline-block rounded px-1 text-[8px] font-black ${resolved.status === 'working' ? 'bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-300' : resolved.status === 'off' ? 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300' : resolved.status === 'holiday' ? 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300' : resolved.status === 'annual' ? 'bg-yellow-200 text-yellow-800 dark:bg-yellow-500/25 dark:text-yellow-300' : 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500'}`}>
-                        {lang === 'ar' ? (STATUS_LABELS[resolved.label] ?? STATUS_LABELS.unassigned).ar : (STATUS_LABELS[resolved.label] ?? STATUS_LABELS.unassigned).en}
+                    <div key={day.key} className={`min-w-0 border-e border-slate-200 px-1.5 py-2 text-center last:border-e-0 dark:border-slate-800 ${headerTone} ${isToday ? 'ring-2 ring-inset ring-blue-500' : ''}`}>
+                      <div className="text-[10px] font-black uppercase tracking-wide">{lang === 'ar' ? day.ar : day.en}</div>
+                      <div className="text-xs font-black leading-tight">{fmtDMY(day.date)}</div>
+                      <div className="mt-1 text-[9px] font-black leading-tight" dir="ltr">
+                        {shift ? `Shift ${shift.startTime}–${shift.endTime}` : (lang === 'ar' ? (STATUS_LABELS[resolved.label] ?? STATUS_LABELS.unassigned).ar : (STATUS_LABELS[resolved.label] ?? STATUS_LABELS.unassigned).en)}
                       </div>
-                      {draft[day.key] !== undefined && <div className="mt-0.5 text-[8px] font-black text-blue-600 dark:text-blue-400">● {lang === 'ar' ? 'غير محفوظ' : 'unsaved'}</div>}
+                      {draft[day.key] !== undefined && <div className="mt-0.5 text-[8px] font-black text-blue-700 dark:text-blue-300">● {lang === 'ar' ? 'غير محفوظ' : 'unsaved'}</div>}
                     </div>
                   );
                 })}
@@ -790,9 +800,14 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
                 : lang === 'ar' ? (STATUS_LABELS[resolved.label] ?? STATUS_LABELS.unassigned).ar : (STATUS_LABELS[resolved.label] ?? STATUS_LABELS.unassigned).en;
               return (
                 <div className="relative rounded-xl border border-slate-200 p-2 touch-pan-y dark:border-slate-700" onTouchStart={e => setTouchStartX(e.touches[0]?.clientX ?? null)} onTouchEnd={e => { if (touchStartX === null) return; const delta = e.changedTouches[0].clientX - touchStartX; if (Math.abs(delta) > 55) setMobileDayIndex(current => Math.max(0, Math.min(6, current + (delta < 0 ? 1 : -1)))); setTouchStartX(null); }}>
-                  <div className="mb-2 rounded-lg bg-blue-600 px-3 py-2 text-center text-white">
-                    <div className="text-sm font-black tracking-wide">{(lang === 'ar' ? day.ar : day.en).toUpperCase()} {day.date.getDate()}</div>
-                    <div className="text-[11px] font-bold opacity-95">{resolved.status === 'working' && shift ? `${lang === 'ar' ? 'وردية' : 'Shift'} ` : ''}{resolved.status === 'working' && shift ? <span dir="ltr">{fmt12(timeToMinutes(shift.startTime), lang)} - {fmt12(timeToMinutes(shift.endTime), lang)}</span> : bannerSub}</div>
+                  <div className="mb-2 flex items-stretch gap-2" dir="ltr">
+                    <button type="button" onClick={() => setMobileDayIndex(current => current > 0 ? current - 1 : (setWeekStart(value => addDays(value, -7)), 6))} className="flex w-10 shrink-0 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-300" aria-label={lang === 'ar' ? 'اليوم السابق' : 'Previous day'}><ChevronLeft className="h-5 w-5" /></button>
+                    <div className={`flex min-w-0 flex-1 flex-col items-center justify-center rounded-lg px-3 py-2 text-center ${resolved.status === 'working' ? 'bg-emerald-600' : resolved.status === 'off' ? 'bg-pink-500' : resolved.status === 'holiday' ? 'bg-red-600' : resolved.status === 'annual' ? 'bg-yellow-400 text-yellow-950' : 'bg-blue-600'} ${resolved.status !== 'annual' ? 'text-white' : ''}`}>
+                      <div className="text-sm font-black tracking-wide">{(lang === 'ar' ? day.ar : day.en).toUpperCase()}</div>
+                      <div className="text-xs font-black">{fmtDMY(day.date)}</div>
+                      <div className="mt-0.5 text-[11px] font-bold opacity-95">{resolved.status === 'working' && shift ? `${lang === 'ar' ? 'وردية' : 'Shift'} ` : ''}{resolved.status === 'working' && shift ? <span dir="ltr">{fmt12(timeToMinutes(shift.startTime), lang)} - {fmt12(timeToMinutes(shift.endTime), lang)}</span> : bannerSub}</div>
+                    </div>
+                    <button type="button" onClick={() => setMobileDayIndex(current => current < 6 ? current + 1 : (setWeekStart(value => addDays(value, 7)), 0))} className="flex w-10 shrink-0 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-300" aria-label={lang === 'ar' ? 'اليوم التالي' : 'Next day'}><ChevronRight className="h-5 w-5" /></button>
                   </div>
                   <div className="relative flex" dir="ltr">
                     <div className="relative w-12 shrink-0" style={{ height: gridHeightMobile }}>
