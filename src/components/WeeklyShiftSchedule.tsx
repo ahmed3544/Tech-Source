@@ -801,6 +801,15 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
           </button>
           {editPanelOpen && (
             <div className="border-t border-slate-100 p-3 dark:border-slate-800">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-red-200 bg-red-50 p-3 dark:border-red-500/30 dark:bg-red-500/10">
+                <div>
+                  <div className="text-xs font-black text-red-800 dark:text-red-200">{lang === 'ar' ? 'بريكات الأسبوع 25–31 أكتوبر' : 'Break schedule · Oct 25–31'}</div>
+                  <div className="mt-0.5 text-[10px] font-bold text-red-700 dark:text-red-300">{lang === 'ar' ? 'تطبيق بريكات Nancy وNada وSalma وYara وNorhan على أيام الدوام المحفوظة فقط.' : 'Apply the approved individual breaks to the five agents on assigned working days only.'}</div>
+                </div>
+                <button type="button" onClick={applyOctoberBreakPreset} disabled={applyingBreakPreset} className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-red-600 px-3 text-xs font-black text-white hover:bg-red-700 disabled:cursor-wait disabled:opacity-60">
+                  <Coffee className="h-4 w-4" />{applyingBreakPreset ? (lang === 'ar' ? 'جاري حفظ البريكات...' : 'Applying breaks...') : (lang === 'ar' ? 'تطبيق بريكات الأسبوع لكل الموظفات' : 'Apply breaks to all agents')}
+                </button>
+              </div>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
                 {days.map(day => {
                   const resolved = resolveFor(day.key);
