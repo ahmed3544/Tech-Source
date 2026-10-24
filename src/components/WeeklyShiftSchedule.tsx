@@ -376,6 +376,106 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
     } finally { setBreakSaving(false); }
   };
 
+
+  const [applyingBreakPreset, setApplyingBreakPreset] = useState(false);
+
+  // Apply the approved agent-specific break plan for 25–31 Oct 2026 in one action.
+  const applyOctoberBreakPreset = async () => {
+    if (!isLeader || applyingBreakPreset) return;
+    const presets: Record<string, Array<{ name: string; startTime: string; endTime: string }>> = {
+      nancy: [
+        { name: 'Break 1', startTime: '10:30', endTime: '11:00' },
+        { name: 'Break 2', startTime: '13:45', endTime: '14:00' },
+        { name: 'Break 3', startTime: '15:45', endTime: '16:00' },
+      ],
+      nada: [
+        { name: 'Break 1', startTime: '11:00', endTime: '11:30' },
+        { name: 'Break 2', startTime: '14:00', endTime: '14:15' },
+        { name: 'Break 3', startTime: '16:00', endTime: '16:15' },
+      ],
+      salma: [
+        { name: 'Break 1', startTime: '11:30', endTime: '12:00' },
+        { name: 'Break 2', startTime: '14:15', endTime: '14:30' },
+        { name: 'Break 3', startTime: '16:15', endTime: '16:30' },
+      ],
+      yara: [
+        { name: 'Break 1', startTime: '12:00', endTime: '12:30' },
+        { name: 'Break 2', startTime: '14:30', endTime: '14:45' },
+        { name: 'Break 3', startTime: '16:30', endTime: '16:45' },
+      ],
+      norhan: [
+        { name: 'Break 1', startTime: '12:00', endTime: '12:30' },
+        { name: 'Break 2', startTime: '14:45', endTime: '15:00' },
+        { name: 'Break 3', startTime: '16:45', endTime: '17:00' },
+      ],
+    };
+    const first = new Date('2026-10-25T00:00:00');
+    const targetDays = Array.from({ length: 7 }, (_, i) => dateKey(addDays(first, i)));
+    setApplyingBreakPreset(true);
+    setError(null); setMessage(null);
+    try {
+      let savedCount = 0;
+      for (const person of visibleEmployees) {
+        const name = String(person.nameEn || person.nameAr || '').toLowerCase();
+        const key = name.includes('nancy') ? 'nancy'
+          : name.includes('nada') ? 'nada'
+          : name.includes('salma') ? 'salma'
+          : name.includes('yara') ? 'yara'
+          : (name.includes('norhan') || name.includes('nourhan')) ? 'norhan'
+          : '';
+        if (!key) continue;
+        for (const dayKey of targetDays) {
+          const assigned = assignments.find(a =>
+            sameId(a.employeeId ?? (a as any).employee_id, person.id) &&
+            String(a.date ?? '').slice(0, 10) === dayKey
+          ) as any;
+          const assignedShiftId = String(assigned?.shiftId || person.shiftId || '');
+          const assignedShift = assignedShiftId ? shifts.find(s => sameId(s.id, assignedShiftId)) : undefined;
+          const status = resolveDayStatus({
+            dateKey: dayKey,
+            employeeId: person.id,
+            assignment: assigned || (assignedShift ? { employeeId: person.id, date: dayKey, shiftId: assignedShift.id } : {}),
+            shifts,
+            leaves: suppliedLeaves,
+            holidays: suppliedHolidays,
+          });
+          if (status.status !== 'working' || !assignedShift) continue;
+          const response = await fetch('/api/employee-breaks', {
+            method: 'POST', credentials: 'include', cache: 'no-store',
+            headers: authHeaders({ 'Content-Type': 'application/json', Accept: 'application/json', 'Cache-Control': 'no-cache' }),
+            body: JSON.stringify({ employeeId: person.id, date: dayKey, breaks: presets[key] }),
+          });
+          const data = await parseResponse(response);
+          if (response.status === 401) {
+            onAuthFailure?.();
+            throw new Error(lang === 'ar' ? 'انتهت الجلسة. سجّل الدخول من جديد.' : 'Session expired. Please sign in again.');
+          }
+          if (!response.ok || data?.success === false) {
+            throw new Error(extractApiError(data, lang === 'ar' ? 'تعذر حفظ بريكات الأسبوع' : 'Could not save weekly breaks'));
+          }
+          savedCount++;
+        }
+      }
+      setMessage(lang === 'ar'
+        ? `تم حفظ البريكات لـ ${savedCount} يوم دوام من 25 إلى 31 أكتوبر 2026.`
+        : `Saved break schedules for ${savedCount} working days, Oct 25–31, 2026.`);
+      const person = employee;
+      if (person) {
+        const from = '2026-10-25';
+        const to = '2026-10-31';
+        const response = await fetch(`/api/employee-breaks?employeeId=${encodeURIComponent(person.id)}&from=${from}&to=${to}`, { cache: 'no-store', headers: { Accept: 'application/json' } });
+        if (response.ok) {
+          const data = await parseResponse(response);
+          if (data?.success && data?.breaksByDate) setBreaksByDate(data.breaksByDate);
+        }
+      }
+    } catch (err: unknown) {
+      setError(errorToMessage(err, lang === 'ar' ? 'تعذر تطبيق بريكات الأسبوع' : 'Could not apply weekly breaks'));
+    } finally {
+      setApplyingBreakPreset(false);
+    }
+  };
+
   const weekLabel = `${dateKey(days[0].date)} → ${dateKey(days[6].date)}`;
   const rangeLabel = `${fmtDMY(days[0].date)} – ${fmtDMY(days[6].date)}`;
 
@@ -702,6 +802,15 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
           </button>
           {editPanelOpen && (
             <div className="border-t border-slate-100 p-3 dark:border-slate-800">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-red-200 bg-red-50 p-3 dark:border-red-500/30 dark:bg-red-500/10">
+                <div>
+                  <div className="text-xs font-black text-red-800 dark:text-red-200">{lang === 'ar' ? 'بريكات الأسبوع 25–31 أكتوبر' : 'Break schedule · Oct 25–31'}</div>
+                  <div className="mt-0.5 text-[10px] font-bold text-red-700 dark:text-red-300">{lang === 'ar' ? 'تطبيق بريكات Nancy وNada وSalma وYara وNorhan على أيام الدوام المحفوظة فقط.' : 'Apply the approved individual breaks to the five agents on assigned working days only.'}</div>
+                </div>
+                <button type="button" onClick={applyOctoberBreakPreset} disabled={applyingBreakPreset} className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-red-600 px-3 text-xs font-black text-white hover:bg-red-700 disabled:cursor-wait disabled:opacity-60">
+                  <Coffee className="h-4 w-4" />{applyingBreakPreset ? (lang === 'ar' ? 'جاري حفظ البريكات...' : 'Applying breaks...') : (lang === 'ar' ? 'تطبيق بريكات الأسبوع لكل الموظفات' : 'Apply breaks to all agents')}
+                </button>
+              </div>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
                 {days.map(day => {
                   const resolved = resolveFor(day.key);
