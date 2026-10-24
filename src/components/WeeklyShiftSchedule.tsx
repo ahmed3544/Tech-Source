@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, Coffee, Save, Users, Pencil, Trash2, Plus } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Coffee, Save, Users, Pencil, Trash2, Plus, Settings2 } from 'lucide-react';
 import { Employee, Language, Shift, DailyShiftAssignment } from '../types';
 import { ShiftManager } from './ShiftManager';
 import { ShiftSwapPanel } from './ShiftSwapPanel';
@@ -157,6 +157,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
   const [viewMode, setViewMode] = useState<'week' | 'month'>('week');
   const [mobileDayIndex, setMobileDayIndex] = useState(() => new Date().getDay());
   const [editPanelOpen, setEditPanelOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const isLeader = ['leader', 'admin', 'company_admin', 'platform_admin'].includes(String(currentUser?.role || ''));
 
@@ -510,7 +511,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
     return blocks;
   };
   return (
-    <section className="w-full space-y-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 shadow-sm sm:p-5" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
+    <section className="min-h-[calc(100dvh-72px)] w-full space-y-3 rounded-none border-0 bg-white p-2 shadow-none dark:bg-slate-950 sm:p-3" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
       {/* Teleopti-style brand row: title + acting employee chip. */}
       <header className="flex flex-col gap-3 border-b-2 border-slate-800/10 pb-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex items-center gap-3">
@@ -519,10 +520,11 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <label className="flex items-center gap-1.5 text-xs font-black text-slate-600 dark:text-slate-300"><Users className="h-4 w-4" />{lang === 'ar' ? 'الموظف:' : 'Employee:'}
-            <select value={employee?.id || ''} onChange={e => { setSelectedEmployeeId(e.target.value); setDraft({}); setMessage(null); setError(null); }} className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-xs font-black text-slate-800 outline-none focus:border-blue-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100">
+            <select value={employee?.id || ''} onChange={e => { setSelectedEmployeeId(e.target.value); setDraft({}); setMessage(null); setError(null); }} className="h-9 max-w-[48vw] rounded-lg border border-slate-300 bg-white px-2 text-xs font-black text-slate-800 outline-none focus:border-blue-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100">
               {visibleEmployees.map(e => <option key={e.id} value={e.id}>{e.code ? `${e.code} - ` : ''}{lang === 'ar' ? e.nameAr : e.nameEn}</option>)}
             </select>
           </label>
+          {isLeader && <button type="button" onClick={() => setSettingsOpen(v => !v)} aria-expanded={settingsOpen} className={`inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-xs font-black transition ${settingsOpen ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100'}`}><Settings2 className="h-4 w-4" />{lang === 'ar' ? 'الإعدادات' : 'Settings'}</button>}
         </div>
       </header>
 
@@ -543,13 +545,13 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
         </div>
       </div>
 
-      {isLeader && (
-        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-900/60">
-          <ShiftManager shifts={shifts} lang={lang} onAddShift={onAddShift} onUpdateShift={onUpdateShift} onDeleteShift={onDeleteShift} />
+      {isLeader && settingsOpen && (
+        <div className="space-y-3 rounded-2xl border border-blue-200 bg-slate-50 p-3 shadow-sm dark:border-blue-500/30 dark:bg-slate-900/80">
+          <div className="flex items-center justify-between gap-3"><h2 className="text-sm font-black text-slate-800 dark:text-slate-100">{lang === 'ar' ? 'إعدادات الجدول' : 'Schedule settings'}</h2><button type="button" onClick={() => setSettingsOpen(false)} className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-bold dark:border-slate-600">{lang === 'ar' ? 'إخفاء الإعدادات' : 'Hide settings'}</button></div>
+          <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-950"><ShiftManager shifts={shifts} lang={lang} onAddShift={onAddShift} onUpdateShift={onUpdateShift} onDeleteShift={onDeleteShift} /></div>
+          <ShiftSwapPanel employees={employees} shifts={shifts} assignments={assignments} currentUser={currentUser} lang={lang} />
         </div>
       )}
-
-      {isLeader && <ShiftSwapPanel employees={employees} shifts={shifts} assignments={assignments} currentUser={currentUser} lang={lang} />}
 
       {!employee ? <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm font-bold text-slate-500 dark:border-slate-600 dark:text-slate-400">{lang === 'ar' ? 'لا يوجد موظف متاح للعرض' : 'No employee available'}</div> : viewMode === 'month' ? (
         /* ---------------- MONTH VIEW ---------------- */
@@ -660,6 +662,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
         </>
       )}
 
+{isLeader && settingsOpen && (
       {/* Leader weekly assignment editor — compact, Teleopti editing row. */}
       {isLeader && employee && (
         <div className="rounded-xl border border-slate-200 dark:border-slate-700">
@@ -696,12 +699,17 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
         </div>
       )}
 
+
+      )}
+
+{settingsOpen && (
       {/* Compact legend — same palette as the timeline blocks. */}
       <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold text-slate-600 dark:text-slate-300">
         {legendItems.map(item => (
           <span key={item.id} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 dark:border-slate-700 dark:bg-slate-900">{item.swatch}{lang === 'ar' ? item.ar : item.en}</span>
         ))}
       </div>
+      )}
 
       {message && <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-black text-emerald-700 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-300">{message}</div>}
       {error && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-black text-red-700 dark:border-red-500/40 dark:bg-red-500/15 dark:text-red-300">{error}</div>}
