@@ -152,7 +152,7 @@ export const ShiftManager: React.FC<ShiftManagerProps> = ({
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
-        <h3 className="text-lg font-bold text-gray-900">{lang === 'ar' ? 'إدارة الشفتات' : 'Shift Management'}</h3>
+        <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">{lang === 'ar' ? 'إدارة الشفتات' : 'Shift Management'}</h3>
         <button onClick={() => handleOpenForm()} className="flex items-center gap-2 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition text-sm font-semibold">
           <Plus size={16} /> {lang === 'ar' ? 'شفت جديد' : 'New Shift'}
         </button>
@@ -160,29 +160,29 @@ export const ShiftManager: React.FC<ShiftManagerProps> = ({
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {shifts.map(shift => (
-          <div key={shift.id} className="border border-gray-200 rounded-lg p-4 bg-white dark:bg-slate-900">
+          <div key={shift.id} className="border border-gray-200 rounded-lg p-4 bg-white dark:bg-slate-900 dark:border-gray-700">
             <div className="flex justify-between items-start mb-3">
               <div>
-                <h4 className="font-bold text-gray-900">{lang === 'ar' ? shift.nameAr : shift.nameEn}</h4>
-                <p className="text-sm text-gray-600">{shift.startTime} - {shift.endTime}</p>
+                <h4 className="font-bold text-gray-900 dark:text-gray-100">{lang === 'ar' ? shift.nameAr : shift.nameEn}</h4>
+                <p className="text-sm text-gray-600 dark:text-gray-300">{shift.startTime} - {shift.endTime}</p>
                 {(shift.startDate || shift.endDate) && (
-                  <p className="text-xs text-emerald-700 mt-1 font-semibold">
+                  <p className="text-xs text-emerald-700 mt-1 font-semibold dark:text-emerald-300">
                     {lang === 'ar' ? 'الفترة: ' : 'Period: '}{shift.startDate || '—'} {lang === 'ar' ? 'إلى' : 'to'} {shift.endDate || '—'}
                   </p>
                 )}
               </div>
               <div className="flex gap-2">
-                <button onClick={() => handleOpenForm(shift)} className="p-1 text-blue-600 hover:bg-blue-50 rounded transition" title={lang === 'ar' ? 'تعديل' : 'Edit'}><Edit2 size={16} /></button>
-                <button onClick={() => handleDeleteShift(shift.id)} className="p-1 text-red-600 hover:bg-red-50 rounded transition" title={lang === 'ar' ? 'حذف' : 'Delete'}><Trash2 size={16} /></button>
+                <button onClick={() => handleOpenForm(shift)} className="p-1 text-blue-600 hover:bg-blue-50 rounded transition dark:text-blue-400 dark:hover:bg-blue-500/15" title={lang === 'ar' ? 'تعديل' : 'Edit'}><Edit2 size={16} /></button>
+                <button onClick={() => handleDeleteShift(shift.id)} className="p-1 text-red-600 hover:bg-red-50 rounded transition dark:text-red-400 dark:hover:bg-red-500/20" title={lang === 'ar' ? 'حذف' : 'Delete'}><Trash2 size={16} /></button>
               </div>
             </div>
-            <div className="text-xs text-gray-500 space-y-1">
+            <div className="text-xs text-gray-500 space-y-1 dark:text-gray-400">
               <p>{lang === 'ar' ? 'المدة: ' : 'Duration: '}{shift.durationMinutes || 0} {lang === 'ar' ? 'دقيقة' : 'min'}</p>
               <p>{lang === 'ar' ? 'فترة الأمان: ' : 'Grace Period: '}{shift.gracePeriodMinutes} {lang === 'ar' ? 'دقيقة' : 'min'}</p>
               <p className="flex items-center gap-1"><Coffee size={13} /> {shift.breaks?.length || 0} {lang === 'ar' ? 'بريك' : 'breaks'}</p>
             </div>
             {!!shift.breaks?.length && (
-              <div className="mt-3 pt-3 border-t border-gray-100 space-y-1">
+              <div className="mt-3 pt-3 border-t border-gray-100 space-y-1 dark:border-gray-800">
                 {shift.breaks.map(item => <div key={item.id} className="text-xs text-slate-600 dark:text-slate-400 flex justify-between"><span>{lang === 'ar' ? item.nameAr : item.nameEn}</span><span className="font-mono">{item.startTime} - {item.endTime}</span></div>)}
               </div>
             )}
@@ -195,52 +195,52 @@ export const ShiftManager: React.FC<ShiftManagerProps> = ({
           <div className="bg-white dark:bg-slate-900 rounded-xl shadow-xl max-w-2xl w-full mx-4 p-6 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-5">
               <h4 className="text-lg font-bold">{editingShift ? (lang === 'ar' ? 'تعديل الشفت' : 'Edit Shift') : (lang === 'ar' ? 'شفت جديد' : 'New Shift')}</h4>
-              <button onClick={() => setIsOpen(false)} className="text-gray-500 hover:text-gray-700"><X size={20} /></button>
+              <button onClick={() => setIsOpen(false)} className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"><X size={20} /></button>
             </div>
 
             <div className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <label className="block text-sm font-medium text-gray-700">{lang === 'ar' ? 'اسم الشفت بالعربي' : 'Arabic shift name'}<input type="text" value={formData.nameAr || ''} onChange={e => setFormData({ ...formData, nameAr: e.target.value })} placeholder={lang === 'ar' ? 'مثال: شفت صباحي' : 'Example: Morning shift'} className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg" /></label>
-                <label className="block text-sm font-medium text-gray-700">{lang === 'ar' ? 'اسم الشفت بالإنجليزية' : 'English shift name'}<input type="text" value={formData.nameEn || ''} onChange={e => setFormData({ ...formData, nameEn: e.target.value })} placeholder="Morning shift" className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg" /></label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">{lang === 'ar' ? 'اسم الشفت بالعربي' : 'Arabic shift name'}<input type="text" value={formData.nameAr || ''} onChange={e => setFormData({ ...formData, nameAr: e.target.value })} placeholder={lang === 'ar' ? 'مثال: شفت صباحي' : 'Example: Morning shift'} className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg dark:border-gray-600" /></label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">{lang === 'ar' ? 'اسم الشفت بالإنجليزية' : 'English shift name'}<input type="text" value={formData.nameEn || ''} onChange={e => setFormData({ ...formData, nameEn: e.target.value })} placeholder="Morning shift" className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg dark:border-gray-600" /></label>
               </div>
 
-              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-                <h5 className="font-black text-slate-900 dark:text-white mb-3">{lang === 'ar' ? 'تاريخ الشفت' : 'Shift Date Range'}</h5>
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-500/40 dark:bg-emerald-500/15">
+                <h5 className="font-black text-slate-900 dark:text-white mb-3 dark:text-slate-100">{lang === 'ar' ? 'تاريخ الشفت' : 'Shift Date Range'}</h5>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <label className="block text-sm font-medium text-gray-700">{lang === 'ar' ? 'من تاريخ' : 'From Date'}<input type="date" value={formData.startDate || ''} onChange={e => setFormData({ ...formData, startDate: e.target.value })} className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg" /></label>
-                  <label className="block text-sm font-medium text-gray-700">{lang === 'ar' ? 'إلى تاريخ' : 'To Date'}<input type="date" value={formData.endDate || ''} onChange={e => setFormData({ ...formData, endDate: e.target.value })} className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg" /></label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">{lang === 'ar' ? 'من تاريخ' : 'From Date'}<input type="date" value={formData.startDate || ''} onChange={e => setFormData({ ...formData, startDate: e.target.value })} className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg dark:border-gray-600" /></label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">{lang === 'ar' ? 'إلى تاريخ' : 'To Date'}<input type="date" value={formData.endDate || ''} onChange={e => setFormData({ ...formData, endDate: e.target.value })} className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg dark:border-gray-600" /></label>
                 </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <label className="block text-sm font-medium text-gray-700">{lang === 'ar' ? 'وقت بداية الشفت' : 'Shift Start'}<input type="time" value={formData.startTime || '09:00'} onChange={e => setFormData({ ...formData, startTime: e.target.value })} className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg" /></label>
-                <label className="block text-sm font-medium text-gray-700">{lang === 'ar' ? 'وقت نهاية الشفت' : 'Shift End'}<input type="time" value={formData.endTime || '17:00'} onChange={e => setFormData({ ...formData, endTime: e.target.value })} className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg" /></label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">{lang === 'ar' ? 'وقت بداية الشفت' : 'Shift Start'}<input type="time" value={formData.startTime || '09:00'} onChange={e => setFormData({ ...formData, startTime: e.target.value })} className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg dark:border-gray-600" /></label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">{lang === 'ar' ? 'وقت نهاية الشفت' : 'Shift End'}<input type="time" value={formData.endTime || '17:00'} onChange={e => setFormData({ ...formData, endTime: e.target.value })} className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg dark:border-gray-600" /></label>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <label className="block text-sm font-medium text-gray-700">{lang === 'ar' ? 'ساعات العمل الفعلية (دقيقة)' : 'Actual Work Duration (minutes)'}<input type="number" min="0" value={formData.durationMinutes ?? 480} onChange={e => setFormData({ ...formData, durationMinutes: Number(e.target.value) })} className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg" /></label>
-                <label className="block text-sm font-medium text-gray-700">{lang === 'ar' ? 'فترة السماح (دقيقة)' : 'Grace Period (minutes)'}<input type="number" min="0" value={formData.gracePeriodMinutes ?? 0} onChange={e => setFormData({ ...formData, gracePeriodMinutes: Number(e.target.value) })} className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg" /></label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">{lang === 'ar' ? 'ساعات العمل الفعلية (دقيقة)' : 'Actual Work Duration (minutes)'}<input type="number" min="0" value={formData.durationMinutes ?? 480} onChange={e => setFormData({ ...formData, durationMinutes: Number(e.target.value) })} className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg dark:border-gray-600" /></label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">{lang === 'ar' ? 'فترة السماح (دقيقة)' : 'Grace Period (minutes)'}<input type="number" min="0" value={formData.gracePeriodMinutes ?? 0} onChange={e => setFormData({ ...formData, gracePeriodMinutes: Number(e.target.value) })} className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg dark:border-gray-600" /></label>
               </div>
 
-              <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-500/40 dark:bg-amber-500/15">
                 <div className="flex items-center justify-between gap-3 mb-3">
-                  <div><h5 className="font-black text-slate-900 dark:text-white">{lang === 'ar' ? 'البريكات الخاصة بالشفت' : 'Shift Breaks'}</h5><p className="text-xs text-slate-500 mt-1">{lang === 'ar' ? 'حدد اسم ووقت كل بريك. البريكات تظهر للموظف في الجدول الأسبوعي.' : 'Configure each break. Breaks are shown to the employee in the weekly schedule.'}</p></div>
-                  <button type="button" onClick={addBreak} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white dark:bg-slate-900 border border-amber-300 text-amber-800 text-xs font-bold hover:bg-amber-100"><Plus size={14} />{lang === 'ar' ? 'إضافة بريك' : 'Add break'}</button>
+                  <div><h5 className="font-black text-slate-900 dark:text-white dark:text-slate-100">{lang === 'ar' ? 'البريكات الخاصة بالشفت' : 'Shift Breaks'}</h5><p className="text-xs text-slate-500 mt-1 dark:text-slate-400">{lang === 'ar' ? 'حدد اسم ووقت كل بريك. البريكات تظهر للموظف في الجدول الأسبوعي.' : 'Configure each break. Breaks are shown to the employee in the weekly schedule.'}</p></div>
+                  <button type="button" onClick={addBreak} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white dark:bg-slate-900 border border-amber-300 text-amber-800 text-xs font-bold hover:bg-amber-100 dark:border-amber-500/50 dark:text-amber-300 dark:hover:bg-amber-500/25"><Plus size={14} />{lang === 'ar' ? 'إضافة بريك' : 'Add break'}</button>
                 </div>
-                {(formData.breaks || []).length === 0 && <div className="text-xs text-slate-500 py-2">{lang === 'ar' ? 'لا توجد بريكات لهذا الشفت.' : 'No breaks configured for this shift.'}</div>}
+                {(formData.breaks || []).length === 0 && <div className="text-xs text-slate-500 py-2 dark:text-slate-400">{lang === 'ar' ? 'لا توجد بريكات لهذا الشفت.' : 'No breaks configured for this shift.'}</div>}
                 <div className="space-y-3">
                   {(formData.breaks || []).map((item, index) => (
-                    <div key={item.id} className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-3 bg-white dark:bg-slate-900 border border-amber-100 rounded-lg p-3">
+                    <div key={item.id} className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-3 bg-white dark:bg-slate-900 border border-amber-100 rounded-lg p-3 dark:border-amber-500/30">
                       <div className="space-y-2">
-                        <select value={BREAK_TYPES.find(t => t.ar === item.nameAr)?.value || 'other'} onChange={e => { const type = BREAK_TYPES.find(t => t.value === e.target.value) || BREAK_TYPES[3]; updateBreak(index, { nameAr: type.ar, nameEn: type.en }); }} className="w-full px-2.5 py-2 border border-gray-200 rounded-lg text-sm"><option value="lunch">{lang === 'ar' ? 'غداء' : 'Lunch'}</option><option value="prayer">{lang === 'ar' ? 'صلاة' : 'Prayer'}</option><option value="rest">{lang === 'ar' ? 'راحة' : 'Rest'}</option><option value="other">{lang === 'ar' ? 'أخرى' : 'Other'}</option></select>
-                        <input type="text" value={item.nameAr} onChange={e => updateBreak(index, { nameAr: e.target.value })} placeholder={lang === 'ar' ? 'اسم البريك بالعربي' : 'Arabic break name'} className="w-full px-2.5 py-2 border border-gray-200 rounded-lg text-sm" />
+                        <select value={BREAK_TYPES.find(t => t.ar === item.nameAr)?.value || 'other'} onChange={e => { const type = BREAK_TYPES.find(t => t.value === e.target.value) || BREAK_TYPES[3]; updateBreak(index, { nameAr: type.ar, nameEn: type.en }); }} className="w-full px-2.5 py-2 border border-gray-200 rounded-lg text-sm dark:border-gray-700"><option value="lunch">{lang === 'ar' ? 'غداء' : 'Lunch'}</option><option value="prayer">{lang === 'ar' ? 'صلاة' : 'Prayer'}</option><option value="rest">{lang === 'ar' ? 'راحة' : 'Rest'}</option><option value="other">{lang === 'ar' ? 'أخرى' : 'Other'}</option></select>
+                        <input type="text" value={item.nameAr} onChange={e => updateBreak(index, { nameAr: e.target.value })} placeholder={lang === 'ar' ? 'اسم البريك بالعربي' : 'Arabic break name'} className="w-full px-2.5 py-2 border border-gray-200 rounded-lg text-sm dark:border-gray-700" />
                       </div>
                       <div className="grid grid-cols-2 gap-2">
-                        <label className="text-xs font-bold text-slate-600 dark:text-slate-400">{lang === 'ar' ? 'من' : 'From'}<input type="time" value={item.startTime} onChange={e => updateBreak(index, { startTime: e.target.value })} className="mt-1 w-full px-2 py-2 border border-gray-200 rounded-lg" /></label>
-                        <label className="text-xs font-bold text-slate-600 dark:text-slate-400">{lang === 'ar' ? 'إلى' : 'To'}<input type="time" value={item.endTime} onChange={e => updateBreak(index, { endTime: e.target.value })} className="mt-1 w-full px-2 py-2 border border-gray-200 rounded-lg" /></label>
-                        <div className="col-span-2 text-xs text-slate-500">{lang === 'ar' ? 'المدة: ' : 'Duration: '}{getBreakDuration(item.startTime, item.endTime)} {lang === 'ar' ? 'دقيقة' : 'min'}</div>
+                        <label className="text-xs font-bold text-slate-600 dark:text-slate-400">{lang === 'ar' ? 'من' : 'From'}<input type="time" value={item.startTime} onChange={e => updateBreak(index, { startTime: e.target.value })} className="mt-1 w-full px-2 py-2 border border-gray-200 rounded-lg dark:border-gray-700" /></label>
+                        <label className="text-xs font-bold text-slate-600 dark:text-slate-400">{lang === 'ar' ? 'إلى' : 'To'}<input type="time" value={item.endTime} onChange={e => updateBreak(index, { endTime: e.target.value })} className="mt-1 w-full px-2 py-2 border border-gray-200 rounded-lg dark:border-gray-700" /></label>
+                        <div className="col-span-2 text-xs text-slate-500 dark:text-slate-400">{lang === 'ar' ? 'المدة: ' : 'Duration: '}{getBreakDuration(item.startTime, item.endTime)} {lang === 'ar' ? 'دقيقة' : 'min'}</div>
                       </div>
-                      <button type="button" onClick={() => removeBreak(index)} className="self-start p-2 text-red-600 hover:bg-red-50 rounded-lg" title={lang === 'ar' ? 'حذف البريك' : 'Delete break'}><Trash2 size={16} /></button>
+                      <button type="button" onClick={() => removeBreak(index)} className="self-start p-2 text-red-600 hover:bg-red-50 rounded-lg dark:text-red-400 dark:hover:bg-red-500/20" title={lang === 'ar' ? 'حذف البريك' : 'Delete break'}><Trash2 size={16} /></button>
                     </div>
                   ))}
                 </div>
@@ -248,7 +248,7 @@ export const ShiftManager: React.FC<ShiftManagerProps> = ({
             </div>
 
             <div className="flex gap-2 mt-6">
-              <button onClick={() => setIsOpen(false)} className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-semibold">{lang === 'ar' ? 'إلغاء' : 'Cancel'}</button>
+              <button onClick={() => setIsOpen(false)} className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-semibold dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800/60">{lang === 'ar' ? 'إلغاء' : 'Cancel'}</button>
               <button onClick={handleSaveShift} className="flex-1 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-semibold flex items-center justify-center gap-2"><Save size={16} />{lang === 'ar' ? 'حفظ الشفت' : 'Save Shift'}</button>
             </div>
           </div>

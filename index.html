@@ -8,6 +8,10 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Tech Source Attendance" />
+    <script>
+      /* Pre-paint theme: apply the saved (or OS-preferred) dark mode before anything renders to avoid a white flash. */
+      (() => { try { const t = localStorage.getItem('tech-source-theme'); const dark = t ? t === 'dark' : !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches); document.documentElement.classList.toggle('dark', dark); document.documentElement.style.colorScheme = dark ? 'dark' : 'light'; } catch (e) {} })();
+    </script>
     <title>TECH SOURCE - GDS | نظام الحضور والانصراف</title>
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" type="image/png" href="logo.png" />
@@ -30,7 +34,7 @@
       @media (prefers-reduced-motion: reduce) { #app-loading { transition: none; } .app-loading-spinner { animation-duration: 1.5s; } }
     </style>
   </head>
-  <body class="bg-white text-slate-900 font-sans antialiased">
+  <body class="bg-white text-slate-900 dark:bg-[#0b1220] dark:text-slate-100 font-sans antialiased">
     <div id="app-loading" aria-live="polite" aria-label="جاري تحميل بيانات الشركة">
       <div class="app-loading-card">
         <img class="app-loading-logo" src="/logo.png" alt="Tech Source GDS" />

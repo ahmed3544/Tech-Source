@@ -9,17 +9,23 @@
 .dark #root footer { color: #fff !important; }
 
 /* Light surfaces: set only the container's inherited/default color.
-   Do NOT force descendants, so explicit blue/green/etc. classes stay intact. */
-.dark #root .bg-white,
-.dark #root .bg-slate-50,
-.dark #root .bg-slate-100,
-.dark #root .bg-gray-50,
-.dark #root .bg-gray-100,
+   Do NOT force descendants, so explicit blue/green/etc. classes stay intact.
+   These ink guarantees apply to LIGHT mode only — in dark mode those same
+   bg-classes are remapped to dark surfaces (see index.css), so forcing
+   dark ink there would make text unreadable. */
 html:not(.dark) #root .bg-white,
 html:not(.dark) #root .bg-slate-50,
 html:not(.dark) #root .bg-slate-100,
 html:not(.dark) #root .bg-gray-50,
 html:not(.dark) #root .bg-gray-100 { color: #0f172a !important; }
+
+/* Dark mode: the same surface classes hold dark backgrounds — guarantee light ink
+   unless the element explicitly declares its own dark: text color. */
+.dark #root .bg-white:not([class*="dark:"]),
+.dark #root .bg-slate-50:not([class*="dark:"]),
+.dark #root .bg-slate-100:not([class*="dark:"]),
+.dark #root .bg-gray-50:not([class*="dark:"]),
+.dark #root .bg-gray-100:not([class*="dark:"]) { color: #e2e8f0 !important; }
 
 /* Inputs/selects: readable by default, but dark cards keep light controls. */
 #root input, #root select, #root textarea {
@@ -30,10 +36,15 @@ html:not(.dark) #root .bg-gray-100 { color: #0f172a !important; }
   overflow: hidden;
   text-overflow: ellipsis;
 }
-#root input, #root select, #root textarea { color: #0f172a !important; }
-.dark #root input,
-.dark #root select,
-.dark #root textarea { color: #fff !important; background-color: #0f172a !important; }
+html:not(.dark) #root input, html:not(.dark) #root select, html:not(.dark) #root textarea { color: #0f172a !important; }
+/* Dark mode: light ink on every control; plain controls additionally get a dark
+   surface, while controls that declare their own dark:bg class keep it. */
+.dark #root input, .dark #root select, .dark #root textarea { color: #f1f5f9 !important; }
+/* Dark mode: inputs default to a dark surface with light ink; inputs that
+   explicitly declare a dark:bg class keep their own (guarded, non-forced). */
+.dark #root input:not([class*="dark:bg"]),
+.dark #root select:not([class*="dark:bg"]),
+.dark #root textarea:not([class*="dark:bg"]) { background-color: #0f172a !important; }
 
 /* Login modal is intentionally dark in both themes, so credentials are always white. */
 #root .bg-slate-900 input,

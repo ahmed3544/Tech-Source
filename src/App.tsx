@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { CalendarDays, Users, Plus, LogOut, Languages, Pencil, Trash2, Save, X } from 'lucide-react';
+import { CalendarDays, Users, Plus, LogOut, Languages, Moon, Sun, Pencil, Trash2, Save, X } from 'lucide-react';
 import { LoginModal } from './components/LoginModal';
 import { WeeklyShiftSchedule } from './components/WeeklyShiftSchedule';
 import { Employee, Language, Shift, DailyShiftAssignment } from './types';
 import { INITIAL_EMPLOYEES, INITIAL_SHIFTS } from './mockData';
 import { authHeaders, errorToMessage, extractApiError, parseResponse } from './utils/errors';
+import { getTheme, subscribeTheme, toggleTheme, type Theme } from './utils/theme';
 import { HolidayRange, LeaveRange } from './utils/scheduleStatus';
 
 const ADMIN_ID = 'emp-002';
@@ -55,6 +56,8 @@ const normalizeShift = (raw: any): Shift => ({
 
 export default function App() {
   const [lang, setLang] = useState<Language>('ar');
+  const [theme, setThemeState] = useState<Theme>(() => getTheme());
+  useEffect(() => subscribeTheme(() => setThemeState(getTheme())), []);
   const [employees, setEmployees] = useState<Employee[]>(INITIAL_EMPLOYEES.map(normalizeEmployee));
   const [shifts, setShifts] = useState<Shift[]>(INITIAL_SHIFTS.map(normalizeShift));
   const [assignments, setAssignments] = useState<DailyShiftAssignment[]>([]);
@@ -329,51 +332,52 @@ export default function App() {
   const visibleEmployees = useMemo(() => employees.filter(e => e.id !== ADMIN_ID || e.role === 'admin'), [employees]);
 
   if (!currentUser || loginOpen) {
-    return <div className="min-h-screen bg-slate-100 p-4" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
-      <div className="mx-auto mb-4 flex max-w-5xl justify-end">
-        <button onClick={() => setLang(lang === 'ar' ? 'en' : 'ar')} className="rounded-lg border bg-white px-3 py-2 text-sm"><Languages className="mr-2 inline h-4 w-4" />{lang === 'ar' ? 'English' : 'العربية'}</button>
+    return <div className="min-h-screen bg-slate-100 p-4 dark:bg-slate-950 dark:text-slate-100" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
+      <div className="mx-auto mb-4 flex max-w-5xl justify-end gap-2">
+        <button onClick={() => toggleTheme()} title={theme === 'dark' ? (lang === 'ar' ? 'الوضع الفاتح' : 'Light mode') : (lang === 'ar' ? 'الوضع الليلي' : 'Dark mode')} aria-label={theme === 'dark' ? (lang === 'ar' ? 'تفعيل الوضع الفاتح' : 'Switch to light mode') : (lang === 'ar' ? 'تفعيل الوضع الليلي' : 'Switch to dark mode')} className="rounded-lg border bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">{theme === 'dark' ? <Sun className="inline h-4 w-4" /> : <Moon className="inline h-4 w-4" />}</button>
+        <button onClick={() => setLang(lang === 'ar' ? 'en' : 'ar')} className="rounded-lg border bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"><Languages className="mr-2 inline h-4 w-4" />{lang === 'ar' ? 'English' : 'العربية'}</button>
       </div>
       <LoginModal isOpen={loginOpen} onClose={() => setLoginOpen(true)} employees={employees} onLoginSuccess={handleLogin} notice={loginNotice} lang={lang} />
-      {error && <p className="mx-auto mt-3 max-w-md rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+      {error && <p className="mx-auto mt-3 max-w-md rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-500/15 dark:text-red-300">{error}</p>}
     </div>;
   }
 
-  return <main className="min-h-screen bg-slate-100 text-slate-900" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
-    <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 backdrop-blur">
+  return <main className="min-h-screen bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-100" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
+    <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 backdrop-blur dark:border-slate-800 dark:bg-slate-900/95">
       <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
-        <div className="flex items-center gap-3"><div className="rounded-xl bg-emerald-100 p-2 text-emerald-700"><CalendarDays className="h-6 w-6" /></div><div><h1 className="text-lg font-black">{lang === 'ar' ? 'نظام جداول الورديات' : 'Shift Scheduling System'}</h1><p className="text-xs text-slate-500">TECH SOURCE - GDS</p></div></div>
-        <div className="flex items-center gap-2"><span className="hidden text-sm font-bold sm:inline">{currentUser.nameAr}</span><button onClick={() => setLang(lang === 'ar' ? 'en' : 'ar')} className="rounded-lg border px-3 py-2 text-sm"><Languages className="mr-1 inline h-4 w-4" />{lang === 'ar' ? 'EN' : 'عربي'}</button><button onClick={() => { localStorage.removeItem('logged_in_user'); try { sessionStorage.removeItem('auth_pin'); } catch {} setCurrentUser(null); setLoginNotice(''); setLoginOpen(true); }} className="rounded-lg border px-3 py-2 text-sm"><LogOut className="mr-1 inline h-4 w-4" />{lang === 'ar' ? 'خروج' : 'Log out'}</button></div>
+        <div className="flex items-center gap-3"><div className="rounded-xl bg-emerald-100 p-2 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"><CalendarDays className="h-6 w-6" /></div><div><h1 className="text-lg font-black">{lang === 'ar' ? 'نظام جداول الورديات' : 'Shift Scheduling System'}</h1><p className="text-xs text-slate-500 dark:text-slate-400">TECH SOURCE - GDS</p></div></div>
+        <div className="flex items-center gap-2"><span className="hidden text-sm font-bold sm:inline">{currentUser.nameAr}</span><button onClick={() => toggleTheme()} title={theme === 'dark' ? (lang === 'ar' ? 'الوضع الفاتح' : 'Light mode') : (lang === 'ar' ? 'الوضع الليلي' : 'Dark mode')} aria-label={theme === 'dark' ? (lang === 'ar' ? 'تفعيل الوضع الفاتح' : 'Switch to light mode') : (lang === 'ar' ? 'تفعيل الوضع الليلي' : 'Switch to dark mode')} className="rounded-lg border px-3 py-2 text-sm dark:border-slate-700 dark:text-slate-100">{theme === 'dark' ? <Sun className="inline h-4 w-4" /> : <Moon className="inline h-4 w-4" />}</button><button onClick={() => setLang(lang === 'ar' ? 'en' : 'ar')} className="rounded-lg border px-3 py-2 text-sm dark:border-slate-700 dark:text-slate-100"><Languages className="mr-1 inline h-4 w-4" />{lang === 'ar' ? 'EN' : 'عربي'}</button><button onClick={() => { localStorage.removeItem('logged_in_user'); try { sessionStorage.removeItem('auth_pin'); } catch {} setCurrentUser(null); setLoginNotice(''); setLoginOpen(true); }} className="rounded-lg border px-3 py-2 text-sm dark:border-slate-700 dark:text-slate-100"><LogOut className="mr-1 inline h-4 w-4" />{lang === 'ar' ? 'خروج' : 'Log out'}</button></div>
       </div>
     </header>
     <div className="mx-auto grid max-w-[1600px] gap-5 p-3 sm:p-6 lg:grid-cols-[minmax(0,1fr)_300px]">
       <section className="min-w-0"><WeeklyShiftSchedule employees={visibleEmployees} shifts={shifts} dailyShiftAssignments={assignments} leaveRequests={leaveRequests} holidays={holidays} currentUser={currentUser} lang={lang} onAddShift={handleAddShift} onUpdateShift={handleUpdateShift} onDeleteShift={handleDeleteShift} onAuthFailure={forceReLogin} /></section>
-      {isAdmin && <aside className="h-fit rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="mb-3 flex items-center justify-between"><h2 className="font-black">{lang === 'ar' ? 'إدارة الموظفين' : 'Employee Management'}</h2><Users className="h-5 w-5 text-slate-500" /></div>
-        <p className="mb-4 text-xs leading-5 text-slate-500">{lang === 'ar' ? 'أضف الموظفين الجدد ليظهروا في جدول الورديات. لا توجد بيانات حضور أو إجازات في هذا النظام.' : 'Add employees to make them available in the roster. Attendance and leave data are not part of this system.'}</p>
+      {isAdmin && <aside className="h-fit rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div className="mb-3 flex items-center justify-between"><h2 className="font-black">{lang === 'ar' ? 'إدارة الموظفين' : 'Employee Management'}</h2><Users className="h-5 w-5 text-slate-500 dark:text-slate-400" /></div>
+        <p className="mb-4 text-xs leading-5 text-slate-500 dark:text-slate-400">{lang === 'ar' ? 'أضف الموظفين الجدد ليظهروا في جدول الورديات. لا توجد بيانات حضور أو إجازات في هذا النظام.' : 'Add employees to make them available in the roster. Attendance and leave data are not part of this system.'}</p>
         <button onClick={() => setShowAddEmployee(!showAddEmployee)} className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white"><Plus className="h-4 w-4" />{lang === 'ar' ? 'إضافة موظف' : 'Add employee'}</button>
         {showAddEmployee && <form onSubmit={addEmployee} className="mt-4 space-y-3">
-          <input required value={newName} onChange={e => setNewName(e.target.value)} placeholder={lang === 'ar' ? 'اسم الموظف' : 'Employee name'} className="w-full rounded-lg border px-3 py-2 text-sm" />
-          <input required value={newCode} onChange={e => setNewCode(e.target.value)} placeholder={lang === 'ar' ? 'كود الموظف' : 'Employee code'} className="w-full rounded-lg border px-3 py-2 text-sm" />
-          <input required value={newPin} onChange={e => setNewPin(e.target.value)} placeholder={lang === 'ar' ? 'كلمة مرور مؤقتة' : 'Temporary password'} className="w-full rounded-lg border px-3 py-2 text-sm" />
-          <button disabled={busy} className="w-full rounded-lg bg-slate-900 px-3 py-2 text-sm font-bold text-white disabled:opacity-50">{busy ? (lang === 'ar' ? 'جاري الحفظ...' : 'Saving...') : (lang === 'ar' ? 'حفظ الموظف' : 'Save employee')}</button>
+          <input required value={newName} onChange={e => setNewName(e.target.value)} placeholder={lang === 'ar' ? 'اسم الموظف' : 'Employee name'} className="w-full rounded-lg border px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100" />
+          <input required value={newCode} onChange={e => setNewCode(e.target.value)} placeholder={lang === 'ar' ? 'كود الموظف' : 'Employee code'} className="w-full rounded-lg border px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100" />
+          <input required value={newPin} onChange={e => setNewPin(e.target.value)} placeholder={lang === 'ar' ? 'كلمة مرور مؤقتة' : 'Temporary password'} className="w-full rounded-lg border px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100" />
+          <button disabled={busy} className="w-full rounded-lg bg-slate-900 px-3 py-2 text-sm font-bold text-white disabled:opacity-50 dark:bg-slate-700">{busy ? (lang === 'ar' ? 'جاري الحفظ...' : 'Saving...') : (lang === 'ar' ? 'حفظ الموظف' : 'Save employee')}</button>
         </form>}
-        {error && <p className="mt-3 rounded-lg bg-red-50 p-3 text-xs text-red-700">{error}</p>}
-        {successMessage && !error && <p className="mt-3 rounded-lg bg-emerald-50 p-3 text-xs font-bold text-emerald-700">{successMessage}</p>}
-        <div className="mt-4 space-y-2">{visibleEmployees.filter(e => e.id !== ADMIN_ID).map(e => <div key={e.id} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
+        {error && <p className="mt-3 rounded-lg bg-red-50 p-3 text-xs text-red-700 dark:bg-red-500/15 dark:text-red-300">{error}</p>}
+        {successMessage && !error && <p className="mt-3 rounded-lg bg-emerald-50 p-3 text-xs font-bold text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">{successMessage}</p>}
+        <div className="mt-4 space-y-2">{visibleEmployees.filter(e => e.id !== ADMIN_ID).map(e => <div key={e.id} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 dark:border-slate-800 dark:bg-slate-800/60">
           {editingEmployeeId === e.id ? <form onSubmit={saveEmployeeEdits} className="space-y-2">
-            <input required value={editName} onChange={event => setEditName(event.target.value)} placeholder={lang === 'ar' ? 'اسم الموظف' : 'Employee name'} className="w-full rounded-lg border bg-white px-3 py-2 text-sm" />
-            <input required value={editCode} onChange={event => setEditCode(event.target.value)} placeholder={lang === 'ar' ? 'كود الموظف' : 'Employee code'} className="w-full rounded-lg border bg-white px-3 py-2 text-sm" />
-            <input value={editPin} onChange={event => setEditPin(event.target.value)} placeholder={lang === 'ar' ? 'كلمة مرور جديدة (اتركها فارغة دون تغيير)' : 'New password (leave blank to keep current)'} className="w-full rounded-lg border bg-white px-3 py-2 text-sm" autoComplete="new-password" />
+            <input required value={editName} onChange={event => setEditName(event.target.value)} placeholder={lang === 'ar' ? 'اسم الموظف' : 'Employee name'} className="w-full rounded-lg border bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100" />
+            <input required value={editCode} onChange={event => setEditCode(event.target.value)} placeholder={lang === 'ar' ? 'كود الموظف' : 'Employee code'} className="w-full rounded-lg border bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100" />
+            <input value={editPin} onChange={event => setEditPin(event.target.value)} placeholder={lang === 'ar' ? 'كلمة مرور جديدة (اتركها فارغة دون تغيير)' : 'New password (leave blank to keep current)'} className="w-full rounded-lg border bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100" autoComplete="new-password" />
             <div className="flex gap-2">
               <button disabled={busy} className="flex flex-1 items-center justify-center gap-1 rounded-lg bg-emerald-600 px-2 py-2 text-xs font-bold text-white disabled:opacity-50"><Save className="h-3.5 w-3.5" />{lang === 'ar' ? 'حفظ' : 'Save'}</button>
-              <button type="button" onClick={() => setEditingEmployeeId(null)} className="flex items-center justify-center gap-1 rounded-lg border bg-white px-2 py-2 text-xs"><X className="h-3.5 w-3.5" />{lang === 'ar' ? 'إلغاء' : 'Cancel'}</button>
+              <button type="button" onClick={() => setEditingEmployeeId(null)} className="flex items-center justify-center gap-1 rounded-lg border bg-white px-2 py-2 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"><X className="h-3.5 w-3.5" />{lang === 'ar' ? 'إلغاء' : 'Cancel'}</button>
             </div>
           </form> : <>
             <div className="text-sm font-bold">{lang === 'ar' ? e.nameAr : e.nameEn}</div>
-            <div className="mt-1 text-xs text-slate-500">{lang === 'ar' ? 'الكود:' : 'Code:'} <span className="font-mono font-bold">{e.code}</span> · {e.status === 'inactive' ? (lang === 'ar' ? 'غير مفعّل' : 'Inactive') : (lang === 'ar' ? 'مفعّل' : 'Active')}</div>
+            <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">{lang === 'ar' ? 'الكود:' : 'Code:'} <span className="font-mono font-bold">{e.code}</span> · {e.status === 'inactive' ? (lang === 'ar' ? 'غير مفعّل' : 'Inactive') : (lang === 'ar' ? 'مفعّل' : 'Active')}</div>
             <div className="mt-2 flex gap-2">
-              <button type="button" onClick={() => startEditEmployee(e)} className="flex items-center gap-1 rounded-lg border bg-white px-2 py-1.5 text-xs font-semibold"><Pencil className="h-3.5 w-3.5" />{lang === 'ar' ? 'تعديل الكود / الباسورد' : 'Edit code / password'}</button>
-              <button type="button" disabled={busy} onClick={() => void deleteEmployee(e)} className="flex items-center gap-1 rounded-lg border border-red-200 bg-white px-2 py-1.5 text-xs font-semibold text-red-700 disabled:opacity-50"><Trash2 className="h-3.5 w-3.5" />{lang === 'ar' ? 'حذف' : 'Delete'}</button>
+              <button type="button" onClick={() => startEditEmployee(e)} className="flex items-center gap-1 rounded-lg border bg-white px-2 py-1.5 text-xs font-semibold dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"><Pencil className="h-3.5 w-3.5" />{lang === 'ar' ? 'تعديل الكود / الباسورد' : 'Edit code / password'}</button>
+              <button type="button" disabled={busy} onClick={() => void deleteEmployee(e)} className="flex items-center gap-1 rounded-lg border border-red-200 bg-white px-2 py-1.5 text-xs font-semibold text-red-700 disabled:opacity-50 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-300"><Trash2 className="h-3.5 w-3.5" />{lang === 'ar' ? 'حذف' : 'Delete'}</button>
             </div>
           </>}
         </div>)}</div>

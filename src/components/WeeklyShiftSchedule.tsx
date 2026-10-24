@@ -103,13 +103,13 @@ const validateBreakRows = (rows: ScheduleBreak[]): string | null => {
 /* Teleopti WFM palette — matches the reference design exactly.        */
 /* ------------------------------------------------------------------ */
 const TEO = {
-  shift: 'bg-orange-400 hover:bg-orange-500 text-white',
-  shiftPending: 'bg-orange-300 text-white ring-2 ring-blue-400',
-  breakBar: 'bg-red-500 hover:bg-red-600',
-  holiday: 'bg-red-100 text-red-800 border border-red-300',
-  annual: 'bg-yellow-300 text-yellow-900',
-  offLabel: 'text-slate-600',
-  unassigned: 'text-slate-400',
+  shift: 'bg-orange-400 hover:bg-orange-500 text-white dark:bg-orange-500 dark:hover:bg-orange-400',
+  shiftPending: 'bg-orange-300 text-white ring-2 ring-blue-400 dark:bg-orange-600',
+  breakBar: 'bg-red-500 hover:bg-red-600 dark:bg-red-600 dark:hover:bg-red-500',
+  holiday: 'bg-red-100 text-red-800 border border-red-300 dark:bg-red-500/15 dark:text-red-300 dark:border-red-500/40',
+  annual: 'bg-yellow-300 text-yellow-900 dark:bg-yellow-500/25 dark:text-yellow-300',
+  offLabel: 'text-slate-600 dark:text-slate-400',
+  unassigned: 'text-slate-400 dark:text-slate-500',
 };
 /** Diagonal hatching for "Day Off" — same as the Teleopti striped cell. */
 const HATCH_STYLE: React.CSSProperties = {
@@ -429,8 +429,8 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
   const legendItems: Array<{ id: string; en: string; ar: string; swatch: React.ReactNode }> = [
     { id: 'shift', en: 'Shift', ar: 'وردية', swatch: <span className="inline-block h-3.5 w-6 rounded bg-orange-400" /> },
     { id: 'break', en: 'Break', ar: 'استراحة', swatch: <span className="inline-block h-2 w-6 rounded bg-red-500" /> },
-    { id: 'off', en: 'Day Off', ar: 'راحة أسبوعية', swatch: <span className="inline-block h-3.5 w-6 rounded border border-slate-300" style={HATCH_STYLE} /> },
-    { id: 'holiday', en: 'Holiday', ar: 'عطلة رسمية', swatch: <span className="inline-block h-3.5 w-6 rounded border border-red-300 bg-red-100" /> },
+    { id: 'off', en: 'Day Off', ar: 'راحة أسبوعية', swatch: <span className="tech-source-hatch inline-block h-3.5 w-6 rounded border border-slate-300 dark:border-slate-600" style={HATCH_STYLE} /> },
+    { id: 'holiday', en: 'Holiday', ar: 'عطلة رسمية', swatch: <span className="inline-block h-3.5 w-6 rounded border border-red-300 bg-red-100 dark:border-red-500/50 dark:bg-red-500/20" /> },
     { id: 'annual', en: 'Annual Leave', ar: 'إجازة سنوية', swatch: <span className="inline-block h-3.5 w-6 rounded bg-yellow-300" /> },
   ];
 
@@ -448,7 +448,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
 
     if (r.status === 'off') {
       blocks.push(
-        <div key="off" className="absolute inset-1 flex items-center justify-center rounded-md border border-slate-300" style={HATCH_STYLE}>
+        <div key="off" className="tech-source-hatch absolute inset-1 flex items-center justify-center rounded-md border border-slate-300 dark:border-slate-600" style={HATCH_STYLE}>
           <span className={`rounded bg-white/85 px-2 py-1 text-[11px] font-black ${TEO.offLabel}`}>{lang === 'ar' ? 'راحة أسبوعية' : 'Day Off'}</span>
         </div>
       );
@@ -468,7 +468,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
       );
     } else if (r.status === 'unassigned') {
       blocks.push(
-        <div key="unassigned" className="absolute inset-1 flex items-start justify-center rounded-md border border-dashed border-slate-200 pt-2">
+        <div key="unassigned" className="absolute inset-1 flex items-start justify-center rounded-md border border-dashed border-slate-200 pt-2 dark:border-slate-700">
           <span className={`text-[10px] font-bold ${TEO.unassigned}`}>{lang === 'ar' ? 'غير مُعيّن' : 'Unassigned'}</span>
         </div>
       );
@@ -514,12 +514,12 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
       {/* Teleopti-style brand row: title + acting employee chip. */}
       <header className="flex flex-col gap-3 border-b-2 border-slate-800/10 pb-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex items-center gap-3">
-          <div className="rounded-lg bg-slate-900 px-3 py-2 text-white"><div className="text-sm font-black tracking-wide">TECH SOURCE</div><div className="text-[9px] font-bold opacity-80">{lang === 'ar' ? 'جدول الموظفين' : 'WEEKLY SCHEDULE'}</div></div>
-          <div><p className="text-xs font-bold text-slate-500">{weekLabel}</p></div>
+          <div className="rounded-lg bg-slate-900 px-3 py-2 text-white dark:bg-slate-700"><div className="text-sm font-black tracking-wide">TECH SOURCE</div><div className="text-[9px] font-bold opacity-80">{lang === 'ar' ? 'جدول الموظفين' : 'WEEKLY SCHEDULE'}</div></div>
+          <div><p className="text-xs font-bold text-slate-500 dark:text-slate-400">{weekLabel}</p></div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <label className="flex items-center gap-1.5 text-xs font-black text-slate-600"><Users className="h-4 w-4" />{lang === 'ar' ? 'الموظف:' : 'Employee:'}
-            <select value={employee?.id || ''} onChange={e => { setSelectedEmployeeId(e.target.value); setDraft({}); setMessage(null); setError(null); }} className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-xs font-black text-slate-800 outline-none focus:border-blue-500">
+          <label className="flex items-center gap-1.5 text-xs font-black text-slate-600 dark:text-slate-300"><Users className="h-4 w-4" />{lang === 'ar' ? 'الموظف:' : 'Employee:'}
+            <select value={employee?.id || ''} onChange={e => { setSelectedEmployeeId(e.target.value); setDraft({}); setMessage(null); setError(null); }} className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-xs font-black text-slate-800 outline-none focus:border-blue-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100">
               {visibleEmployees.map(e => <option key={e.id} value={e.id}>{e.code ? `${e.code} - ` : ''}{lang === 'ar' ? e.nameAr : e.nameEn}</option>)}
             </select>
           </label>
@@ -527,50 +527,50 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
       </header>
 
       {/* Teleopti toolbar: range navigation + Today + Week/Month toggle. */}
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-2">
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-2 dark:border-slate-700 dark:bg-slate-900/60">
         <div className="flex flex-wrap items-center gap-1.5">
-          <button type="button" onClick={() => setWeekStart(addDays(weekStart, -7))} className="rounded-lg border border-slate-300 bg-white p-1.5 text-slate-700 hover:bg-slate-100" aria-label={lang === 'ar' ? 'الأسبوع السابق' : 'Previous week'}><ChevronRight className="h-4 w-4" /></button>
-          <span className="min-w-[150px] rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-center font-mono text-xs font-black text-slate-800">{rangeLabel}</span>
-          <button type="button" onClick={() => setWeekStart(addDays(weekStart, 7))} className="rounded-lg border border-slate-300 bg-white p-1.5 text-slate-700 hover:bg-slate-100" aria-label={lang === 'ar' ? 'الأسبوع التالي' : 'Next week'}><ChevronLeft className="h-4 w-4" /></button>
-          <button type="button" onClick={() => setWeekStart(startOfWeek(new Date()))} className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-[11px] font-black text-slate-700 hover:bg-slate-100">📅 {lang === 'ar' ? 'اليوم' : 'Today'}</button>
+          <button type="button" onClick={() => setWeekStart(addDays(weekStart, -7))} className="rounded-lg border border-slate-300 bg-white p-1.5 text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800/70" aria-label={lang === 'ar' ? 'الأسبوع السابق' : 'Previous week'}><ChevronRight className="h-4 w-4" /></button>
+          <span className="min-w-[150px] rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-center font-mono text-xs font-black text-slate-800 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100">{rangeLabel}</span>
+          <button type="button" onClick={() => setWeekStart(addDays(weekStart, 7))} className="rounded-lg border border-slate-300 bg-white p-1.5 text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800/70" aria-label={lang === 'ar' ? 'الأسبوع التالي' : 'Next week'}><ChevronLeft className="h-4 w-4" /></button>
+          <button type="button" onClick={() => setWeekStart(startOfWeek(new Date()))} className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-[11px] font-black text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800/70">📅 {lang === 'ar' ? 'اليوم' : 'Today'}</button>
           {isLeader && Object.keys(draft).length > 0 && (
             <button type="button" onClick={saveWeek} disabled={saving} className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-[11px] font-black text-white hover:bg-blue-700 disabled:opacity-50"><Save className="h-3.5 w-3.5" />{saving ? (lang === 'ar' ? 'جاري الحفظ...' : 'Saving...') : (lang === 'ar' ? `حفظ التعديلات (${Object.keys(draft).length})` : `Save changes (${Object.keys(draft).length})`)}</button>
           )}
         </div>
-        <div className="flex overflow-hidden rounded-lg border border-slate-300">
-          <button type="button" onClick={() => setViewMode('week')} className={`px-3.5 py-1.5 text-[11px] font-black transition ${viewMode === 'week' ? 'bg-blue-600 text-white' : 'bg-white text-slate-700 hover:bg-slate-100'}`}>{lang === 'ar' ? 'أسبوع' : 'Week'}</button>
-          <button type="button" onClick={() => setViewMode('month')} className={`px-3.5 py-1.5 text-[11px] font-black transition ${viewMode === 'month' ? 'bg-blue-600 text-white' : 'bg-white text-slate-700 hover:bg-slate-100'}`}>{lang === 'ar' ? 'شهر' : 'Month'}</button>
+        <div className="flex overflow-hidden rounded-lg border border-slate-300 dark:border-slate-600">
+          <button type="button" onClick={() => setViewMode('week')} className={`px-3.5 py-1.5 text-[11px] font-black transition ${viewMode === 'week' ? 'bg-blue-600 text-white' : 'bg-white text-slate-700 hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'}`}>{lang === 'ar' ? 'أسبوع' : 'Week'}</button>
+          <button type="button" onClick={() => setViewMode('month')} className={`px-3.5 py-1.5 text-[11px] font-black transition ${viewMode === 'month' ? 'bg-blue-600 text-white' : 'bg-white text-slate-700 hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'}`}>{lang === 'ar' ? 'شهر' : 'Month'}</button>
         </div>
       </div>
 
       {isLeader && (
-        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-900/60">
           <ShiftManager shifts={shifts} lang={lang} onAddShift={onAddShift} onUpdateShift={onUpdateShift} onDeleteShift={onDeleteShift} />
         </div>
       )}
 
       {isLeader && <ShiftSwapPanel employees={employees} shifts={shifts} assignments={assignments} currentUser={currentUser} lang={lang} />}
 
-      {!employee ? <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm font-bold text-slate-500">{lang === 'ar' ? 'لا يوجد موظف متاح للعرض' : 'No employee available'}</div> : viewMode === 'month' ? (
+      {!employee ? <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm font-bold text-slate-500 dark:border-slate-600 dark:text-slate-400">{lang === 'ar' ? 'لا يوجد موظف متاح للعرض' : 'No employee available'}</div> : viewMode === 'month' ? (
         /* ---------------- MONTH VIEW ---------------- */
-        <div className="rounded-xl border border-slate-200">
-          <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50 text-center text-[10px] font-black text-slate-600" dir="ltr">
+        <div className="rounded-xl border border-slate-200 dark:border-slate-700">
+          <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50 text-center text-[10px] font-black text-slate-600 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-300" dir="ltr">
             {(lang === 'ar' ? ['أحد', 'اثنين', 'ثلاثاء', 'أربعاء', 'خميس', 'جمعة', 'سبت'] : ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT']).map(d => <div key={d} className="px-1 py-2">{d}</div>)}
           </div>
           <div className="grid grid-cols-7" dir="ltr">
             {monthCells.cells.map((cell, i) => {
-              if (!cell.key || !cell.date) return <div key={`blank-${i}`} className="min-h-[64px] border-b border-l border-slate-100 bg-slate-50/50" />;
+              if (!cell.key || !cell.date) return <div key={`blank-${i}`} className="min-h-[64px] border-b border-l border-slate-100 bg-slate-50/50 dark:border-slate-800" />;
               const resolved = resolveFor(cell.key);
               const isToday = cell.key === todayKey;
               return (
-                <button type="button" key={cell.key} onClick={() => { setWeekStart(startOfWeek(cell.date as Date)); setMobileDayIndex((cell.date as Date).getDay()); setViewMode('week'); }} className={`relative min-h-[64px] border-b border-l border-slate-100 p-1 text-start transition hover:bg-blue-50/60 ${isToday ? 'bg-blue-50' : 'bg-white'}`}>
-                  <span className={`text-[11px] font-black ${isToday ? 'text-blue-700' : 'text-slate-700'}`}>{cell.dayNumber}</span>
+                <button type="button" key={cell.key} onClick={() => { setWeekStart(startOfWeek(cell.date as Date)); setMobileDayIndex((cell.date as Date).getDay()); setViewMode('week'); }} className={`relative min-h-[64px] border-b border-l border-slate-100 p-1 text-start transition hover:bg-blue-50/60 dark:border-slate-800 dark:hover:bg-blue-500/10 ${isToday ? 'bg-blue-50 dark:bg-blue-500/15' : 'bg-white dark:bg-slate-900'}`}>
+                  <span className={`text-[11px] font-black ${isToday ? 'text-blue-700 dark:text-blue-300' : 'text-slate-700 dark:text-slate-200'}`}>{cell.dayNumber}</span>
                   {resolved.status === 'working' && resolved.shift && (
                     <div className="mt-0.5 rounded bg-orange-400 px-1 py-0.5 text-[8px] font-black leading-tight text-white">{lang === 'ar' ? (resolved.shift.nameAr || resolved.shift.name) : (resolved.shift.nameEn || resolved.shift.name)}<br />{resolved.shift.startTime}–{resolved.shift.endTime}</div>
                   )}
-                  {resolved.status === 'off' && <div className="mt-0.5 rounded border border-slate-300 px-1 py-0.5 text-[8px] font-black text-slate-500" style={HATCH_STYLE}>{lang === 'ar' ? 'راحة' : 'Off'}</div>}
-                  {resolved.status === 'holiday' && <div className="mt-0.5 rounded bg-red-100 px-1 py-0.5 text-[8px] font-black text-red-800">{lang === 'ar' ? 'عطلة' : 'Holiday'}</div>}
-                  {resolved.status === 'annual' && <div className="mt-0.5 rounded bg-yellow-300 px-1 py-0.5 text-[8px] font-black text-yellow-900">{lang === 'ar' ? 'سنوية' : 'Annual'}</div>}
+                  {resolved.status === 'off' && <div className="tech-source-hatch mt-0.5 rounded border border-slate-300 px-1 py-0.5 text-[8px] font-black text-slate-500 dark:border-slate-600 dark:text-slate-400" style={HATCH_STYLE}>{lang === 'ar' ? 'راحة' : 'Off'}</div>}
+                  {resolved.status === 'holiday' && <div className="mt-0.5 rounded bg-red-100 px-1 py-0.5 text-[8px] font-black text-red-800 dark:bg-red-500/20 dark:text-red-300">{lang === 'ar' ? 'عطلة' : 'Holiday'}</div>}
+                  {resolved.status === 'annual' && <div className="mt-0.5 rounded bg-yellow-300 px-1 py-0.5 text-[8px] font-black text-yellow-900 dark:bg-yellow-500/25 dark:text-yellow-200">{lang === 'ar' ? 'سنوية' : 'Annual'}</div>}
                   {resolved.status === 'unassigned' && <div className="mt-0.5 text-[8px] font-bold text-slate-300">{lang === 'ar' ? '—' : '—'}</div>}
                 </button>
               );
@@ -580,34 +580,34 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
       ) : (
         <>
           {/* ---------------- DESKTOP WEEK GRID (Teleopti style) ---------------- */}
-          <div className="hidden overflow-x-auto rounded-xl border border-slate-200 lg:block" dir="ltr">
+          <div className="hidden overflow-x-auto rounded-xl border border-slate-200 lg:block dark:border-slate-700" dir="ltr">
             <div className="min-w-[860px]">
               {/* Day header row: month corner + MONDAY 19 ... */}
-              <div className="grid border-b border-slate-200" style={{ gridTemplateColumns: '56px repeat(7, minmax(0, 1fr))' }}>
-                <div className="flex items-end justify-center border-e border-slate-200 bg-slate-50 pb-1 text-center text-[10px] font-black text-slate-500">{monthName}</div>
+              <div className="grid border-b border-slate-200 dark:border-slate-700" style={{ gridTemplateColumns: '56px repeat(7, minmax(0, 1fr))' }}>
+                <div className="flex items-end justify-center border-e border-slate-200 bg-slate-50 pb-1 text-center text-[10px] font-black text-slate-500 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-400">{monthName}</div>
                 {weekResults.map(({ day, resolved }) => {
                   const isToday = day.key === todayKey;
                   return (
-                    <div key={day.key} className={`border-e border-slate-200 px-1 py-1.5 text-center last:border-e-0 ${isToday ? 'bg-blue-50' : 'bg-slate-50'}`}>
-                      <div className={`text-[9px] font-black uppercase tracking-wide ${isToday ? 'text-blue-600' : 'text-slate-500'}`}>{lang === 'ar' ? day.ar : day.en}</div>
-                      <div className={`text-base font-black leading-tight ${isToday ? 'text-blue-700' : 'text-slate-800'}`}>{day.date.getDate()}</div>
-                      <div className={`mt-0.5 inline-block rounded px-1 text-[8px] font-black ${resolved.status === 'working' ? 'bg-orange-100 text-orange-700' : resolved.status === 'off' ? 'bg-slate-200 text-slate-600' : resolved.status === 'holiday' ? 'bg-red-100 text-red-700' : resolved.status === 'annual' ? 'bg-yellow-200 text-yellow-800' : 'bg-slate-100 text-slate-400'}`}>
+                    <div key={day.key} className={`border-e border-slate-200 px-1 py-1.5 text-center last:border-e-0 dark:border-slate-800 ${isToday ? 'bg-blue-50 dark:bg-blue-500/15' : 'bg-slate-50 dark:bg-slate-900/60'}`}>
+                      <div className={`text-[9px] font-black uppercase tracking-wide ${isToday ? 'text-blue-600 dark:text-blue-400' : 'text-slate-500 dark:text-slate-400'}`}>{lang === 'ar' ? day.ar : day.en}</div>
+                      <div className={`text-base font-black leading-tight ${isToday ? 'text-blue-700 dark:text-blue-300' : 'text-slate-800 dark:text-slate-100'}`}>{day.date.getDate()}</div>
+                      <div className={`mt-0.5 inline-block rounded px-1 text-[8px] font-black ${resolved.status === 'working' ? 'bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-300' : resolved.status === 'off' ? 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300' : resolved.status === 'holiday' ? 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300' : resolved.status === 'annual' ? 'bg-yellow-200 text-yellow-800 dark:bg-yellow-500/25 dark:text-yellow-300' : 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500'}`}>
                         {lang === 'ar' ? (STATUS_LABELS[resolved.label] ?? STATUS_LABELS.unassigned).ar : (STATUS_LABELS[resolved.label] ?? STATUS_LABELS.unassigned).en}
                       </div>
-                      {draft[day.key] !== undefined && <div className="mt-0.5 text-[8px] font-black text-blue-600">● {lang === 'ar' ? 'غير محفوظ' : 'unsaved'}</div>}
+                      {draft[day.key] !== undefined && <div className="mt-0.5 text-[8px] font-black text-blue-600 dark:text-blue-400">● {lang === 'ar' ? 'غير محفوظ' : 'unsaved'}</div>}
                     </div>
                   );
                 })}
               </div>
               {/* Timeline body: shared hour axis + 7 proportional day columns. */}
               <div className="grid" style={{ gridTemplateColumns: '56px repeat(7, minmax(0, 1fr))' }}>
-                <div className="relative border-e border-slate-200" style={{ height: gridHeightDesktop }}>
+                <div className="relative border-e border-slate-200 dark:border-slate-700" style={{ height: gridHeightDesktop }}>
                   {axisHours.map(minutes => (
-                    <span key={minutes} className="absolute -translate-y-1/2 pe-1.5 text-end font-mono text-[9px] font-bold text-slate-400" style={{ top: `${pctTop(minutes)}%`, right: 0, width: '100%' }}>{fmt24(minutes)}</span>
+                    <span key={minutes} className="absolute -translate-y-1/2 pe-1.5 text-end font-mono text-[9px] font-bold text-slate-400 dark:text-slate-500" style={{ top: `${pctTop(minutes)}%`, right: 0, width: '100%' }}>{fmt24(minutes)}</span>
                   ))}
                 </div>
                 {weekResults.map(({ day, resolved }) => (
-                  <div key={day.key} className={`relative border-e border-slate-200 last:border-e-0 ${day.key === todayKey ? 'bg-blue-50/40' : 'bg-white'} ${draft[day.key] !== undefined ? 'ring-2 ring-inset ring-blue-400' : ''}`} style={{ height: gridHeightDesktop }}>
+                  <div key={day.key} className={`relative border-e border-slate-200 last:border-e-0 dark:border-slate-800 ${day.key === todayKey ? 'bg-blue-50/40 dark:bg-blue-500/10' : 'bg-white dark:bg-slate-900'} ${draft[day.key] !== undefined ? 'ring-2 ring-inset ring-blue-400' : ''}`} style={{ height: gridHeightDesktop }}>
                     {renderTimelineBlocks(resolved, { dayKey: day.key, dayLabel: lang === 'ar' ? day.ar : day.en })}
                   </div>
                 ))}
@@ -635,7 +635,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
                 ? `${lang === 'ar' ? 'وردية' : 'Shift'} ${fmt12(timeToMinutes(shift.startTime), lang)} - ${fmt12(timeToMinutes(shift.endTime), lang)}`
                 : lang === 'ar' ? (STATUS_LABELS[resolved.label] ?? STATUS_LABELS.unassigned).ar : (STATUS_LABELS[resolved.label] ?? STATUS_LABELS.unassigned).en;
               return (
-                <div className="relative rounded-xl border border-slate-200 p-2">
+                <div className="relative rounded-xl border border-slate-200 p-2 dark:border-slate-700">
                   <div className="mb-2 rounded-lg bg-blue-600 px-3 py-2 text-center text-white">
                     <div className="text-sm font-black tracking-wide">{(lang === 'ar' ? day.ar : day.en).toUpperCase()} {day.date.getDate()}</div>
                     <div className="text-[11px] font-bold opacity-95">{resolved.status === 'working' && shift ? `${lang === 'ar' ? 'وردية' : 'Shift'} ` : ''}{resolved.status === 'working' && shift ? <span dir="ltr">{fmt12(timeToMinutes(shift.startTime), lang)} - {fmt12(timeToMinutes(shift.endTime), lang)}</span> : bannerSub}</div>
@@ -643,10 +643,10 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
                   <div className="relative flex" dir="ltr">
                     <div className="relative w-12 shrink-0" style={{ height: gridHeightMobile }}>
                       {axisHours.map(minutes => (
-                        <span key={minutes} className="absolute -translate-y-1/2 text-end font-mono text-[9px] font-bold text-slate-400" style={{ top: `${pctTop(minutes)}%`, right: 4, width: '100%' }}>{fmt12(minutes, lang)}</span>
+                        <span key={minutes} className="absolute -translate-y-1/2 text-end font-mono text-[9px] font-bold text-slate-400 dark:text-slate-500" style={{ top: `${pctTop(minutes)}%`, right: 4, width: '100%' }}>{fmt12(minutes, lang)}</span>
                       ))}
                     </div>
-                    <div className={`relative flex-1 rounded-md border border-slate-200 bg-slate-50/60 ${draft[day.key] !== undefined ? 'ring-2 ring-inset ring-blue-400' : ''}`} style={{ height: gridHeightMobile }}>
+                    <div className={`relative flex-1 rounded-md border border-slate-200 bg-slate-50/60 dark:border-slate-800 dark:bg-slate-900/60 ${draft[day.key] !== undefined ? 'ring-2 ring-inset ring-blue-400' : ''}`} style={{ height: gridHeightMobile }}>
                       {renderTimelineBlocks(resolved, { mobile: true, dayKey: day.key, dayLabel: lang === 'ar' ? day.ar : day.en })}
                     </div>
                   </div>
@@ -662,26 +662,26 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
 
       {/* Leader weekly assignment editor — compact, Teleopti editing row. */}
       {isLeader && employee && (
-        <div className="rounded-xl border border-slate-200">
-          <button type="button" onClick={() => setEditPanelOpen(v => !v)} className="flex w-full items-center justify-between px-4 py-2.5 text-xs font-black text-slate-700 hover:bg-slate-50">
+        <div className="rounded-xl border border-slate-200 dark:border-slate-700">
+          <button type="button" onClick={() => setEditPanelOpen(v => !v)} className="flex w-full items-center justify-between px-4 py-2.5 text-xs font-black text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800/60">
             <span className="flex items-center gap-2"><Pencil className="h-4 w-4" />{lang === 'ar' ? 'تعيين الورديات لكل يوم (قادة فقط)' : 'Assign shifts per day (leaders only)'}</span>
             <ChevronLeft className={`h-4 w-4 transition-transform ${editPanelOpen ? '-rotate-90' : 'rotate-0 rtl:rotate-180'}`} />
           </button>
           {editPanelOpen && (
-            <div className="border-t border-slate-100 p-3">
+            <div className="border-t border-slate-100 p-3 dark:border-slate-800">
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
                 {days.map(day => {
                   const resolved = resolveFor(day.key);
                   const isWorking = resolved.status === 'working';
                   return (
-                    <div key={day.key} className="space-y-1.5 rounded-lg border border-slate-200 bg-slate-50 p-2">
-                      <div className="text-center text-[10px] font-black text-slate-600">{lang === 'ar' ? day.ar : day.en}<br /><span className="font-mono">{day.date.getDate()}/{day.date.getMonth() + 1}</span></div>
-                      <select value={valueFor(day.key)} onChange={e => updateDay(day.key, e.target.value)} className="h-9 w-full rounded-lg border border-slate-300 bg-white px-1.5 text-[10px] font-black text-slate-800 outline-none focus:border-blue-500">
+                    <div key={day.key} className="space-y-1.5 rounded-lg border border-slate-200 bg-slate-50 p-2 dark:border-slate-700 dark:bg-slate-900/60">
+                      <div className="text-center text-[10px] font-black text-slate-600 dark:text-slate-300">{lang === 'ar' ? day.ar : day.en}<br /><span className="font-mono">{day.date.getDate()}/{day.date.getMonth() + 1}</span></div>
+                      <select value={valueFor(day.key)} onChange={e => updateDay(day.key, e.target.value)} className="h-9 w-full rounded-lg border border-slate-300 bg-white px-1.5 text-[10px] font-black text-slate-800 outline-none focus:border-blue-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100">
                         <option value={EMPTY}>{lang === 'ar' ? 'غير مُعيّن' : 'Unassigned'}</option>
                         <option value={OFF}>{lang === 'ar' ? 'راحة أسبوعية (OFF)' : 'OFF'}</option>
                         {shifts.map(s => <option key={s.id} value={s.id}>{lang === 'ar' ? s.nameAr || s.name : s.nameEn || s.name} — {s.startTime || '--'}–{s.endTime || '--'}</option>)}
                       </select>
-                      <button type="button" onClick={() => openBreakEditor(day)} disabled={!isWorking} className={`inline-flex h-7 w-full items-center justify-center gap-1 rounded-lg text-[9px] font-black transition ${isWorking ? 'bg-red-50 text-red-700 hover:bg-red-100' : 'cursor-not-allowed bg-slate-100 text-slate-400'}`} title={isWorking ? (lang === 'ar' ? 'تعديل استراحات هذا اليوم' : "Edit this day's breaks") : (lang === 'ar' ? 'الاستراحات لأيام الدوام فقط' : 'Breaks only on working days')}>
+                      <button type="button" onClick={() => openBreakEditor(day)} disabled={!isWorking} className={`inline-flex h-7 w-full items-center justify-center gap-1 rounded-lg text-[9px] font-black transition ${isWorking ? 'bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-500/15 dark:text-red-300 dark:hover:bg-red-500/25' : 'cursor-not-allowed bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500'}`} title={isWorking ? (lang === 'ar' ? 'تعديل استراحات هذا اليوم' : "Edit this day's breaks") : (lang === 'ar' ? 'الاستراحات لأيام الدوام فقط' : 'Breaks only on working days')}>
                         <Coffee className="h-3 w-3" />{lang === 'ar' ? 'الاستراحات' : 'Breaks'}
                       </button>
                     </div>
@@ -697,14 +697,14 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
       )}
 
       {/* Compact legend — same palette as the timeline blocks. */}
-      <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold text-slate-600">
+      <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold text-slate-600 dark:text-slate-300">
         {legendItems.map(item => (
-          <span key={item.id} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5">{item.swatch}{lang === 'ar' ? item.ar : item.en}</span>
+          <span key={item.id} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 dark:border-slate-700 dark:bg-slate-900">{item.swatch}{lang === 'ar' ? item.ar : item.en}</span>
         ))}
       </div>
 
-      {message && <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-black text-emerald-700">{message}</div>}
-      {error && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-black text-red-700">{error}</div>}
+      {message && <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-black text-emerald-700 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-300">{message}</div>}
+      {error && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-black text-red-700 dark:border-red-500/40 dark:bg-red-500/15 dark:text-red-300">{error}</div>}
 
       {/* Per-day break editor (leaders only). */}
       {breakEditor && (
@@ -712,42 +712,42 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
           <div className="max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-700 dark:bg-slate-900" dir={lang === 'ar' ? 'rtl' : 'ltr'} role="dialog" aria-modal="true" onClick={event => event.stopPropagation()}>
             <div className="flex items-start justify-between gap-3">
               <div>
-                <div className="text-[11px] font-black uppercase tracking-wide text-red-600">{lang === 'ar' ? 'استراحات خاصة بالموظف' : 'Employee-specific breaks'}</div>
-                <h3 className="mt-0.5 text-lg font-black text-slate-900 dark:text-white">{breakEditor.dayName} <span className="font-mono text-xs text-slate-400">{breakEditor.dateKey}</span></h3>
-                <p className="mt-1 text-xs font-bold text-slate-500">{employee?.code ? `${employee.code} - ` : ''}{lang === 'ar' ? employee?.nameAr : employee?.nameEn}{breakEditor.shift ? ` · ${breakEditor.shift.startTime}–${breakEditor.shift.endTime}` : ''}</p>
+                <div className="text-[11px] font-black uppercase tracking-wide text-red-600 dark:text-red-400">{lang === 'ar' ? 'استراحات خاصة بالموظف' : 'Employee-specific breaks'}</div>
+                <h3 className="mt-0.5 text-lg font-black text-slate-900 dark:text-white dark:text-slate-100">{breakEditor.dayName} <span className="font-mono text-xs text-slate-400 dark:text-slate-500">{breakEditor.dateKey}</span></h3>
+                <p className="mt-1 text-xs font-bold text-slate-500 dark:text-slate-400">{employee?.code ? `${employee.code} - ` : ''}{lang === 'ar' ? employee?.nameAr : employee?.nameEn}{breakEditor.shift ? ` · ${breakEditor.shift.startTime}–${breakEditor.shift.endTime}` : ''}</p>
               </div>
-              <button type="button" onClick={() => setBreakEditor(null)} className="rounded-lg px-2 py-1 text-xl font-bold text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800" aria-label={lang === 'ar' ? 'إغلاق' : 'Close'}>×</button>
+              <button type="button" onClick={() => setBreakEditor(null)} className="rounded-lg px-2 py-1 text-xl font-bold text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:text-slate-500 dark:hover:text-slate-200" aria-label={lang === 'ar' ? 'إغلاق' : 'Close'}>×</button>
             </div>
 
             {breakEditor.status !== 'working' && (
-              <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-bold text-amber-800">
+              <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-bold text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-300">
                 {lang === 'ar' ? 'هذا اليوم ليس يوم دوام لهذا الموظف — لا يمكن إضافة استراحات لأيام الراحة أو الإجازات.' : 'This day is not a working day for this employee — breaks cannot be added to OFF, Holiday, or Leave days.'}
               </div>
             )}
 
             {breakEditor.status === 'working' && (
               <>
-                <p className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-[11px] font-bold text-slate-600">{lang === 'ar' ? 'هذه الاستراحات تخص هذا الموظف فقط ولا تؤثر على زملائه في نفس الوردية.' : 'These breaks apply to this employee only and never affect teammates on the same shift.'}</p>
+                <p className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-[11px] font-bold text-slate-600 dark:bg-slate-900/60 dark:text-slate-300">{lang === 'ar' ? 'هذه الاستراحات تخص هذا الموظف فقط ولا تؤثر على زملائه في نفس الوردية.' : 'These breaks apply to this employee only and never affect teammates on the same shift.'}</p>
                 <div className="mt-3 space-y-2">
                   {breakDraft.map((row, index) => (
-                    <div key={row.id} className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-2.5">
-                      <input value={row.name ?? ''} onChange={e => updateBreakRow(index, { name: e.target.value })} placeholder={lang === 'ar' ? 'الاسم (اختياري)' : 'Name (optional)'} className="min-w-[110px] flex-1 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs font-bold text-slate-800 outline-none focus:border-red-400" maxLength={40} />
-                      <label className="flex items-center gap-1 text-[10px] font-bold text-slate-500">{lang === 'ar' ? 'من' : 'From'}
-                        <input type="time" value={row.startTime} onChange={e => updateBreakRow(index, { startTime: e.target.value })} className="rounded-lg border border-slate-200 bg-white px-1.5 py-1.5 font-mono text-xs text-slate-800 outline-none focus:border-red-400" required />
+                    <div key={row.id} className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-2.5 dark:border-slate-700 dark:bg-slate-900/60">
+                      <input value={row.name ?? ''} onChange={e => updateBreakRow(index, { name: e.target.value })} placeholder={lang === 'ar' ? 'الاسم (اختياري)' : 'Name (optional)'} className="min-w-[110px] flex-1 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs font-bold text-slate-800 outline-none focus:border-red-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100" maxLength={40} />
+                      <label className="flex items-center gap-1 text-[10px] font-bold text-slate-500 dark:text-slate-400">{lang === 'ar' ? 'من' : 'From'}
+                        <input type="time" value={row.startTime} onChange={e => updateBreakRow(index, { startTime: e.target.value })} className="rounded-lg border border-slate-200 bg-white px-1.5 py-1.5 font-mono text-xs text-slate-800 outline-none focus:border-red-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100" required />
                       </label>
-                      <label className="flex items-center gap-1 text-[10px] font-bold text-slate-500">{lang === 'ar' ? 'إلى' : 'To'}
-                        <input type="time" value={row.endTime} onChange={e => updateBreakRow(index, { endTime: e.target.value })} className="rounded-lg border border-slate-200 bg-white px-1.5 py-1.5 font-mono text-xs text-slate-800 outline-none focus:border-red-400" required />
+                      <label className="flex items-center gap-1 text-[10px] font-bold text-slate-500 dark:text-slate-400">{lang === 'ar' ? 'إلى' : 'To'}
+                        <input type="time" value={row.endTime} onChange={e => updateBreakRow(index, { endTime: e.target.value })} className="rounded-lg border border-slate-200 bg-white px-1.5 py-1.5 font-mono text-xs text-slate-800 outline-none focus:border-red-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100" required />
                       </label>
-                      <span className="rounded-lg bg-white px-2 py-1 font-mono text-[10px] font-black text-red-700">{row.startTime && row.endTime ? `${Math.max(0, timeToMinutes(row.endTime) - timeToMinutes(row.startTime))}m` : '--'}</span>
-                      <button type="button" onClick={() => removeBreakRow(index)} className="rounded-lg bg-red-50 p-1.5 text-red-600 hover:bg-red-100" aria-label={lang === 'ar' ? 'حذف الاستراحة' : 'Remove break'}><Trash2 className="h-3.5 w-3.5" /></button>
+                      <span className="rounded-lg bg-white px-2 py-1 font-mono text-[10px] font-black text-red-700 dark:bg-slate-900 dark:text-red-300">{row.startTime && row.endTime ? `${Math.max(0, timeToMinutes(row.endTime) - timeToMinutes(row.startTime))}m` : '--'}</span>
+                      <button type="button" onClick={() => removeBreakRow(index)} className="rounded-lg bg-red-50 p-1.5 text-red-600 hover:bg-red-100 dark:bg-red-500/15 dark:text-red-400 dark:hover:bg-red-500/25" aria-label={lang === 'ar' ? 'حذف الاستراحة' : 'Remove break'}><Trash2 className="h-3.5 w-3.5" /></button>
                     </div>
                   ))}
-                  {breakDraft.length === 0 && <div className="rounded-xl border border-dashed border-slate-300 p-4 text-center text-xs font-bold text-slate-400">{lang === 'ar' ? 'لا توجد استراحات — اضغط إضافة استراحة' : 'No breaks yet — add one below'}</div>}
-                  <button type="button" onClick={addBreakRow} disabled={breakDraft.length >= 10} className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-2 text-xs font-black text-white disabled:opacity-40"><Plus className="h-3.5 w-3.5" />{lang === 'ar' ? 'إضافة استراحة' : 'Add break'}</button>
+                  {breakDraft.length === 0 && <div className="rounded-xl border border-dashed border-slate-300 p-4 text-center text-xs font-bold text-slate-400 dark:border-slate-600 dark:text-slate-500">{lang === 'ar' ? 'لا توجد استراحات — اضغط إضافة استراحة' : 'No breaks yet — add one below'}</div>}
+                  <button type="button" onClick={addBreakRow} disabled={breakDraft.length >= 10} className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-2 text-xs font-black text-white disabled:opacity-40 dark:bg-slate-700"><Plus className="h-3.5 w-3.5" />{lang === 'ar' ? 'إضافة استراحة' : 'Add break'}</button>
                 </div>
-                {breakError && <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-black text-red-700">{breakError}</div>}
-                <div className="mt-4 flex justify-end gap-2 border-t border-slate-100 pt-3">
-                  <button type="button" onClick={() => setBreakEditor(null)} disabled={breakSaving} className="rounded-xl bg-slate-100 px-4 py-2 text-xs font-black text-slate-700 disabled:opacity-50">{lang === 'ar' ? 'إلغاء' : 'Cancel'}</button>
+                {breakError && <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-black text-red-700 dark:border-red-500/40 dark:bg-red-500/15 dark:text-red-300">{breakError}</div>}
+                <div className="mt-4 flex justify-end gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
+                  <button type="button" onClick={() => setBreakEditor(null)} disabled={breakSaving} className="rounded-xl bg-slate-100 px-4 py-2 text-xs font-black text-slate-700 disabled:opacity-50 dark:bg-slate-800/70 dark:text-slate-200">{lang === 'ar' ? 'إلغاء' : 'Cancel'}</button>
                   <button type="button" onClick={saveBreaks} disabled={breakSaving} className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-black text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"><Save className="h-3.5 w-3.5" />{breakSaving ? (lang === 'ar' ? 'جاري الحفظ...' : 'Saving...') : (lang === 'ar' ? 'حفظ الاستراحات' : 'Save breaks')}</button>
                 </div>
               </>
@@ -758,18 +758,18 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
 
       {selectedBreak && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/40 p-4" role="presentation" onClick={() => setSelectedBreak(null)}>
-          <div className="w-full max-w-sm rounded-2xl border border-rose-200 bg-white dark:bg-slate-900 p-5 shadow-2xl" dir={lang === 'ar' ? 'rtl' : 'ltr'} role="dialog" aria-modal="true" onClick={event => event.stopPropagation()}>
+          <div className="w-full max-w-sm rounded-2xl border border-rose-200 bg-white dark:bg-slate-900 p-5 shadow-2xl dark:border-rose-500/40" dir={lang === 'ar' ? 'rtl' : 'ltr'} role="dialog" aria-modal="true" onClick={event => event.stopPropagation()}>
             <div className="flex items-start justify-between gap-3">
               <div>
-                <div className="text-xs font-black text-rose-600">{lang === 'ar' ? 'تفاصيل البريك' : 'Break details'}</div>
-                <h3 className="mt-1 text-lg font-black text-slate-900 dark:text-white">{selectedBreak.name}</h3>
+                <div className="text-xs font-black text-rose-600 dark:text-rose-400">{lang === 'ar' ? 'تفاصيل البريك' : 'Break details'}</div>
+                <h3 className="mt-1 text-lg font-black text-slate-900 dark:text-white dark:text-slate-100">{selectedBreak.name}</h3>
               </div>
-              <button type="button" onClick={() => setSelectedBreak(null)} className="rounded-lg px-2 py-1 text-xl font-bold text-slate-400 hover:bg-slate-100 dark:bg-slate-800 hover:text-slate-700 dark:text-slate-300" aria-label={lang === 'ar' ? 'إغلاق' : 'Close'}>×</button>
+              <button type="button" onClick={() => setSelectedBreak(null)} className="rounded-lg px-2 py-1 text-xl font-bold text-slate-400 hover:bg-slate-100 dark:bg-slate-800 hover:text-slate-700 dark:text-slate-300 dark:hover:bg-slate-800/70 dark:hover:text-slate-200" aria-label={lang === 'ar' ? 'إغلاق' : 'Close'}>×</button>
             </div>
             <div className="mt-4 grid grid-cols-3 gap-2">
-              <div className="rounded-xl bg-rose-50 p-3 text-center"><div className="text-[10px] font-bold text-rose-600">{lang === 'ar' ? 'من' : 'From'}</div><div className="mt-1 font-mono text-sm font-black text-slate-900 dark:text-white">{selectedBreak.startTime}</div></div>
-              <div className="rounded-xl bg-rose-50 p-3 text-center"><div className="text-[10px] font-bold text-rose-600">{lang === 'ar' ? 'إلى' : 'To'}</div><div className="mt-1 font-mono text-sm font-black text-slate-900 dark:text-white">{selectedBreak.endTime}</div></div>
-              <div className="rounded-xl bg-rose-50 p-3 text-center"><div className="text-[10px] font-bold text-rose-600">{lang === 'ar' ? 'المدة' : 'Duration'}</div><div className="mt-1 text-sm font-black text-slate-900 dark:text-white">{selectedBreak.durationMinutes} {lang === 'ar' ? 'دقيقة' : 'min'}</div></div>
+              <div className="rounded-xl bg-rose-50 p-3 text-center dark:bg-rose-500/15"><div className="text-[10px] font-bold text-rose-600 dark:text-rose-400">{lang === 'ar' ? 'من' : 'From'}</div><div className="mt-1 font-mono text-sm font-black text-slate-900 dark:text-white dark:text-slate-100">{selectedBreak.startTime}</div></div>
+              <div className="rounded-xl bg-rose-50 p-3 text-center dark:bg-rose-500/15"><div className="text-[10px] font-bold text-rose-600 dark:text-rose-400">{lang === 'ar' ? 'إلى' : 'To'}</div><div className="mt-1 font-mono text-sm font-black text-slate-900 dark:text-white dark:text-slate-100">{selectedBreak.endTime}</div></div>
+              <div className="rounded-xl bg-rose-50 p-3 text-center dark:bg-rose-500/15"><div className="text-[10px] font-bold text-rose-600 dark:text-rose-400">{lang === 'ar' ? 'المدة' : 'Duration'}</div><div className="mt-1 text-sm font-black text-slate-900 dark:text-white dark:text-slate-100">{selectedBreak.durationMinutes} {lang === 'ar' ? 'دقيقة' : 'min'}</div></div>
             </div>
           </div>
         </div>
