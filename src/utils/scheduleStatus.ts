@@ -131,7 +131,8 @@ export function resolveDayStatus(input: DayStatusInput): DayStatusResult {
   const leaves = input.leaves ?? [];
   const holidays = input.holidays ?? [];
 
-  const assignmentOff = Boolean(assignment?.isOffDay ?? assignment?.is_off_day) || String(assignment?.status ?? '').toUpperCase() === 'OFF';
+  const assignmentStatus = String(assignment?.status ?? '').toUpperCase();
+  const assignmentOff = Boolean(assignment?.isOffDay ?? assignment?.is_off_day) || assignmentStatus === 'OFF';
   const rawShiftId = String(assignment?.shiftId ?? assignment?.shift_id ?? '').trim();
   const shift = rawShiftId ? shifts.find((s) => sameId(s.id, rawShiftId)) : undefined;
 
@@ -144,6 +145,8 @@ export function resolveDayStatus(input: DayStatusInput): DayStatusResult {
 
   const base = { dateKey, employeeId, shift, ownBreaks, shiftBreaks, holiday };
 
+  if (assignmentStatus === 'HOLIDAY') return { ...base, status: 'holiday', label: 'holiday', effectiveBreaks: [], holiday: holiday ?? { startDate: dateKey, endDate: dateKey, nameEn: 'Holiday', nameAr: 'عطلة رسمية' } };
+  if (assignmentStatus === 'ANNUAL') return { ...base, status: 'annual', label: 'annual', effectiveBreaks: [], leave: annual ?? { employeeId, type: 'annual', status: 'approved', startDate: dateKey, endDate: dateKey } };
   if (holiday) return { ...base, status: 'holiday', label: 'holiday', effectiveBreaks: [], holiday };
   if (annual) return { ...base, status: 'annual', label: 'annual', effectiveBreaks: [], leave: annual };
   if (otherLeave) return { ...base, status: 'annual', label: 'on_leave', effectiveBreaks: [], leave: otherLeave };

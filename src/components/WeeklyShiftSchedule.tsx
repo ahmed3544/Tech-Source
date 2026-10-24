@@ -39,6 +39,8 @@ const startOfWeek = (value: Date) => { const d = new Date(value); d.setHours(0, 
 const addDays = (value: Date, amount: number) => { const d = new Date(value); d.setDate(d.getDate() + amount); return d; };
 const sameId = (a: unknown, b: unknown) => String(a ?? '').trim().toLowerCase() === String(b ?? '').trim().toLowerCase();
 const OFF = '__OFF__';
+const HOLIDAY = '__HOLIDAY__';
+const ANNUAL = '__ANNUAL__';
 const EMPTY = '__EMPTY__';
 
 const STATUS_LABELS: Record<string, { en: string; ar: string }> = {
@@ -263,7 +265,10 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
     const a = assignmentFor(employee?.id || '', key);
     const sid = String(a?.shiftId ?? '').trim();
     if (sid) return sid;
-    if (a && (a.isOffDay || String((a as any)?.status ?? '').toUpperCase() === 'OFF')) return OFF;
+    const status = String((a as any)?.status ?? '').toUpperCase();
+    if (status === 'HOLIDAY') return HOLIDAY;
+    if (status === 'ANNUAL') return ANNUAL;
+    if (a && (a.isOffDay || status === 'OFF')) return OFF;
     return EMPTY;
   };
   const shiftById = (id: string) => shifts.find(s => sameId(s.id, id));
@@ -276,8 +281,9 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
     const value = draft[key];
     return {
       ...saved,
-      shiftId: value === OFF || value === EMPTY ? '' : value,
+      shiftId: [OFF, HOLIDAY, ANNUAL, EMPTY].includes(value) ? '' : value,
       isOffDay: value === OFF,
+      status: value === HOLIDAY ? 'HOLIDAY' : value === ANNUAL ? 'ANNUAL' : value === OFF ? 'OFF' : value === EMPTY ? '' : 'WORKING',
       clear: value === EMPTY,
       __employeeBreaks: breaksByDate[key],
     };
@@ -306,8 +312,9 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
         return {
           employeeId: employee.id,
           date: day.key,
-          shiftId: value === OFF || value === EMPTY ? '' : value,
+          shiftId: [OFF, HOLIDAY, ANNUAL, EMPTY].includes(value) ? '' : value,
           isOffDay: value === OFF,
+          status: value === HOLIDAY ? 'HOLIDAY' : value === ANNUAL ? 'ANNUAL' : value === OFF ? 'OFF' : value === EMPTY ? '' : 'WORKING',
           clear: value === EMPTY,
           assignedBy: currentUser?.id,
           updatedAt: now,
@@ -825,6 +832,8 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
                       <select value={valueFor(day.key)} onChange={e => updateDay(day.key, e.target.value)} className="h-9 w-full rounded-lg border border-slate-300 bg-white px-1.5 text-[10px] font-black text-slate-800 outline-none focus:border-blue-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100">
                         <option value={EMPTY}>{lang === 'ar' ? 'غير مُعيّن' : 'Unassigned'}</option>
                         <option value={OFF}>{lang === 'ar' ? 'راحة أسبوعية (OFF)' : 'OFF'}</option>
+                        <option value={ANNUAL}>{lang === 'ar' ? 'إجازة سنوية (Annual Leave)' : 'Annual Leave'}</option>
+                        <option value={HOLIDAY}>{lang === 'ar' ? 'عطلة رسمية (Holiday)' : 'Holiday'}</option>
                         {shifts.map(s => <option key={s.id} value={s.id}>{lang === 'ar' ? s.nameAr || s.name : s.nameEn || s.name} — {s.startTime || '--'}–{s.endTime || '--'}</option>)}
                       </select>
                       <button type="button" onClick={() => openBreakEditor(day)} disabled={!isWorking} className={`inline-flex h-7 w-full items-center justify-center gap-1 rounded-lg text-[9px] font-black transition ${isWorking ? 'bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-500/15 dark:text-red-300 dark:hover:bg-red-500/25' : 'cursor-not-allowed bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500'}`} title={isWorking ? (lang === 'ar' ? 'تعديل استراحات هذا اليوم' : "Edit this day's breaks") : (lang === 'ar' ? 'الاستراحات لأيام الدوام فقط' : 'Breaks only on working days')}>
