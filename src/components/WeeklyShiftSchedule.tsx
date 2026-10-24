@@ -667,7 +667,6 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
         </>
       )}
 
-{isLeader && settingsOpen && (
       {isLeader && employee && (
         <div className="rounded-xl border border-slate-200 dark:border-slate-700">
           <button type="button" onClick={() => setEditPanelOpen(v => !v)} className="flex w-full items-center justify-between px-4 py-2.5 text-xs font-black text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800/60">
