@@ -538,6 +538,18 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
             <div className="min-w-0">
               <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">{lang === 'ar' ? 'الموظف' : 'EMPLOYEE'}</div>
               <div className="truncate text-sm font-black text-blue-700 dark:text-blue-300">{employee ? (employee.code ? employee.code + ' - ' : '') + (lang === 'ar' ? employee.nameAr : employee.nameEn) : (lang === 'ar' ? 'لم يتم اختيار موظف' : 'No employee selected')}</div>
+              {isLeader && visibleEmployees.length > 1 && (
+                <select
+                  aria-label={lang === 'ar' ? 'اختيار الموظف لتعديل الجدول والبريكات' : 'Select employee to edit schedule and breaks'}
+                  value={employee?.id || ''}
+                  onChange={event => { setSelectedEmployeeId(event.target.value); setDraft({}); setBreakEditor(null); setMessage(null); setError(null); }}
+                  className="mt-1 w-full min-w-[180px] rounded-lg border border-blue-200 bg-white px-2 py-1.5 text-xs font-bold text-slate-800 outline-none focus:border-blue-500 dark:border-blue-500/40 dark:bg-slate-900 dark:text-slate-100"
+                >
+                  {visibleEmployees.map(person => (
+                    <option key={person.id} value={person.id}>{person.code ? person.code + ' - ' : ''}{lang === 'ar' ? person.nameAr : person.nameEn}</option>
+                  ))}
+                </select>
+              )}
             </div>
           </div>
           {isLeader && <button type="button" onClick={() => setSettingsOpen(v => !v)} aria-expanded={settingsOpen} className={`inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-xs font-black transition ${settingsOpen ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100'}`}><Settings2 className="h-4 w-4" />{lang === 'ar' ? 'الإعدادات' : 'Settings'}</button>}
