@@ -817,31 +817,6 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
           </button>
           {editPanelOpen && (
             <div className="border-t border-slate-100 p-3 dark:border-slate-800">
-              <section className="mb-4 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-950">
-                <div className="flex flex-col gap-4 border-b border-slate-100 bg-gradient-to-r from-slate-50 via-white to-rose-50/70 p-4 sm:flex-row sm:items-center sm:justify-between dark:border-slate-800 dark:from-slate-900 dark:via-slate-950 dark:to-rose-950/20">
-                  <div className="flex min-w-0 items-start gap-3">
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-rose-100 text-rose-700 ring-1 ring-rose-200 dark:bg-rose-500/15 dark:text-rose-300 dark:ring-rose-500/30">
-                      <Coffee className="h-5 w-5" />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="text-sm font-extrabold tracking-tight text-slate-900 dark:text-white">{lang === 'ar' ? 'خطة الاستراحات الأسبوعية' : 'Weekly Break Plan'}</h3>
-                        <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2 py-0.5 font-mono text-[10px] font-bold text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">25–31 OCT 2026</span>
-                      </div>
-                      <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-600 dark:text-slate-400">{lang === 'ar' ? 'تطبيق الاستراحات المحددة لكل موظفة على أيام الدوام المحفوظة فقط. لن يتم تعديل أيام الـ OFF أو الإجازات أو الأيام غير المعيّنة.' : 'Apply each agent’s individual breaks to saved working days only. OFF, leave, holiday, and unassigned days will remain unchanged.'}</p>
-                      <div className="mt-3 flex flex-wrap gap-1.5">
-                        {['Nancy', 'Nada', 'Salma', 'Yara', 'Norhan'].map(name => <span key={name} className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-bold text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />{name}</span>)}
-                      </div>
-                    </div>
-                  </div>
-
-                </div>
-                <div className="flex flex-wrap items-center gap-x-5 gap-y-2 bg-slate-50/80 px-4 py-3 text-[10px] font-semibold text-slate-500 dark:bg-slate-900/60 dark:text-slate-400">
-                  <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-emerald-500" />{lang === 'ar' ? 'أيام الدوام فقط' : 'Working days only'}</span>
-                  <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-rose-500" />{lang === 'ar' ? 'استراحات فردية' : 'Individual break times'}</span>
-                  <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-slate-400" />{lang === 'ar' ? 'لا تغيير على أيام الراحة والإجازات' : 'Days off and leave are preserved'}</span>
-                </div>
-              </section>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
                 {days.map(day => {
                   const resolved = resolveFor(day.key);
