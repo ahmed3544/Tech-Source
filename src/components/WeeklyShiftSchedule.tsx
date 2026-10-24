@@ -703,8 +703,6 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
       )}
 
 
-      )}
-
 {settingsOpen && (
       <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold text-slate-600 dark:text-slate-300">
         {legendItems.map(item => (
