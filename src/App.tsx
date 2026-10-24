@@ -204,10 +204,10 @@ export default function App() {
         setSuccessMessage(lang === 'ar' ? 'لا توجد تغييرات للحفظ.' : 'No changes to save.');
         return;
       }
-      const response = await fetch('/api/employees/' + encodeURIComponent(editingEmployeeId), {
-        method: 'PUT', credentials: 'include', cache: 'no-store',
+      const response = await fetch('/api/employees-update', {
+        method: 'POST', credentials: 'include', cache: 'no-store',
         headers: authHeaders({ 'Content-Type': 'application/json', Accept: 'application/json', 'Cache-Control': 'no-cache' }),
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ id: editingEmployeeId, ...payload }),
       });
       const result = await parseResponse(response);
       // Success is only reported after the server confirms the update.
@@ -252,9 +252,10 @@ export default function App() {
     if (!confirmed) return;
     setBusy(true); setError(''); setSuccessMessage('');
     try {
-      const response = await fetch('/api/employees/' + encodeURIComponent(employee.id), {
-        method: 'DELETE', credentials: 'include', cache: 'no-store',
+      const response = await fetch('/api/employees-delete', {
+        method: 'POST', credentials: 'include', cache: 'no-store',
         headers: authHeaders({ Accept: 'application/json', 'Cache-Control': 'no-cache' }),
+        body: JSON.stringify({ id: employee.id }),
       });
       const result = await parseResponse(response);
       if (!response.ok || result?.success === false) throw new Error(extractApiError(result, lang === 'ar' ? 'تعذر حذف الموظف.' : 'Could not delete employee.'));

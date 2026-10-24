@@ -15,6 +15,7 @@ import { registerDbWriteVerification } from "./server/db-write-verification.js";
 import { updateEmployeeHandler, createEmployeeHandler, deleteEmployeeHandler } from "./server/employees.js";
 import { registerEmployeeBreaks } from "./server/employee-breaks.js";
 import { ensureSchema } from "./server/ensure-schema.js";
+import { listNotificationsForUser, markAllNotificationsRead, markNotificationRead } from "./server/notification-reads.js";
 import loginHandler from "./api/login.js";
 
 const app = express();
@@ -64,6 +65,37 @@ registerNotificationSse(app);
 app.put('/api/employees/:id', (req:any, res:any) => updateEmployeeHandler(req, res));
 app.post('/api/employees', (req:any, res:any) => createEmployeeHandler(req, res));
 app.delete('/api/employees/:id', (req:any, res:any) => deleteEmployeeHandler(req, res));
+// Static-path aliases (POST with id in the body). Some Vercel deployments
+// never route dynamic multi-segment /api paths to the catch-all function and
+// answer them with the platform 404 {"error":{"code":"404","message":
+// "The page could not be found"}} — these single-segment routes always work.
+const withEmployeeId = (req:any, res:any): { id: string } | null => {
+  const id = String(req.body?.id ?? '').trim();
+  if (!id) { res.status(400).json({ success: false, error: 'Employee id is required.' }); return null; }
+  req.params = { ...(req.params || {}), id };
+  return { id };
+};
+app.post('/api/employees-update', (req:any, res:any) => { const ok = withEmployeeId(req, res); if (!ok) return; return updateEmployeeHandler(req, res); });
+app.post('/api/employees-delete', (req:any, res:any) => { const ok = withEmployeeId(req, res); if (!ok) return; return deleteEmployeeHandler(req, res); });
+app.post('/api/notifications-read', async (req:any, res:any) => {
+  try {
+    const userId = String(req.body?.userId ?? '').trim();
+    const id = String(req.body?.id ?? '').trim();
+    if (!userId || !id) return res.status(400).json({ success: false, updated: false });
+    const result = await markNotificationRead(userId, id);
+    if (!result.ok) return res.status(result.status ?? 400).json({ success: false, updated: false });
+    return res.json({ success: true, notifications: await listNotificationsForUser(userId) });
+  } catch (error:any) { console.error('[notifications-read]', error?.message || error); return res.status(500).json({ success: false, error: 'database_unavailable' }); }
+});
+app.post('/api/notifications-read-all', async (req:any, res:any) => {
+  try {
+    const userId = String(req.body?.userId ?? '').trim();
+    if (!userId) return res.status(400).json({ success: false, count: 0 });
+    const result = await markAllNotificationsRead(userId);
+    if (!result.ok) return res.status(400).json({ success: false, count: 0 });
+    return res.json({ success: true, notifications: await listNotificationsForUser(userId) });
+  } catch (error:any) { console.error('[notifications-read-all]', error?.message || error); return res.status(500).json({ success: false, error: 'database_unavailable' }); }
+});
 registerEmployeeBreaks(app);
 // Login is also served by the main server so non-Vercel deployments work.
 app.post('/api/login', (req:any, res:any) => loginHandler(req, res));

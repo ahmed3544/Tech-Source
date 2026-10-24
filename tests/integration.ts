@@ -50,6 +50,8 @@ await client.query(`
     avatar text, email text, phone text, department text, job_title_ar text, job_title_en text, shift_id text, pin text,
     role text, joined_date text, status text, annual_leave_balance real, casual_leave_balance real, regular_leave_balance real,
     sick_leave_balance real, is_photo_removed boolean, updated_at text);
+  CREATE TABLE IF NOT EXISTS notifications (id text PRIMARY KEY, company_id text, recipient_id text NOT NULL, type text NOT NULL, title text NOT NULL, message text NOT NULL,
+    related_employee_id text, related_leave_id text, related_overtime_id text, related_shift_swap_id text, is_read boolean DEFAULT false, created_at text NOT NULL, updated_at text NOT NULL);
   CREATE TABLE IF NOT EXISTS settings (key text PRIMARY KEY, value jsonb);
   CREATE TABLE IF NOT EXISTS shifts (id text PRIMARY KEY, company_id text, name text NOT NULL, start_time text NOT NULL, end_time text NOT NULL,
     duration_minutes integer NOT NULL, break_minutes integer DEFAULT 0, grace_period_minutes integer DEFAULT 0,
@@ -68,6 +70,10 @@ await client.query(`INSERT INTO employees (id, code, name_ar, name_en, pin, role
 await client.query(`INSERT INTO shifts (id, company_id, name, start_time, end_time, duration_minutes, break_minutes, grace_period_minutes)
   VALUES ('shift-1', 'tech-source', 'Morning', '09:00', '17:00', 480, 0, 10)`);
 await client.query(`INSERT INTO settings (key, value) VALUES ('dailyShiftAssignments', '[{"employeeId":"emp-a","date":"2026-10-27","shiftId":"shift-1","isOffDay":false,"updatedAt":"2026-10-01T00:00:00Z"},{"employeeId":"emp-b","date":"2026-10-27","shiftId":"shift-1","isOffDay":false,"updatedAt":"2026-10-01T00:00:00Z"}]')`);
+await client.query(`INSERT INTO notifications (id, recipient_id, type, title, message, is_read, created_at, updated_at) VALUES
+  ('notif-1', 'emp-a', 'leave_request', 'Leave approved', 'Your leave was approved', false, '2026-10-20T10:00:00Z', '2026-10-20T10:00:00Z'),
+  ('notif-2', 'emp-a', 'leave_request', 'Leave approved', 'Your leave was approved', false, '2026-10-21T10:00:00Z', '2026-10-21T10:00:00Z'),
+  ('notif-3', 'emp-a', 'overtime', 'Overtime update', 'OT request updated', true, '2026-10-19T10:00:00Z', '2026-10-19T10:00:00Z')`);
 
 // The DB must exist BEFORE server modules evaluate src/db/index.ts.
 process.env.DATABASE_URL = BASE_URL;
@@ -78,6 +84,7 @@ process.env.DATABASE_URL = BASE_URL;
 const { registerDirectScheduleSync } = await import('../server/schedule-sync-direct.js');
 const { registerEmployeeBreaks } = await import('../server/employee-breaks.js');
 const { updateEmployeeHandler, createEmployeeHandler, deleteEmployeeHandler } = await import('../server/employees.js');
+const { listNotificationsForUser, markAllNotificationsRead, markNotificationRead } = await import('../server/notification-reads.js');
 
 const app = express();
 app.use(express.json({ limit: '1mb' }));
@@ -86,6 +93,34 @@ registerEmployeeBreaks(app);
 app.put('/api/employees/:id', (req: any, res: any) => updateEmployeeHandler(req, res));
 app.post('/api/employees', (req: any, res: any) => createEmployeeHandler(req, res));
 app.delete('/api/employees/:id', (req: any, res: any) => deleteEmployeeHandler(req, res));
+// Static-path aliases (mirror server.ts exactly) — the "page could not be found" fix.
+const withEmployeeId = (req: any, res: any): { id: string } | null => {
+  const id = String(req.body?.id ?? '').trim();
+  if (!id) { res.status(400).json({ success: false, error: 'Employee id is required.' }); return null; }
+  req.params = { ...(req.params || {}), id };
+  return { id };
+};
+app.post('/api/employees-update', (req: any, res: any) => { const ok = withEmployeeId(req, res); if (!ok) return; return updateEmployeeHandler(req, res); });
+app.post('/api/employees-delete', (req: any, res: any) => { const ok = withEmployeeId(req, res); if (!ok) return; return deleteEmployeeHandler(req, res); });
+app.post('/api/notifications-read', async (req: any, res: any) => {
+  try {
+    const userId = String(req.body?.userId ?? '').trim();
+    const id = String(req.body?.id ?? '').trim();
+    if (!userId || !id) return res.status(400).json({ success: false, updated: false });
+    const result = await markNotificationRead(userId, id);
+    if (!result.ok) return res.status(result.status ?? 400).json({ success: false, updated: false });
+    return res.json({ success: true, notifications: await listNotificationsForUser(userId) });
+  } catch { return res.status(500).json({ success: false, error: 'database_unavailable' }); }
+});
+app.post('/api/notifications-read-all', async (req: any, res: any) => {
+  try {
+    const userId = String(req.body?.userId ?? '').trim();
+    if (!userId) return res.status(400).json({ success: false, count: 0 });
+    const result = await markAllNotificationsRead(userId);
+    if (!result.ok) return res.status(400).json({ success: false, count: 0 });
+    return res.json({ success: true, notifications: await listNotificationsForUser(userId) });
+  } catch { return res.status(500).json({ success: false, error: 'database_unavailable' }); }
+});
 
 const server = app.listen(0);
 await new Promise<void>((resolve) => server.once('listening', resolve));
@@ -447,6 +482,70 @@ await test('findEmployeeById falls back to raw SELECT * in degraded mode', async
   await client.query('ALTER TABLE employees ADD COLUMN IF NOT EXISTS is_photo_removed boolean');
   resetEnsureSchemaForTests();
   assert.equal(await ensureSchema(), true);
+});
+
+// ---------------------------------------------------------------------------
+// Static-path mutation aliases (Vercel "The page could not be found" fix)
+// ---------------------------------------------------------------------------
+console.log('\n— Static-path mutation aliases —');
+await test('POST /api/employees-update saves changes with id in the body', async () => {
+  const r = await call('POST', '/api/employees-update', { headers: auth('admin-1', '1234'), body: { id: 'emp-b', nameAr: 'Agent B Modified' } });
+  assert.equal(r.status, 200);
+  assert.equal(r.json?.success, true);
+  assert.equal(r.json?.employee?.nameAr, 'Agent B Modified');
+  const dbRow = (await row(`SELECT name_ar FROM employees WHERE id = 'emp-b'`))[0];
+  assert.equal(dbRow.name_ar, 'Agent B Modified');
+});
+await test('POST /api/employees-update without id → 400 readable string', async () => {
+  const r = await call('POST', '/api/employees-update', { headers: auth('admin-1', '1234'), body: { nameAr: 'Nobody' } });
+  assert.equal(r.status, 400);
+  assert.equal(r.json?.success, false);
+  assert.equal(typeof r.json?.error, 'string');
+  assert.ok(!/object Object/i.test(r.text));
+});
+await test('POST /api/employees-update with unknown id → 404 Employee not found.', async () => {
+  const r = await call('POST', '/api/employees-update', { headers: auth('admin-1', '1234'), body: { id: 'emp-ghost', nameAr: 'Ghost' } });
+  assert.equal(r.status, 404);
+  assert.equal(r.json?.error, 'Employee not found.');
+});
+await test('POST /api/employees-delete removes the employee and tombstones the id', async () => {
+  const created = await call('POST', '/api/employees', { headers: auth('admin-1', '1234'), body: { code: 'EMP555', nameAr: 'Temp Delete', pin: '5555' } });
+  assert.equal(created.status, 201);
+  const id = created.json?.employee?.id;
+  assert.ok(id);
+  const r = await call('POST', '/api/employees-delete', { headers: auth('admin-1', '1234'), body: { id } });
+  assert.equal(r.status, 200);
+  assert.equal(r.json?.deletedId, id);
+  const leftover = await row(`SELECT id FROM employees WHERE id = '${id}'`);
+  assert.equal(leftover.length, 0);
+});
+await test('POST /api/notifications-read marks semantic duplicates read too', async () => {
+  const r = await call('POST', '/api/notifications-read', { body: { userId: 'emp-a', id: 'notif-1' } });
+  assert.equal(r.status, 200);
+  assert.equal(r.json?.success, true);
+  assert.ok(Array.isArray(r.json?.notifications));
+  const states = await row(`SELECT id, is_read FROM notifications WHERE recipient_id = 'emp-a' ORDER BY id`);
+  const byId = new Map(states.map((s: any) => [s.id, s.is_read]));
+  assert.equal(byId.get('notif-1'), true);
+  assert.equal(byId.get('notif-2'), true, 'semantic duplicate should be marked read');
+  assert.equal(byId.get('notif-3'), true);
+});
+await test('POST /api/notifications-read unknown id → 404', async () => {
+  const r = await call('POST', '/api/notifications-read', { body: { userId: 'emp-a', id: 'nope' } });
+  assert.equal(r.status, 404);
+  assert.equal(r.json?.updated, false);
+});
+await test('POST /api/notifications-read without userId → 400', async () => {
+  const r = await call('POST', '/api/notifications-read', { body: { id: 'notif-1' } });
+  assert.equal(r.status, 400);
+});
+await test('POST /api/notifications-read-all marks everything read', async () => {
+  await client.query(`UPDATE notifications SET is_read = false WHERE recipient_id = 'emp-a'`);
+  const r = await call('POST', '/api/notifications-read-all', { body: { userId: 'emp-a' } });
+  assert.equal(r.status, 200);
+  assert.equal(r.json?.success, true);
+  const unread = await row(`SELECT COUNT(*)::int AS c FROM notifications WHERE recipient_id = 'emp-a' AND is_read = false`);
+  assert.equal(unread[0].c, 0);
 });
 
 // ---------------------------------------------------------------------------

@@ -122,10 +122,10 @@ export const NotificationsPage: React.FC<Props> = ({ currentUserId, lang, onBack
       ? { ...notification, isRead: true, updatedAt: new Date().toISOString() }
       : notification));
     try {
-      const response = await fetch(`/api/notifications/${encodeURIComponent(id)}/mark-read`, {
-        method: 'PUT',
+      const response = await fetch('/api/notifications-read', {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
-        body: JSON.stringify({ userId: currentUserId }),
+        body: JSON.stringify({ userId: currentUserId, id }),
         cache: 'no-store',
       });
       if (!response.ok) throw new Error(String(response.status));
@@ -149,8 +149,8 @@ export const NotificationsPage: React.FC<Props> = ({ currentUserId, lang, onBack
       updatedAt: new Date().toISOString(),
     })));
     try {
-      const response = await fetch('/api/notifications/mark-all-read', {
-        method: 'PUT',
+      const response = await fetch('/api/notifications-read-all', {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
         body: JSON.stringify({ userId: currentUserId }),
         cache: 'no-store',
