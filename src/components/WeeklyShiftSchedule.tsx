@@ -157,7 +157,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
   const [viewMode, setViewMode] = useState<'week' | 'month'>('week');
   const [mobileDayIndex, setMobileDayIndex] = useState(() => new Date().getDay());
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
-  const [editPanelOpen, setEditPanelOpen] = useState(false);
+  const [editPanelOpen, setEditPanelOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   const isLeader = ['leader', 'admin', 'company_admin', 'platform_admin'].includes(String(currentUser?.role || ''));
@@ -695,9 +695,9 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
       )}
 
       {isLeader && employee && (
-        <div className="rounded-xl border border-slate-200 dark:border-slate-700">
+        <div id="employee-shift-assignment" className="rounded-xl border-2 border-blue-200 bg-white shadow-sm dark:border-blue-500/30 dark:bg-slate-950">
           <button type="button" onClick={() => setEditPanelOpen(v => !v)} className="flex w-full items-center justify-between px-4 py-2.5 text-xs font-black text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800/60">
-            <span className="flex items-center gap-2"><Pencil className="h-4 w-4" />{lang === 'ar' ? 'تعيين الورديات لكل يوم (قادة فقط)' : 'Assign shifts per day (leaders only)'}</span>
+            <span className="flex items-center gap-2"><Pencil className="h-4 w-4" />{lang === 'ar' ? 'تعيين الشيفت لكل موظف ولكل يوم' : 'Assign shifts per employee and day'}</span>
             <ChevronLeft className={`h-4 w-4 transition-transform ${editPanelOpen ? '-rotate-90' : 'rotate-0 rtl:rotate-180'}`} />
           </button>
           {editPanelOpen && (
