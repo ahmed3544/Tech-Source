@@ -2,6 +2,7 @@ import { and, eq, ne } from 'drizzle-orm';
 import { db } from '../src/db/index.js';
 import * as schema from '../src/db/schema.js';
 import { canManageEmployee, findEmployeeById, requireManager } from './auth.js';
+import { sanitizeEmployee } from './employee-sanitize.js';
 
 /**
  * Shared employee CRUD handlers used by both the Express server (server.ts,
@@ -112,7 +113,9 @@ export async function updateEmployeeHandler(req: any, res: any) {
     const updated = await findEmployeeById(id);
 
     noStore(res);
-    return res.json({ success: true, employee: updated, lastUpdated: Date.now() });
+    // The updated row never carries the pin back to the client: the manager
+    // already knows the value they typed, and nobody else needs it.
+    return res.json({ success: true, employee: sanitizeEmployee(updated), lastUpdated: Date.now() });
   } catch (error: any) {
     console.error('[EMPLOYEE-UPDATE-ERROR]', error?.message || error);
     return res.status(500).json({ success: false, error: String(error?.message || 'Employee update failed due to a server error.') });
@@ -163,7 +166,7 @@ export async function createEmployeeHandler(req: any, res: any) {
     };
     await db.insert(schema.employees).values(row as any);
     const created = await findEmployeeById(id);
-    return res.status(201).json({ success: true, employee: created, lastUpdated: Date.now() });
+    return res.status(201).json({ success: true, employee: sanitizeEmployee(created), lastUpdated: Date.now() });
   } catch (error: any) {
     console.error('[EMPLOYEE-CREATE-ERROR]', error?.message || error);
     return res.status(500).json({ success: false, error: String(error?.message || 'Employee creation failed due to a server error.') });

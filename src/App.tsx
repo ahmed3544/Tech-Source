@@ -80,8 +80,37 @@ export default function App() {
   const [editPin, setEditPin] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [loginNotice, setLoginNotice] = useState('');
 
   const isAdmin = currentUser?.role === 'admin';
+
+  /**
+   * Persists the session together with its signing credential.
+   * sessionStorage is wiped every time the mobile app/tab restarts, so the
+   * typed pin must live with the session record in localStorage — otherwise a
+   * restored session cannot sign mutating requests and the server answers 401
+   * ("Authentication required. Please sign in again.") on every save.
+   */
+  const persistSession = (user: Employee, pinOverride?: string) => {
+    try {
+      let pin = String(pinOverride ?? '').trim();
+      if (!pin) {
+        try { pin = String(JSON.parse(localStorage.getItem('logged_in_user') || 'null')?.pin ?? ''); } catch { /* first login */ }
+      }
+      localStorage.setItem('logged_in_user', JSON.stringify(pin ? { ...user, pin } : user));
+    } catch { /* storage unavailable */ }
+  };
+
+  /** Clears the session and opens the login modal with a clear reason. */
+  const forceReLogin = () => {
+    try { localStorage.removeItem('logged_in_user'); sessionStorage.removeItem('auth_pin'); } catch { /* ignore */ }
+    setCurrentUser(null);
+    setSuccessMessage('');
+    setLoginNotice(lang === 'ar'
+      ? 'انتهت جلسة الدخول أو تغيّرت بيانات الاعتماد. يرجى تسجيل الدخول من جديد للمتابعة.'
+      : 'Your session expired or its credentials changed. Please sign in again to continue.');
+    setLoginOpen(true);
+  };
 
   const persist = async (payload: Record<string, unknown>) => {
     const response = await fetch('/api/sync', {
@@ -91,6 +120,10 @@ export default function App() {
       body: JSON.stringify({ ...payload, lastUpdated: Date.now() }),
     });
     const result = await parseResponse(response);
+    if (response.status === 401) {
+      forceReLogin();
+      throw new Error(lang === 'ar' ? 'انتهت الجلسة. يرجى تسجيل الدخول من جديد.' : 'Session ended. Please sign in again.');
+    }
     if (!response.ok || result?.success === false) throw new Error(extractApiError(result, 'تعذر حفظ البيانات'));
     return result;
   };
@@ -129,7 +162,7 @@ export default function App() {
     return () => { cancelled = true; };
   }, []);
 
-  const handleLogin = (raw: Employee) => {
+  const handleLogin = (raw: Employee, pin?: string) => {
     const user = normalizeEmployee(raw);
     if (!user.id || user.status !== 'active') {
       setError(lang === 'ar' ? 'الحساب غير صالح أو غير مفعّل.' : 'This account is invalid or inactive.');
@@ -139,8 +172,10 @@ export default function App() {
       ? { ...user, id: ADMIN_ID, role: 'admin' as const, email: ADMIN_EMAIL, nameAr: 'Ahmed Mahmoud Ahmed Mahmoud', nameEn: 'Ahmed Mahmoud Ahmed Mahmoud', status: 'active' as const }
       : { ...user, role: normalizeRole(user.role) };
     setCurrentUser(signedInUser);
-    localStorage.setItem('logged_in_user', JSON.stringify(signedInUser));
+    // Store the session WITH its signing credential so it survives app restarts.
+    persistSession(signedInUser, pin);
     setLoginOpen(false);
+    setLoginNotice('');
     setError('');
   };
 
@@ -161,6 +196,7 @@ export default function App() {
         body: JSON.stringify({ code, nameAr: newName.trim(), nameEn: newName.trim(), pin: newPin.trim(), role: 'employee', department: 'CX' }),
       });
       const result = await parseResponse(response);
+      if (response.status === 401) { forceReLogin(); return; }
       if (!response.ok || result?.success === false) throw new Error(extractApiError(result, lang === 'ar' ? 'تعذر إضافة الموظف' : 'Could not add the employee'));
       const created = result?.employee ? normalizeEmployee(result.employee) : null;
       const next = created ? [...employees, created] : employees;
@@ -210,6 +246,7 @@ export default function App() {
         body: JSON.stringify({ id: editingEmployeeId, ...payload }),
       });
       const result = await parseResponse(response);
+      if (response.status === 401) { forceReLogin(); return; }
       // Success is only reported after the server confirms the update.
       if (!response.ok || result?.success === false) throw new Error(extractApiError(result, lang === 'ar' ? 'تعذر تعديل الموظف.' : 'Could not update employee.'));
       const savedEmployee = result?.employee ? normalizeEmployee(result.employee) : null;
@@ -222,7 +259,9 @@ export default function App() {
       if (currentUser?.id === editingEmployeeId && savedEmployee) {
         const updatedUser = { ...currentUser, ...savedEmployee };
         setCurrentUser(updatedUser);
-        localStorage.setItem('logged_in_user', JSON.stringify(updatedUser));
+        // Keep the signing credential in sync when the manager changes their
+        // own password — otherwise the next mutation would fail with 401.
+        persistSession(updatedUser, typeof payload.pin === 'string' ? payload.pin : undefined);
       }
       setEditingEmployeeId(null); setEditName(''); setEditCode(''); setEditPin('');
       setSuccessMessage(lang === 'ar' ? 'تم حفظ بيانات الموظف بنجاح' : 'Employee updated successfully');
@@ -258,6 +297,7 @@ export default function App() {
         body: JSON.stringify({ id: employee.id }),
       });
       const result = await parseResponse(response);
+      if (response.status === 401) { forceReLogin(); return; }
       if (!response.ok || result?.success === false) throw new Error(extractApiError(result, lang === 'ar' ? 'تعذر حذف الموظف.' : 'Could not delete employee.'));
       const next = employees.filter(e => e.id !== employee.id);
       setEmployees(next);
@@ -293,7 +333,7 @@ export default function App() {
       <div className="mx-auto mb-4 flex max-w-5xl justify-end">
         <button onClick={() => setLang(lang === 'ar' ? 'en' : 'ar')} className="rounded-lg border bg-white px-3 py-2 text-sm"><Languages className="mr-2 inline h-4 w-4" />{lang === 'ar' ? 'English' : 'العربية'}</button>
       </div>
-      <LoginModal isOpen={loginOpen} onClose={() => setLoginOpen(true)} employees={employees} onLoginSuccess={handleLogin} lang={lang} />
+      <LoginModal isOpen={loginOpen} onClose={() => setLoginOpen(true)} employees={employees} onLoginSuccess={handleLogin} notice={loginNotice} lang={lang} />
       {error && <p className="mx-auto mt-3 max-w-md rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
     </div>;
   }
@@ -302,11 +342,11 @@ export default function App() {
     <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 backdrop-blur">
       <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
         <div className="flex items-center gap-3"><div className="rounded-xl bg-emerald-100 p-2 text-emerald-700"><CalendarDays className="h-6 w-6" /></div><div><h1 className="text-lg font-black">{lang === 'ar' ? 'نظام جداول الورديات' : 'Shift Scheduling System'}</h1><p className="text-xs text-slate-500">TECH SOURCE - GDS</p></div></div>
-        <div className="flex items-center gap-2"><span className="hidden text-sm font-bold sm:inline">{currentUser.nameAr}</span><button onClick={() => setLang(lang === 'ar' ? 'en' : 'ar')} className="rounded-lg border px-3 py-2 text-sm"><Languages className="mr-1 inline h-4 w-4" />{lang === 'ar' ? 'EN' : 'عربي'}</button><button onClick={() => { localStorage.removeItem('logged_in_user'); try { sessionStorage.removeItem('auth_pin'); } catch {} setCurrentUser(null); setLoginOpen(true); }} className="rounded-lg border px-3 py-2 text-sm"><LogOut className="mr-1 inline h-4 w-4" />{lang === 'ar' ? 'خروج' : 'Log out'}</button></div>
+        <div className="flex items-center gap-2"><span className="hidden text-sm font-bold sm:inline">{currentUser.nameAr}</span><button onClick={() => setLang(lang === 'ar' ? 'en' : 'ar')} className="rounded-lg border px-3 py-2 text-sm"><Languages className="mr-1 inline h-4 w-4" />{lang === 'ar' ? 'EN' : 'عربي'}</button><button onClick={() => { localStorage.removeItem('logged_in_user'); try { sessionStorage.removeItem('auth_pin'); } catch {} setCurrentUser(null); setLoginNotice(''); setLoginOpen(true); }} className="rounded-lg border px-3 py-2 text-sm"><LogOut className="mr-1 inline h-4 w-4" />{lang === 'ar' ? 'خروج' : 'Log out'}</button></div>
       </div>
     </header>
     <div className="mx-auto grid max-w-[1600px] gap-5 p-3 sm:p-6 lg:grid-cols-[minmax(0,1fr)_300px]">
-      <section className="min-w-0"><WeeklyShiftSchedule employees={visibleEmployees} shifts={shifts} dailyShiftAssignments={assignments} leaveRequests={leaveRequests} holidays={holidays} currentUser={currentUser} lang={lang} onAddShift={handleAddShift} onUpdateShift={handleUpdateShift} onDeleteShift={handleDeleteShift} /></section>
+      <section className="min-w-0"><WeeklyShiftSchedule employees={visibleEmployees} shifts={shifts} dailyShiftAssignments={assignments} leaveRequests={leaveRequests} holidays={holidays} currentUser={currentUser} lang={lang} onAddShift={handleAddShift} onUpdateShift={handleUpdateShift} onDeleteShift={handleDeleteShift} onAuthFailure={forceReLogin} /></section>
       {isAdmin && <aside className="h-fit rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="mb-3 flex items-center justify-between"><h2 className="font-black">{lang === 'ar' ? 'إدارة الموظفين' : 'Employee Management'}</h2><Users className="h-5 w-5 text-slate-500" /></div>
         <p className="mb-4 text-xs leading-5 text-slate-500">{lang === 'ar' ? 'أضف الموظفين الجدد ليظهروا في جدول الورديات. لا توجد بيانات حضور أو إجازات في هذا النظام.' : 'Add employees to make them available in the roster. Attendance and leave data are not part of this system.'}</p>

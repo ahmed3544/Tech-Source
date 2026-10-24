@@ -4,6 +4,7 @@ import * as schema from "../src/db/schema.js";
 import { eq } from "drizzle-orm";
 import { updateEmployeeHandler, createEmployeeHandler, deleteEmployeeHandler } from "../server/employees.js";
 import { ensureSchema } from "../server/ensure-schema.js";
+import { sanitizeEmployees } from "../server/employee-sanitize.js";
 
 async function directData(res: any) {
   const [employees, attendanceRecords, leaveRequests, overtimeRequests, shifts, notifications, settings] = await Promise.all([
@@ -21,7 +22,7 @@ async function directData(res: any) {
   const breakMap = settingsMap.get('shiftBreaks');
   const breaks = breakMap && typeof breakMap === 'object' && !Array.isArray(breakMap) ? breakMap : {};
   const hydratedShifts = shifts.map((shift: any) => ({ ...shift, breaks: Array.isArray(shift?.breaks) ? shift.breaks : (Array.isArray((breaks as any)[String(shift?.id)]) ? (breaks as any)[String(shift.id)] : []) }));
-  return res.json({ success: true, employees, attendanceRecords, leaveRequests, overtimeRequests, shifts: hydratedShifts, notifications, employeeShiftAssignments, dailyShiftAssignments: Array.isArray(settingsMap.get('dailyShiftAssignments')) ? settingsMap.get('dailyShiftAssignments') : [], shiftSwapRequests: Array.isArray(settingsMap.get('shiftSwapRequests')) ? settingsMap.get('shiftSwapRequests') : [], companyNameAr: settingsMap.get('companyNameAr') ?? null, companyNameEn: settingsMap.get('companyNameEn') ?? null, urgentNotice: settingsMap.get('urgentNotice') ?? null, officialHolidays: Array.isArray(settingsMap.get('officialHolidays')) ? settingsMap.get('officialHolidays') : [], lastUpdated: Date.now() });
+  return res.json({ success: true, employees: sanitizeEmployees(employees), attendanceRecords, leaveRequests, overtimeRequests, shifts: hydratedShifts, notifications, employeeShiftAssignments, dailyShiftAssignments: Array.isArray(settingsMap.get('dailyShiftAssignments')) ? settingsMap.get('dailyShiftAssignments') : [], shiftSwapRequests: Array.isArray(settingsMap.get('shiftSwapRequests')) ? settingsMap.get('shiftSwapRequests') : [], companyNameAr: settingsMap.get('companyNameAr') ?? null, companyNameEn: settingsMap.get('companyNameEn') ?? null, urgentNotice: settingsMap.get('urgentNotice') ?? null, officialHolidays: Array.isArray(settingsMap.get('officialHolidays')) ? settingsMap.get('officialHolidays') : [], lastUpdated: Date.now() });
 }
 
 function normalizeDirectSchedule(item: any, fallbackUpdatedAt: string) {

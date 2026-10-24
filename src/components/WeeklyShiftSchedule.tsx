@@ -27,6 +27,8 @@ interface WeeklyShiftScheduleProps {
   onAddShift?: (shift: Shift) => void;
   onUpdateShift?: (shift: Shift) => void;
   onDeleteShift?: (shiftId: string) => void;
+  /** Called when the server rejects a mutation with 401 (session ended). */
+  onAuthFailure?: () => void;
   onClose?: () => void;
 }
 
@@ -134,6 +136,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
   onAddShift,
   onUpdateShift,
   onDeleteShift,
+  onAuthFailure,
 }) => {
   const [employees, setEmployees] = useState<Employee[]>(suppliedEmployees);
   const [shifts, setShifts] = useState<Shift[]>(suppliedShifts.map(normalizeShift));
@@ -298,6 +301,10 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
         body: JSON.stringify({ dailyShiftAssignments: rows, syncTimestamp: now }),
       });
       const data = await parseResponse(response);
+      if (response.status === 401) {
+        onAuthFailure?.();
+        throw new Error(lang === 'ar' ? 'انتهت الجلسة. يرجى تسجيل الدخول من جديد.' : 'Session ended. Please sign in again.');
+      }
       if (!response.ok || data?.success === false) throw new Error(extractApiError(data, lang === 'ar' ? 'تعذر حفظ الجدول على السيرفر' : 'Server rejected the weekly schedule'));
       setAssignments(Array.isArray(data?.dailyShiftAssignments) ? data.dailyShiftAssignments : []);
       setDraft({});
@@ -339,6 +346,10 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
         body: JSON.stringify({ employeeId: employee.id, date: breakEditor.dateKey, breaks: payload }),
       });
       const data = await parseResponse(response);
+      if (response.status === 401) {
+        onAuthFailure?.();
+        throw new Error(lang === 'ar' ? 'انتهت الجلسة. يرجى تسجيل الدخول من جديد.' : 'Session ended. Please sign in again.');
+      }
       if (!response.ok || data?.success === false) throw new Error(extractApiError(data, lang === 'ar' ? 'تعذر حفظ الاستراحات' : 'Could not save breaks'));
       const saved = normalizeBreaks(data?.breaks);
       setBreaksByDate(prev => ({ ...prev, [breakEditor.dateKey]: saved }));
