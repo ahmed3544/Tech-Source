@@ -2,35 +2,7 @@ import app from "../dist/server.js";
 import { db } from "../src/db/index.js";
 import * as schema from "../src/db/schema.js";
 import { eq } from "drizzle-orm";
-
-async function directEmployeeUpdate(req: any, res: any) {
-  const id = String(req.url || '').split('?')[0].split('/').filter(Boolean).pop()?.trim() || '';
-  let requestBody = req.body;
-  if (typeof requestBody === 'string') { try { requestBody = JSON.parse(requestBody); } catch {} }
-  if (!requestBody && req.rawBody) { try { requestBody = JSON.parse(Buffer.from(req.rawBody).toString('utf8')); } catch {} }
-  if (!id || !requestBody || typeof requestBody !== 'object') return res.status(400).json({ success:false, error:'Invalid employee payload' });
-  const allowed = ['code','nameAr','nameEn','avatar','email','phone','department','jobTitleAr','jobTitleEn','pin','role','joinedDate','status','annualLeaveBalance','casualLeaveBalance','regularLeaveBalance','sickLeaveBalance','isPhotoRemoved'];
-  const values:any = {};
-  for (const key of allowed) {
-    if (requestBody[key] !== undefined && !(key === 'pin' && String(requestBody[key]) === '***')) values[key] = requestBody[key];
-  }
-  if (values.role !== undefined) {
-    const role = String(values.role).trim().toLowerCase();
-    values.role = role === 'leader' || role === 'team_leader' || role === 'team-leader' || role === 'tl' ? 'leader' : role === 'admin' ? 'admin' : 'employee';
-  }
-  values.updatedAt = new Date().toISOString();
-  try {
-    const existing = await db.select().from(schema.employees).where(eq(schema.employees.id, id));
-    if (!existing[0]) return res.status(404).json({ success:false, error:'Employee not found' });
-    await db.update(schema.employees).set(values as any).where(eq(schema.employees.id, id));
-    const employee = (await db.select().from(schema.employees).where(eq(schema.employees.id, id)))[0];
-    res.setHeader('Cache-Control','no-store, no-cache, must-revalidate, proxy-revalidate');
-    return res.json({ success:true, employee, lastUpdated:Date.now() });
-  } catch (error:any) {
-    console.error('[direct-api] employee update failed:', error);
-    return res.status(500).json({ success:false, error:String(error?.message || error) });
-  }
-}
+import { updateEmployeeHandler, createEmployeeHandler, deleteEmployeeHandler } from "../server/employees.js";
 
 async function directData(res: any) {
   const [employees, attendanceRecords, leaveRequests, overtimeRequests, shifts, notifications, settings] = await Promise.all([
@@ -48,7 +20,7 @@ async function directData(res: any) {
   const breakMap = settingsMap.get('shiftBreaks');
   const breaks = breakMap && typeof breakMap === 'object' && !Array.isArray(breakMap) ? breakMap : {};
   const hydratedShifts = shifts.map((shift: any) => ({ ...shift, breaks: Array.isArray(shift?.breaks) ? shift.breaks : (Array.isArray((breaks as any)[String(shift?.id)]) ? (breaks as any)[String(shift.id)] : []) }));
-  return res.json({ success: true, employees, attendanceRecords, leaveRequests, overtimeRequests, shifts: hydratedShifts, notifications, employeeShiftAssignments, dailyShiftAssignments: Array.isArray(settingsMap.get('dailyShiftAssignments')) ? settingsMap.get('dailyShiftAssignments') : [], shiftSwapRequests: Array.isArray(settingsMap.get('shiftSwapRequests')) ? settingsMap.get('shiftSwapRequests') : [], companyNameAr: settingsMap.get('companyNameAr') ?? null, companyNameEn: settingsMap.get('companyNameEn') ?? null, urgentNotice: settingsMap.get('urgentNotice') ?? null, lastUpdated: Date.now() });
+  return res.json({ success: true, employees, attendanceRecords, leaveRequests, overtimeRequests, shifts: hydratedShifts, notifications, employeeShiftAssignments, dailyShiftAssignments: Array.isArray(settingsMap.get('dailyShiftAssignments')) ? settingsMap.get('dailyShiftAssignments') : [], shiftSwapRequests: Array.isArray(settingsMap.get('shiftSwapRequests')) ? settingsMap.get('shiftSwapRequests') : [], companyNameAr: settingsMap.get('companyNameAr') ?? null, companyNameEn: settingsMap.get('companyNameEn') ?? null, urgentNotice: settingsMap.get('urgentNotice') ?? null, officialHolidays: Array.isArray(settingsMap.get('officialHolidays')) ? settingsMap.get('officialHolidays') : [], lastUpdated: Date.now() });
 }
 
 function normalizeDirectSchedule(item: any, fallbackUpdatedAt: string) {
@@ -231,9 +203,18 @@ function enrichLeaveAttendance(body: any) {
 
 export default async function handler(req: any, res: any) {
   if (isPushRegister(req)) return registerPushToken(req, res);
+  // Shared, permission-checked employee + breaks handlers (same as server.ts).
+  const employeeMatch = /^\/api\/employees\/([^/]+)$/.exec(String(req.url || '').split('?')[0]);
+  if (employeeMatch) {
+    req.params = { ...(req.params || {}), id: decodeURIComponent(employeeMatch[1]) };
+    if (req.method === 'PUT') return updateEmployeeHandler(req, res);
+    if (req.method === 'DELETE') return deleteEmployeeHandler(req, res);
+  }
+  if (req.method === 'POST' && isPath(req, '/api/employees')) return createEmployeeHandler(req, res);
+  // GET/POST /api/employee-breaks are handled by the bundled express app below
+  // (routes registered in server.ts via registerEmployeeBreaks).
   try {
     if (req.method === 'POST' && isPath(req, '/api/schedule-sync')) return await directScheduleSync(req, res);
-    if (req.method === 'PUT' && /^\/api\/employees\/[^/]+$/.test(String(req.url || '').split('?')[0])) return await directEmployeeUpdate(req, res);
     if (req.method === 'GET' && isPath(req, '/api/data')) { res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate'); res.setHeader('Pragma', 'no-cache'); return await directData(res); }
     if (req.method === 'GET' && isPath(req, '/api/notifications')) { res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate'); res.setHeader('Pragma', 'no-cache'); return await directNotifications(req, res); }
     if (req.method === 'PUT' && isPath(req, '/api/notifications/mark-all-read')) return await directMarkAllRead(req, res);
