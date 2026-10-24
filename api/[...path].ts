@@ -42,6 +42,7 @@ function normalizeDirectSchedule(item: any, fallbackUpdatedAt: string) {
     date,
     shiftId: clear || isOffDay ? '' : shiftId,
     isOffDay,
+    status: ['HOLIDAY', 'ANNUAL'].includes(status) ? status : (isOffDay ? 'OFF' : 'WORKING'),
     clear,
     assignedBy: item?.assignedBy ?? item?.assigned_by ?? null,
     updatedAt: String(item?.updatedAt ?? item?.updated_at ?? fallbackUpdatedAt),
@@ -86,6 +87,7 @@ async function directScheduleSync(req: any, res: any) {
     date: item.date,
     shiftId: item.shiftId || '',
     isOffDay: Boolean(item.isOffDay),
+    status: item.status || (item.isOffDay ? 'OFF' : 'WORKING'),
     assignedBy: item.assignedBy ?? undefined,
     updatedAt: item.updatedAt || stamp,
   }));
