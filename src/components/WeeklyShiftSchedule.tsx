@@ -196,18 +196,26 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
     return () => { cancelled = true; window.clearInterval(interval); };
   }, []);
 
+  // Admin accounts manage schedules and approvals but are not rostered employees.
+  // Filter them out before applying role/team visibility so they never receive a
+  // shift, break, OFF day, or employee-level schedule row.
+  const rosterEmployees = useMemo(
+    () => employees.filter(e => !['admin', 'company_admin', 'platform_admin'].includes(String(e.role || '').toLowerCase())),
+    [employees],
+  );
+
   const visibleEmployees = useMemo(() => {
-    if (!isLeader) return employees.filter(e => sameId(e.id, currentUser?.id));
-    if (currentUser?.role === 'admin' || currentUser?.role === 'company_admin' || currentUser?.role === 'platform_admin') return employees;
-    const team = employees.filter(e => sameId(e.teamLeaderId, currentUser?.id));
+    if (!isLeader) return rosterEmployees.filter(e => sameId(e.id, currentUser?.id));
+    if (['admin', 'company_admin', 'platform_admin'].includes(String(currentUser?.role || '').toLowerCase())) return rosterEmployees;
+    const team = rosterEmployees.filter(e => sameId(e.teamLeaderId, currentUser?.id));
     if (team.length) return team;
     if (currentUser?.teamId) {
-      const sameTeam = employees.filter(e => e.teamId === currentUser.teamId);
+      const sameTeam = rosterEmployees.filter(e => e.teamId === currentUser.teamId);
       if (sameTeam.length) return sameTeam;
     }
     // Never expose the whole roster to a team leader when no team mapping exists.
-    return employees.filter(e => sameId(e.id, currentUser?.id));
-  }, [employees, isLeader, currentUser]);
+    return rosterEmployees.filter(e => sameId(e.id, currentUser?.id));
+  }, [rosterEmployees, isLeader, currentUser]);
 
   const employee = visibleEmployees.find(e => sameId(e.id, selectedEmployeeId)) || visibleEmployees[0] || null;
 
