@@ -156,6 +156,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
   const [breakError, setBreakError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'week' | 'month'>('week');
   const [mobileDayIndex, setMobileDayIndex] = useState(() => new Date().getDay());
+  const [touchStartX, setTouchStartX] = useState<number | null>(null);
   const [editPanelOpen, setEditPanelOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
@@ -538,7 +539,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
         </div>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-2">
-            <button type="button" onClick={() => setWeekStart(startOfWeek(new Date()))} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800/70">📅 {lang === 'ar' ? 'اليوم' : 'Today'}</button>
+            <button type="button" onClick={() => { const today = new Date(); setWeekStart(startOfWeek(today)); setMobileDayIndex(today.getDay()); setViewMode('week'); }} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800/70">📅 {lang === 'ar' ? 'اليوم' : 'Today'}</button>
             {isLeader && Object.keys(draft).length > 0 && (
               <button type="button" onClick={saveWeek} disabled={saving} className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs font-black text-white hover:bg-blue-700 disabled:opacity-50"><Save className="h-3.5 w-3.5" />{saving ? (lang === 'ar' ? 'جاري الحفظ...' : 'Saving...') : (lang === 'ar' ? `حفظ التعديلات (${Object.keys(draft).length})` : `Save changes (${Object.keys(draft).length})`)}</button>
             )}
@@ -642,7 +643,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
                 ? `${lang === 'ar' ? 'وردية' : 'Shift'} ${fmt12(timeToMinutes(shift.startTime), lang)} - ${fmt12(timeToMinutes(shift.endTime), lang)}`
                 : lang === 'ar' ? (STATUS_LABELS[resolved.label] ?? STATUS_LABELS.unassigned).ar : (STATUS_LABELS[resolved.label] ?? STATUS_LABELS.unassigned).en;
               return (
-                <div className="relative rounded-xl border border-slate-200 p-2 dark:border-slate-700">
+                <div className="relative rounded-xl border border-slate-200 p-2 touch-pan-y dark:border-slate-700" onTouchStart={e => setTouchStartX(e.touches[0]?.clientX ?? null)} onTouchEnd={e => { if (touchStartX === null) return; const delta = e.changedTouches[0].clientX - touchStartX; if (Math.abs(delta) > 55) setMobileDayIndex(current => Math.max(0, Math.min(6, current + (delta < 0 ? 1 : -1)))); setTouchStartX(null); }}>
                   <div className="mb-2 rounded-lg bg-blue-600 px-3 py-2 text-center text-white">
                     <div className="text-sm font-black tracking-wide">{(lang === 'ar' ? day.ar : day.en).toUpperCase()} {day.date.getDate()}</div>
                     <div className="text-[11px] font-bold opacity-95">{resolved.status === 'working' && shift ? `${lang === 'ar' ? 'وردية' : 'Shift'} ` : ''}{resolved.status === 'working' && shift ? <span dir="ltr">{fmt12(timeToMinutes(shift.startTime), lang)} - {fmt12(timeToMinutes(shift.endTime), lang)}</span> : bannerSub}</div>
