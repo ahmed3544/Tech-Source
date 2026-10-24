@@ -84,6 +84,7 @@ process.env.DATABASE_URL = BASE_URL;
 const { registerDirectScheduleSync } = await import('../server/schedule-sync-direct.js');
 const { registerEmployeeBreaks } = await import('../server/employee-breaks.js');
 const { updateEmployeeHandler, createEmployeeHandler, deleteEmployeeHandler } = await import('../server/employees.js');
+const { sanitizeEmployees } = await import('../server/employee-sanitize.js');
 const { listNotificationsForUser, markAllNotificationsRead, markNotificationRead } = await import('../server/notification-reads.js');
 
 const app = express();
@@ -94,14 +95,21 @@ app.put('/api/employees/:id', (req: any, res: any) => updateEmployeeHandler(req,
 app.post('/api/employees', (req: any, res: any) => createEmployeeHandler(req, res));
 app.delete('/api/employees/:id', (req: any, res: any) => deleteEmployeeHandler(req, res));
 // Static-path aliases (mirror server.ts exactly) — the "page could not be found" fix.
-const withEmployeeId = (req: any, res: any): { id: string } | null => {
+// Auth first: the shared handlers validate credentials BEFORE the id, so
+// unauthenticated probes get 401 instead of validation details.
+const withEmployeeId = (req: any, res: any): void => {
   const id = String(req.body?.id ?? '').trim();
-  if (!id) { res.status(400).json({ success: false, error: 'Employee id is required.' }); return null; }
   req.params = { ...(req.params || {}), id };
-  return { id };
 };
-app.post('/api/employees-update', (req: any, res: any) => { const ok = withEmployeeId(req, res); if (!ok) return; return updateEmployeeHandler(req, res); });
-app.post('/api/employees-delete', (req: any, res: any) => { const ok = withEmployeeId(req, res); if (!ok) return; return deleteEmployeeHandler(req, res); });
+app.post('/api/employees-update', (req: any, res: any) => { withEmployeeId(req, res); return updateEmployeeHandler(req, res); });
+app.post('/api/employees-delete', (req: any, res: any) => { withEmployeeId(req, res); return deleteEmployeeHandler(req, res); });
+// Snapshot route (mirrors dbSnapshot/directData): same sanitize step must apply.
+app.get('/api/data', async (_req: any, res: any) => {
+  const { db } = await import('../src/db/index.js');
+  const schemaMod = await import('../src/db/schema.js');
+  const employees = await db.select().from((schemaMod as any).employees);
+  res.json({ success: true, employees: sanitizeEmployees(employees as any[]) });
+});
 app.post('/api/notifications-read', async (req: any, res: any) => {
   try {
     const userId = String(req.body?.userId ?? '').trim();
@@ -167,6 +175,11 @@ await test('POST employee-breaks without credentials → 401', async () => {
   const r = await call('POST', '/api/employee-breaks', { body: { employeeId: 'emp-a', date: '2026-10-27', breaks: [] } });
   assert.equal(r.status, 401);
 });
+await test('POST employees-update without id and without credentials → 401 (auth before validation)', async () => {
+  const r = await call('POST', '/api/employees-update', { body: { nameAr: 'Anon' } });
+  assert.equal(r.status, 401);
+  assert.equal(r.json?.success, false);
+});
 await test('POST /api/employees (create) without credentials → 401', async () => {
   const r = await call('POST', '/api/employees', { body: { code: 'EMP999', nameAr: 'Ghost', pin: 'x' } });
   assert.equal(r.status, 401);
@@ -189,6 +202,24 @@ await test('Admin edit saves to database and returns the updated row', async () 
   const dbRow = (await row(`SELECT name_ar, code FROM employees WHERE id = 'emp-a'`))[0];
   assert.equal(dbRow.name_ar, 'أحمد معدل');
   assert.equal(dbRow.code, 'EMP101A');
+});
+await test('Mutation responses never expose the pin (create + update)', async () => {
+  const created = await call('POST', '/api/employees', { headers: auth('admin-1', '1234'), body: { code: 'EMP777', nameAr: 'Sanitized', pin: 'secret777' } });
+  assert.equal(created.status, 201);
+  assert.equal(created.json?.employee?.pin, undefined);
+  assert.equal(created.json?.employee?.code, 'EMP777');
+  const updated = await call('PUT', '/api/employees/emp-b', { headers: auth('admin-1', '1234'), body: { nameAr: 'Pin Check B' } });
+  assert.equal(updated.status, 200);
+  assert.equal(updated.json?.employee?.pin, undefined);
+  const dbPin = (await row(`SELECT pin FROM employees WHERE code = 'EMP777'`))[0];
+  assert.equal(dbPin.pin, 'secret777'); // still stored for login — just never returned
+});
+await test('GET /api/data snapshot never exposes pins', async () => {
+  const r = await call('GET', '/api/data');
+  assert.equal(r.status, 200);
+  const employees = r.json?.employees;
+  assert.ok(Array.isArray(employees) && employees.length > 0);
+  for (const employee of employees) assert.equal(employee.pin, undefined, `pin leaked for ${employee.id}`);
 });
 await test('Unchanged fields are never overwritten (pin-only edit keeps department)', async () => {
   const before = (await row(`SELECT department, email, pin FROM employees WHERE id = 'emp-a'`))[0];

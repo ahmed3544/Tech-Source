@@ -18,7 +18,9 @@ interface LoginModalProps {
   isOpen: boolean;
   onClose: () => void;
   employees: Employee[];
-  onLoginSuccess: (emp: Employee) => void;
+  onLoginSuccess: (emp: Employee, pin?: string) => void;
+  /** Informational banner (e.g. "session expired, please sign in again"). */
+  notice?: string;
   lang: Language;
 }
 
@@ -26,6 +28,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   isOpen,
   employees,
   onLoginSuccess,
+  notice,
   lang,
 }) => {
   const [code, setCode] = useState('');
@@ -73,8 +76,12 @@ export const LoginModal: React.FC<LoginModalProps> = ({
         // (the server-side permission guard re-validates it on every call).
         // sessionStorage is tab-scoped and cleared when the tab closes.
         try { sessionStorage.setItem('auth_pin', cleanPass); } catch {}
+        // The typed pin is also handed to the app so it can be persisted with
+        // the session: on mobile the WebView is restarted constantly, and a
+        // restored session without the credential failed every mutation with
+        // "Authentication required. Please sign in again." (401 loop).
         setLoading(false);
-        onLoginSuccess(data.employee);
+        onLoginSuccess(data.employee, cleanPass);
       } else {
         setError(
           data.error === 'ACCOUNT_INACTIVE'
@@ -123,6 +130,13 @@ export const LoginModal: React.FC<LoginModalProps> = ({
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           
+          {notice && (
+            <div className="p-3.5 rounded-xl bg-blue-500/15 text-blue-200 font-bold text-xs flex items-center gap-2.5 border border-blue-400/30">
+              <AlertCircle className="w-4 h-4 shrink-0 text-blue-300" />
+              <span>{notice}</span>
+            </div>
+          )}
+
           {error && (
             <div className="p-3.5 rounded-xl bg-red-600 text-white font-bold text-xs flex items-center gap-2.5 animate-shake shadow-md border border-red-700">
               <AlertCircle className="w-4 h-4 shrink-0 text-white" />

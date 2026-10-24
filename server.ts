@@ -16,6 +16,7 @@ import { updateEmployeeHandler, createEmployeeHandler, deleteEmployeeHandler } f
 import { registerEmployeeBreaks } from "./server/employee-breaks.js";
 import { ensureSchema } from "./server/ensure-schema.js";
 import { listNotificationsForUser, markAllNotificationsRead, markNotificationRead } from "./server/notification-reads.js";
+import { sanitizeEmployees } from "./server/employee-sanitize.js";
 import loginHandler from "./api/login.js";
 
 const app = express();
@@ -56,7 +57,8 @@ async function dbSnapshot(){
     if (!m.has("urgentNotice")) m.set("urgentNotice", INITIAL_URGENT_NOTICE);
   }
   
-  const breakMap=m.get("shiftBreaks")&&typeof m.get("shiftBreaks")==='object'&&!Array.isArray(m.get("shiftBreaks"))?m.get("shiftBreaks") as any:{};const hydratedShifts=shifts.map((shift:any)=>({...shift,breaks:Array.isArray(shift?.breaks)?shift.breaks:(Array.isArray(breakMap[String(shift?.id)])?breakMap[String(shift.id)]:[])}));const dailyShiftAssignments=Array.isArray(m.get("dailyShiftAssignments"))?m.get("dailyShiftAssignments"):[];localState.employees=employees;localState.attendanceRecords=attendanceRecords;localState.leaveRequests=leaveRequests;localState.overtimeRequests=overtimeRequests;localState.shifts=hydratedShifts;localState.notifications=notifications;localState.dailyShiftAssignments=dailyShiftAssignments;localState.shiftSwapRequests=Array.isArray(m.get("shiftSwapRequests"))?m.get("shiftSwapRequests"):[];return{success:true,employees,attendanceRecords,leaveRequests,overtimeRequests,shifts:hydratedShifts,notifications,employeeShiftAssignments,dailyShiftAssignments,shiftSwapRequests:localState.shiftSwapRequests,companyNameAr:m.get("companyNameAr")??null,companyNameEn:m.get("companyNameEn")??null,urgentNotice:m.get("urgentNotice")??null,officialHolidays:Array.isArray(m.get("officialHolidays"))?m.get("officialHolidays"):[],lastUpdated:Date.now()};}
+  const breakMap=m.get("shiftBreaks")&&typeof m.get("shiftBreaks")==='object'&&!Array.isArray(m.get("shiftBreaks"))?m.get("shiftBreaks") as any:{};const hydratedShifts=shifts.map((shift:any)=>({...shift,breaks:Array.isArray(shift?.breaks)?shift.breaks:(Array.isArray(breakMap[String(shift?.id)])?breakMap[String(shift.id)]:[])}));const dailyShiftAssignments=Array.isArray(m.get("dailyShiftAssignments"))?m.get("dailyShiftAssignments"):[];localState.employees=employees;localState.attendanceRecords=attendanceRecords;localState.leaveRequests=leaveRequests;localState.overtimeRequests=overtimeRequests;localState.shifts=hydratedShifts;localState.notifications=notifications;localState.dailyShiftAssignments=dailyShiftAssignments;localState.shiftSwapRequests=Array.isArray(m.get("shiftSwapRequests"))?m.get("shiftSwapRequests"):[];// The pin is a credential: snapshots are readable by any client, so it must never leave the server.
+return{success:true,employees:sanitizeEmployees(employees),attendanceRecords,leaveRequests,overtimeRequests,shifts:hydratedShifts,notifications,employeeShiftAssignments,dailyShiftAssignments,shiftSwapRequests:localState.shiftSwapRequests,companyNameAr:m.get("companyNameAr")??null,companyNameEn:m.get("companyNameEn")??null,urgentNotice:m.get("urgentNotice")??null,officialHolidays:Array.isArray(m.get("officialHolidays"))?m.get("officialHolidays"):[],lastUpdated:Date.now()};}
 
 registerNotificationSystemV2(app);
 registerNotificationSse(app);
@@ -69,14 +71,14 @@ app.delete('/api/employees/:id', (req:any, res:any) => deleteEmployeeHandler(req
 // never route dynamic multi-segment /api paths to the catch-all function and
 // answer them with the platform 404 {"error":{"code":"404","message":
 // "The page could not be found"}} — these single-segment routes always work.
-const withEmployeeId = (req:any, res:any): { id: string } | null => {
+// Auth first: the shared handlers run requireManager before validating the id,
+// so unauthenticated probes get 401 instead of validation details.
+const withEmployeeId = (req:any, res:any): void => {
   const id = String(req.body?.id ?? '').trim();
-  if (!id) { res.status(400).json({ success: false, error: 'Employee id is required.' }); return null; }
   req.params = { ...(req.params || {}), id };
-  return { id };
 };
-app.post('/api/employees-update', (req:any, res:any) => { const ok = withEmployeeId(req, res); if (!ok) return; return updateEmployeeHandler(req, res); });
-app.post('/api/employees-delete', (req:any, res:any) => { const ok = withEmployeeId(req, res); if (!ok) return; return deleteEmployeeHandler(req, res); });
+app.post('/api/employees-update', (req:any, res:any) => { withEmployeeId(req, res); return updateEmployeeHandler(req, res); });
+app.post('/api/employees-delete', (req:any, res:any) => { withEmployeeId(req, res); return deleteEmployeeHandler(req, res); });
 app.post('/api/notifications-read', async (req:any, res:any) => {
   try {
     const userId = String(req.body?.userId ?? '').trim();

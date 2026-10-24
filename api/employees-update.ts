@@ -23,9 +23,10 @@ export default async function handler(req: any, res: any) {
 
   let body: any = req.body;
   if (typeof body === 'string') { try { body = JSON.parse(body || '{}'); } catch { body = {}; } }
+  // Inject the id (may be empty) and let the shared handler run authentication
+  // BEFORE validation, so unauthenticated probes get 401 instead of validation
+  // details. The handler answers 400 "Employee id is required." after auth.
   const id = String(body?.id ?? '').trim();
-  if (!id) return res.status(400).json({ success: false, error: 'Employee id is required.' });
-
   req.params = { ...(req.params || {}), id };
   return updateEmployeeHandler(req, res);
 }
