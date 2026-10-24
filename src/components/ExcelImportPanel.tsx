@@ -54,9 +54,15 @@ export const ExcelImportPanel: React.FC<Props> = ({ employees, shifts, currentUs
       const issuesFound: string[] = [];
       const preview: PreviewRow[] = [];
       const shiftLookup = new Map<string,string>();
-      [...shifts.map(s => ({ id:s.id, name:s.nameEn || s.name || s.nameAr })), ...shiftRows.map(r => ({ id:String(value(r,'ShiftID','id')||''), name:String(value(r,'ShiftName','name')||'') }))].forEach(s => {
+      shifts.forEach(s => {
         if (s.id) shiftLookup.set(key(s.id), s.id);
-        if (s.name) shiftLookup.set(key(s.name), s.id);
+        [s.nameEn, s.name, s.nameAr].filter(Boolean).forEach(n => shiftLookup.set(key(n), s.id));
+      });
+      shiftRows.forEach(r => {
+        const workbookId = String(value(r,'ShiftID','id') || '');
+        const workbookName = String(value(r,'ShiftName','name') || '');
+        const matched = shifts.find(s => [s.nameEn, s.name, s.nameAr].some(n => key(n) === key(workbookName)) || key(s.id) === key(workbookId));
+        if (matched && workbookId) shiftLookup.set(key(workbookId), matched.id);
       });
       const employeeLookup = new Map<string,Employee>();
       employees.forEach(e => [e.id,e.code,e.email,e.nameEn,e.nameAr].filter(Boolean).forEach(v => employeeLookup.set(key(v),e)));
