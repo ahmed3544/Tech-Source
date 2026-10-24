@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, Coffee, Save, Users, Pencil, Trash2, Plus, Settings2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Coffee, Save, Users, Pencil, Trash2, Plus } from 'lucide-react';
 import { Employee, Language, Shift, DailyShiftAssignment } from '../types';
 import { ShiftManager } from './ShiftManager';
 import { ShiftSwapPanel } from './ShiftSwapPanel';
@@ -30,6 +30,7 @@ interface WeeklyShiftScheduleProps {
   /** Called when the server rejects a mutation with 401 (session ended). */
   onAuthFailure?: () => void;
   onClose?: () => void;
+  settingsOpen?: boolean;
 }
 
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -137,6 +138,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
   onUpdateShift,
   onDeleteShift,
   onAuthFailure,
+  settingsOpen: externalSettingsOpen = false,
 }) => {
   const [employees, setEmployees] = useState<Employee[]>(suppliedEmployees);
   const [shifts, setShifts] = useState<Shift[]>(suppliedShifts.map(normalizeShift));
@@ -158,7 +160,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
   const [mobileDayIndex, setMobileDayIndex] = useState(() => new Date().getDay());
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
   const [editPanelOpen, setEditPanelOpen] = useState(true);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsOpen = externalSettingsOpen;
 
   const isLeader = ['leader', 'admin', 'company_admin', 'platform_admin'].includes(String(currentUser?.role || ''));
 
@@ -663,7 +665,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
               )}
             </div>
           </div>
-          {isLeader && <button type="button" onClick={() => setSettingsOpen(v => !v)} aria-expanded={settingsOpen} className={`inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-xs font-black transition ${settingsOpen ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100'}`}><Settings2 className="h-4 w-4" />{lang === 'ar' ? 'الإعدادات' : 'Settings'}</button>}
+
         </div>
       </header>
 
