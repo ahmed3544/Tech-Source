@@ -402,7 +402,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
     return out;
   };
   const axisHours = useMemo(() => {
-    const stepHours = span / 60 > 15 ? 2 : 1;
+    const stepHours = 1;
     const list: number[] = [];
     for (let h = Math.ceil(timeWindow.start / 60); h <= Math.floor(timeWindow.end / 60); h += stepHours) list.push(h * 60);
     return list;
