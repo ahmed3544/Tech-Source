@@ -516,7 +516,6 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
       <header className="flex flex-col gap-3 border-b-2 border-slate-800/10 pb-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex items-center gap-3">
           <div className="rounded-lg bg-slate-900 px-3 py-2 text-white dark:bg-slate-700"><div className="text-sm font-black tracking-wide">TECH SOURCE</div><div className="text-[9px] font-bold opacity-80">{lang === 'ar' ? 'جدول الموظفين' : 'WEEKLY SCHEDULE'}</div></div>
-          <div><p className="text-xs font-bold text-slate-500 dark:text-slate-400">{weekLabel}</p></div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <label className="flex items-center gap-1.5 text-xs font-black text-slate-600 dark:text-slate-300"><Users className="h-4 w-4" />{lang === 'ar' ? 'الموظف:' : 'Employee:'}
@@ -529,19 +528,23 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
       </header>
 
       {/* Teleopti toolbar: range navigation + Today + Week/Month toggle. */}
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-2 dark:border-slate-700 dark:bg-slate-900/60">
-        <div className="flex flex-wrap items-center gap-1.5">
-          <button type="button" onClick={() => setWeekStart(addDays(weekStart, -7))} className="rounded-lg border border-slate-300 bg-white p-1.5 text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800/70" aria-label={lang === 'ar' ? 'الأسبوع السابق' : 'Previous week'}><ChevronRight className="h-4 w-4" /></button>
-          <span className="min-w-[150px] rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-center font-mono text-xs font-black text-slate-800 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100">{rangeLabel}</span>
-          <button type="button" onClick={() => setWeekStart(addDays(weekStart, 7))} className="rounded-lg border border-slate-300 bg-white p-1.5 text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800/70" aria-label={lang === 'ar' ? 'الأسبوع التالي' : 'Next week'}><ChevronLeft className="h-4 w-4" /></button>
-          <button type="button" onClick={() => setWeekStart(startOfWeek(new Date()))} className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-[11px] font-black text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800/70">📅 {lang === 'ar' ? 'اليوم' : 'Today'}</button>
-          {isLeader && Object.keys(draft).length > 0 && (
-            <button type="button" onClick={saveWeek} disabled={saving} className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-[11px] font-black text-white hover:bg-blue-700 disabled:opacity-50"><Save className="h-3.5 w-3.5" />{saving ? (lang === 'ar' ? 'جاري الحفظ...' : 'Saving...') : (lang === 'ar' ? `حفظ التعديلات (${Object.keys(draft).length})` : `Save changes (${Object.keys(draft).length})`)}</button>
-          )}
+      <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-2 dark:border-slate-700 dark:bg-slate-900/60">
+        <div className="flex items-center justify-center gap-2">
+          <button type="button" onClick={() => setWeekStart(addDays(weekStart, -7))} className="shrink-0 rounded-lg border border-slate-300 bg-white p-2 text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800/70" aria-label={lang === 'ar' ? 'الأسبوع السابق' : 'Previous week'}><ChevronRight className="h-4 w-4" /></button>
+          <span className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-2 py-2 text-center font-mono text-xs font-black text-slate-800 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100">{rangeLabel}</span>
+          <button type="button" onClick={() => setWeekStart(addDays(weekStart, 7))} className="shrink-0 rounded-lg border border-slate-300 bg-white p-2 text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800/70" aria-label={lang === 'ar' ? 'الأسبوع التالي' : 'Next week'}><ChevronLeft className="h-4 w-4" /></button>
         </div>
-        <div className="flex overflow-hidden rounded-lg border border-slate-300 dark:border-slate-600">
-          <button type="button" onClick={() => setViewMode('week')} className={`px-3.5 py-1.5 text-[11px] font-black transition ${viewMode === 'week' ? 'bg-blue-600 text-white' : 'bg-white text-slate-700 hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'}`}>{lang === 'ar' ? 'أسبوع' : 'Week'}</button>
-          <button type="button" onClick={() => setViewMode('month')} className={`px-3.5 py-1.5 text-[11px] font-black transition ${viewMode === 'month' ? 'bg-blue-600 text-white' : 'bg-white text-slate-700 hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'}`}>{lang === 'ar' ? 'شهر' : 'Month'}</button>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" onClick={() => setWeekStart(startOfWeek(new Date()))} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800/70">📅 {lang === 'ar' ? 'اليوم' : 'Today'}</button>
+            {isLeader && Object.keys(draft).length > 0 && (
+              <button type="button" onClick={saveWeek} disabled={saving} className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs font-black text-white hover:bg-blue-700 disabled:opacity-50"><Save className="h-3.5 w-3.5" />{saving ? (lang === 'ar' ? 'جاري الحفظ...' : 'Saving...') : (lang === 'ar' ? `حفظ التعديلات (${Object.keys(draft).length})` : `Save changes (${Object.keys(draft).length})`)}</button>
+            )}
+          </div>
+          <div className="flex overflow-hidden rounded-lg border border-slate-300 dark:border-slate-600">
+            <button type="button" onClick={() => setViewMode('week')} className={`px-4 py-2 text-xs font-black transition ${viewMode === 'week' ? 'bg-blue-600 text-white' : 'bg-white text-slate-700 hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'}`}>{lang === 'ar' ? 'أسبوع' : 'Week'}</button>
+            <button type="button" onClick={() => setViewMode('month')} className={`px-4 py-2 text-xs font-black transition ${viewMode === 'month' ? 'bg-blue-600 text-white' : 'bg-white text-slate-700 hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'}`}>{lang === 'ar' ? 'شهر' : 'Month'}</button>
+          </div>
         </div>
       </div>
 
