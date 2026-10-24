@@ -31,7 +31,12 @@ function normalizeAssignment(item:any, assignedBy?:string, fallbackUpdatedAt?:st
   const isOffDay = !clear && !rawShift && (asBoolean(item?.isOffDay ?? item?.is_off_day) || status === 'OFF');
   const shiftId = clear || isOffDay ? null : rawShift || null;
   const rawUpdatedAt = item?.updatedAt ?? item?.updated_at ?? fallbackUpdatedAt ?? '';
-  return { employeeId, date, shiftId, isOffDay, clear, assignedBy: String(item?.assignedBy ?? item?.assigned_by ?? assignedBy ?? '').trim() || undefined, updatedAt: rawUpdatedAt ? String(rawUpdatedAt) : '' };
+  return {
+    employeeId, date, shiftId, isOffDay, clear,
+    assignedBy: String(item?.assignedBy ?? item?.assigned_by ?? assignedBy ?? '').trim() || undefined,
+    updatedAt: rawUpdatedAt ? String(rawUpdatedAt) : '',
+    ...(Array.isArray(item?.breaks) ? { breaks: item.breaks } : {}),
+  };
 }
 function mergeAssignments(existing:any, incoming:any[]) {
   const map = new Map<string, any>();
@@ -47,7 +52,8 @@ function mergeAssignments(existing:any, incoming:any[]) {
     const current = map.get(key);
     if (current && !normalized.updatedAt) { ignoredStale += 1; continue; }
     if (current?.updatedAt && normalized.updatedAt && timeMs(normalized.updatedAt) < timeMs(current.updatedAt)) { ignoredStale += 1; continue; }
-    if (normalized.clear) map.delete(key); else map.set(key, normalized);
+    if (normalized.clear) map.delete(key);
+    else map.set(key, normalized.breaks === undefined && Array.isArray(current?.breaks) ? { ...normalized, breaks: current.breaks } : normalized);
   }
   return { assignments: Array.from(map.values()), ignoredStale };
 }
