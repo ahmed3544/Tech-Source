@@ -3,11 +3,13 @@ import {createRoot} from 'react-dom/client';
 import * as AppModule from './App.tsx';
 import './index.css';
 import './contrast-fixes.css';
+import {initTheme} from './utils/theme';
 
-// TechSource uses light mode only. Clear any legacy dark-theme state from older sessions.
+// Apply the saved (or system-preferred) theme before the React tree paints.
+// index.html's inline pre-paint script already set the class; this syncs the
+// in-memory state and wires the OS-preference listener.
 try {
-  document.documentElement.classList.remove('dark');
-  localStorage.removeItem('tech-source-theme');
+  initTheme();
 } catch {}
 
 const App = (AppModule as any).default ?? (AppModule as any).App;

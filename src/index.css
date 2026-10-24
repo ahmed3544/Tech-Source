@@ -581,3 +581,57 @@ html[dir="rtl"] #root .bg-white.rounded-3xl.border.border-slate-200.shadow-sm.ov
   overflow-wrap: normal !important;
   hyphens: none !important;
 }
+
+/* ================= Dark mode =================
+   Applied via a `dark` class on <html> (Tailwind 4 custom variant, line 3).
+   Theme state lives in src/utils/theme.ts — persisted in localStorage as
+   `tech-source-theme`, falling back to the OS preference. */
+
+:root { color-scheme: light; }
+html.dark { color-scheme: dark; }
+
+html.dark body {
+  background: #0b1220;
+  color: #e2e8f0;
+}
+
+html.dark #root {
+  color: #e2e8f0;
+}
+
+/* Light-only border defaults become slate tones in dark mode. */
+html.dark #root .bg-white { border-color: #334155; }
+html.dark #root input,
+html.dark #root select,
+html.dark #root textarea { border-color: #334155; }
+html.dark #root input::placeholder,
+html.dark #root textarea::placeholder { color: #64748b; }
+
+html.dark #root [class*="shadow"] { --tw-shadow-color: rgba(0, 0, 0, 0.45); }
+
+/* Native form controls follow the OS color scheme; keep the selection readable. */
+html.dark ::selection { background: rgba(59, 130, 246, 0.35); }
+
+/* Safety net for surfaces that never received explicit `dark:` classes.
+   Elements that already declare their own dark background
+   (their class attribute contains "dark:bg") are left untouched. */
+html.dark #root .bg-white:not([class*="dark:bg"]) { background-color: #0f172a; color: #e2e8f0; }
+html.dark #root .bg-slate-50:not([class*="dark:bg"]) { background-color: #101b30; color: #e2e8f0; }
+html.dark #root .bg-slate-100:not([class*="dark:bg"]) { background-color: #16233c; color: #e2e8f0; }
+html.dark #root .bg-gray-50:not([class*="dark:bg"]),
+html.dark #root .bg-gray-100:not([class*="dark:bg"]) { background-color: #16233c; color: #e2e8f0; }
+
+/* Ink leftovers keep sufficient contrast on dark surfaces. */
+html.dark #root .text-slate-900:not([class*="dark:text"]) { color: #e2e8f0; }
+html.dark #root .text-slate-800:not([class*="dark:text"]) { color: #e2e8f0; }
+html.dark #root .text-slate-700:not([class*="dark:text"]) { color: #cbd5e1; }
+html.dark #root .text-slate-600:not([class*="dark:text"]) { color: #94a3b8; }
+html.dark #root .text-gray-900:not([class*="dark:text"]),
+html.dark #root .text-gray-800:not([class*="dark:text"]) { color: #e2e8f0; }
+html.dark #root .text-gray-700:not([class*="dark:text"]) { color: #cbd5e1; }
+html.dark #root .text-gray-600:not([class*="dark:text"]) { color: #94a3b8; }
+
+/* "Day Off" hatching (inline light gradient in WeeklyShiftSchedule) gets a dark variant. */
+html.dark #root .tech-source-hatch {
+  background-image: repeating-linear-gradient(45deg, #1e293b 0 6px, #0f172a 6px 12px) !important;
+}
