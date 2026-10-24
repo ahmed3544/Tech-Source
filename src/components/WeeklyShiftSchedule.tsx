@@ -832,10 +832,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
                       </div>
                     </div>
                   </div>
-                  <button type="button" onClick={applyOctoberBreakPreset} disabled={applyingBreakPreset} className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 py-2 text-xs font-extrabold text-white shadow-sm transition hover:bg-rose-700 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:ring-offset-2 disabled:cursor-wait disabled:opacity-60 dark:focus:ring-offset-slate-950">
-                    {applyingBreakPreset ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" /> : <Coffee className="h-4 w-4" />}
-                    {applyingBreakPreset ? (lang === 'ar' ? 'جارٍ تطبيق الخطة...' : 'Applying plan...') : (lang === 'ar' ? 'تطبيق خطة الاستراحات' : 'Apply break plan')}
-                  </button>
+
                 </div>
                 <div className="flex flex-wrap items-center gap-x-5 gap-y-2 bg-slate-50/80 px-4 py-3 text-[10px] font-semibold text-slate-500 dark:bg-slate-900/60 dark:text-slate-400">
                   <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-emerald-500" />{lang === 'ar' ? 'أيام الدوام فقط' : 'Working days only'}</span>
