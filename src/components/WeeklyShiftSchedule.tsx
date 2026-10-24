@@ -596,15 +596,17 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
       const duration = Math.max(1, isOvernightShift(shift.startTime, shift.endTime) ? (1440 - timeToMinutes(shift.startTime)) + timeToMinutes(shift.endTime) : timeToMinutes(shift.endTime) - timeToMinutes(shift.startTime));
       blocksFor(shift.startTime, shift.endTime).forEach((seg, idx) => {
         blocks.push(
-          <div key={`shift-${idx}`} className={`absolute inset-x-0.5 z-[1] flex flex-col items-center justify-start gap-0.5 overflow-hidden rounded-md px-1 pt-1 text-center shadow-sm ${TEO.shift}`} style={{ top: `${seg.top}%`, height: `${seg.height}%` }} title={`${name} ${shift.startTime} - ${shift.endTime}`}>
-            <span className="truncate text-[11px] font-black leading-tight">{name}</span>
-            {seg.height > 12 && <span className="truncate text-[9px] font-bold leading-tight opacity-90">{formatDuration(duration, lang)}</span>}
-          </div>
-          <div key={`shift-time-${idx}`} className="pointer-events-none absolute inset-x-1 z-20 flex justify-center" style={{ top: `calc(${seg.top}% + 1.35rem)` }}>
-            <span className="max-w-full truncate rounded bg-emerald-800 px-1.5 py-0.5 font-mono text-[10px] font-black leading-tight text-white shadow ring-1 ring-white/70" dir="ltr">
-              {mobile ? `${fmt12(timeToMinutes(shift.startTime), lang)} - ${fmt12(timeToMinutes(shift.endTime), lang)}` : `${shift.startTime} – ${shift.endTime}`}
-            </span>
-          </div>
+          <>
+            <div key={`shift-${idx}`} className={`absolute inset-x-0.5 z-[1] flex flex-col items-center justify-start gap-0.5 overflow-hidden rounded-md px-1 pt-1 text-center shadow-sm ${TEO.shift}`} style={{ top: `${seg.top}%`, height: `${seg.height}%` }} title={`${name} ${shift.startTime} - ${shift.endTime}`}>
+              <span className="truncate text-[11px] font-black leading-tight">{name}</span>
+              {seg.height > 12 && <span className="truncate text-[9px] font-bold leading-tight opacity-90">{formatDuration(duration, lang)}</span>}
+            </div>
+            <div key={`shift-time-${idx}`} className="pointer-events-none absolute inset-x-1 z-20 flex justify-center" style={{ top: `calc(${seg.top}% + 1.35rem)` }}>
+              <span className="max-w-full truncate rounded bg-emerald-800 px-1.5 py-0.5 font-mono text-[10px] font-black leading-tight text-white shadow ring-1 ring-white/70" dir="ltr">
+                {mobile ? `${fmt12(timeToMinutes(shift.startTime), lang)} - ${fmt12(timeToMinutes(shift.endTime), lang)}` : `${shift.startTime} – ${shift.endTime}`}
+              </span>
+            </div>
+          </>
         );
       });
       // Break bars sit on top of the shift block at their real time position.
