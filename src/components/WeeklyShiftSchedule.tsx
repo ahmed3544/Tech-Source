@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { CalendarDays, ChevronLeft, ChevronRight, Save, Users, Clock3, Coffee } from 'lucide-react';
-import { Employee, Language, Shift, DailyShiftAssignment } from '../types';
+import { Employee, Language, Shift, ShiftBreak, DailyShiftAssignment } from '../types';
+import { AssignmentBreakEditor } from './AssignmentBreakEditor';
 import { ShiftManager } from './ShiftManager';
 
 interface WeeklyShiftScheduleProps {
@@ -61,6 +62,23 @@ const shiftSegments = (start: string, end: string) => {
   return [{ left: 0, width: 100 }];
 };
 const isOvernight = (start: string, end: string) => timeToMinutes(end) < timeToMinutes(start);
+const breakDuration = (start: string, end: string) => {
+  const duration = timeToMinutes(end) - timeToMinutes(start);
+  return duration > 0 ? duration : duration + 1440;
+};
+const breakInterval = (shift: Shift, item: ShiftBreak) => {
+  const shiftStart = timeToMinutes(shift.startTime);
+  let shiftEnd = timeToMinutes(shift.endTime);
+  if (shiftEnd <= shiftStart) shiftEnd += 1440;
+  let start = timeToMinutes(item.startTime);
+  let end = timeToMinutes(item.endTime);
+  if (start === end) return null;
+  if (start < shiftStart) start += 1440;
+  if (end < shiftStart) end += 1440;
+  if (end < start) end += 1440;
+  if (start < shiftStart || end > shiftEnd || end <= start) return null;
+  return { start, end };
+};
 
 export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
   employees: suppliedEmployees = [],
@@ -79,10 +97,12 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
   const [selectedEmployeeId, setSelectedEmployeeId] = useState(suppliedUser?.id || suppliedEmployees[0]?.id || '');
   const [draft, setDraft] = useState<Record<string,string>>({});
+  const [breakDraft, setBreakDraft] = useState<Record<string, ShiftBreak[]>>({});
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedBreak, setSelectedBreak] = useState<{ name: string; startTime: string; endTime: string; durationMinutes: number } | null>(null);
+  const [breakEditorDate, setBreakEditorDate] = useState<string | null>(null);
 
   const isLeader = ['leader','admin','company_admin','platform_admin'].includes(String(currentUser?.role || ''));
 
@@ -148,6 +168,11 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
   }), [weekStart]);
 
   const assignmentFor = (employeeId: string, key: string) => assignments.find(a => sameId(a.employeeId ?? (a as any).employee_id, employeeId) && String(a.date ?? '').slice(0,10) === key);
+  const breaksForDay = (key: string): ShiftBreak[] => {
+    if (breakDraft[key] !== undefined) return breakDraft[key];
+    const assignment = assignmentFor(employee?.id || '', key);
+    return Array.isArray(assignment?.breaks) ? assignment.breaks : [];
+  };
   const valueFor = (key: string) => {
     if (draft[key] !== undefined) return draft[key];
     const a = assignmentFor(employee?.id || '', key);
@@ -161,6 +186,30 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
 
   const saveWeek = async () => {
     if (!employee) return;
+    for (const day of days) {
+      const value = valueFor(day.key);
+      if (value === OFF || value === EMPTY) continue;
+      const shift = shiftById(value);
+      if (!shift) continue;
+      const breaks = breaksForDay(day.key);
+      const intervals = breaks.map(item => breakInterval(shift, item));
+      if (intervals.some(interval => interval === null)) {
+        setError(lang === 'ar'
+          ? `راجع أوقات البريك في ${day.key}: يجب أن تكون داخل شفت الإيجنت.`
+          : `Check the breaks on ${day.key}: each break must fit within this agent's shift.`);
+        return;
+      }
+      for (let i = 0; i < intervals.length; i += 1) {
+        for (let j = i + 1; j < intervals.length; j += 1) {
+          const first = intervals[i]!;
+          const second = intervals[j]!;
+          if (first.start < second.end && second.start < first.end) {
+            setError(lang === 'ar' ? `يوجد تداخل بين بريكات الإيجنت في ${day.key}.` : `Agent breaks overlap on ${day.key}.`);
+            return;
+          }
+        }
+      }
+    }
     setSaving(true); setError(null); setMessage(null);
     try {
       const now = new Date().toISOString();
@@ -172,6 +221,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
           shiftId: value === OFF || value === EMPTY ? '' : value,
           isOffDay: value === OFF,
           clear: value === EMPTY,
+          breaks: value === OFF || value === EMPTY ? [] : breaksForDay(day.key),
           assignedBy: currentUser?.id,
           updatedAt: now,
         } as any;
@@ -186,6 +236,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
       if (!response.ok || data?.success === false) throw new Error(data?.message || data?.error || `Server error ${response.status}`);
       setAssignments(Array.isArray(data?.dailyShiftAssignments) ? data.dailyShiftAssignments : []);
       setDraft({});
+      setBreakDraft({});
       setMessage(lang === 'ar' ? 'تم حفظ جدول الأسبوع على السيرفر بنجاح' : 'Weekly schedule saved successfully');
     } catch (err: any) {
       setError(err?.message || (lang === 'ar' ? 'تعذر حفظ الجدول' : 'Could not save schedule'));
@@ -216,7 +267,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
 
       {isLeader && <div className="grid gap-3 md:grid-cols-[minmax(220px,1fr)_auto] md:items-end">
         <label className="block"><span className="mb-1.5 flex items-center gap-1.5 text-xs font-black text-slate-700 dark:text-slate-300"><Users className="h-4 w-4" />{lang === 'ar' ? 'الموظف' : 'Employee'}</span>
-          <select value={employee?.id || ''} onChange={e => { setSelectedEmployeeId(e.target.value); setDraft({}); setMessage(null); setError(null); }} className="h-11 w-full rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 text-sm font-bold text-slate-800 dark:text-slate-200 outline-none focus:border-emerald-500">
+          <select value={employee?.id || ''} onChange={e => { setSelectedEmployeeId(e.target.value); setDraft({}); setBreakDraft({}); setMessage(null); setError(null); }} className="h-11 w-full rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 text-sm font-bold text-slate-800 dark:text-slate-200 outline-none focus:border-emerald-500">
             {visibleEmployees.map(e => <option key={e.id} value={e.id}>{e.code ? `${e.code} - ` : ''}{lang === 'ar' ? e.nameAr : e.nameEn}</option>)}
           </select>
         </label>
@@ -227,7 +278,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
         <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700"><div className="min-w-[920px]">
           <div className="grid grid-cols-7 bg-slate-800 text-white">{days.map(day => <div key={day.key} className="border-e border-slate-700 px-3 py-3 text-center last:border-e-0"><div className="text-xs font-black">{lang === 'ar' ? day.ar : day.en}</div><div className="mt-1 text-[10px] font-mono text-slate-300">{day.key}</div></div>)}</div>
           <div className="grid grid-cols-7 divide-x divide-slate-200">{days.map(day => {
-            const value = valueFor(day.key); const shift = value !== OFF && value !== EMPTY ? shiftById(value) : undefined; const weekend = day.date.getDay() === 5 || day.date.getDay() === 6;
+            const value = valueFor(day.key); const shift = value !== OFF && value !== EMPTY ? shiftById(value) : undefined; const weekend = day.date.getDay() === 5 || day.date.getDay() === 6; const agentBreaks = breaksForDay(day.key);
             return <div key={day.key} className={`min-h-[190px] p-3 ${weekend ? 'bg-slate-50 dark:bg-slate-800/50' : 'bg-white dark:bg-slate-900'}`}>
               <select value={value} onChange={e => updateDay(day.key, e.target.value)} disabled={!isLeader} className="h-11 w-full rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-2 text-xs font-black text-slate-800 dark:text-slate-200 outline-none focus:border-emerald-500 disabled:cursor-default disabled:bg-slate-50 dark:bg-slate-800/50">
                 <option value={EMPTY}>{lang === 'ar' ? 'غير مُعيّن' : 'Unassigned'}</option><option value={OFF}>{lang === 'ar' ? 'إجازة أسبوعية' : 'OFF'}</option>
@@ -238,8 +289,8 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
                 const shiftEnd = timeToMinutes(shift.endTime);
                 const shiftDuration = Math.max(1, isOvernight(shift.startTime, shift.endTime) ? (1440 - shiftStart) + shiftEnd : shiftEnd - shiftStart);
                 const segments = shiftSegments(shift.startTime, shift.endTime);
-                const overnight = isOvernight(shift.startTime, shift.endTime);
-                const totalBreakMinutes = (shift.breaks || []).reduce((acc, b) => acc + (b.durationMinutes || 0), 0) + Number(shift.breakMinutes || 0);
+                /* WORK BREAK TIMELINE */
+                const totalBreakMinutes = agentBreaks.reduce((acc, item) => acc + breakDuration(item.startTime, item.endTime), 0);
                 const netWorkMinutes = Math.max(0, shiftDuration - totalBreakMinutes);
                 return (
                   <div className="mt-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-2.5">
@@ -250,7 +301,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
                     <div className="relative h-7 overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900" dir="ltr">
                       {[25, 50, 75].map(mark => <span key={mark} className="absolute inset-y-0 border-l border-dashed border-slate-200 dark:border-slate-700" style={{ left: `${mark}%` }} />)}
                       {segments.map((segment, index) => <span key={`segment-${index}`} className="absolute top-1/2 z-0 h-3 -translate-y-1/2 rounded-full bg-emerald-500 shadow-sm" style={{ left: `${segment.left}%`, width: `${segment.width}%` }} title={lang === 'ar' ? `وقت العمل: ${shift.startTime} - ${shift.endTime}` : `Work: ${shift.startTime} - ${shift.endTime}`} />)}
-                      {(shift.breaks || []).flatMap((item, idx) => {
+                      {agentBreaks.flatMap((item, idx) => {
                         const breakSegs = shiftSegments(item.startTime, item.endTime);
                         return breakSegs.map((segment, sIdx) => (
                           <button type="button" key={`${item.id}-${idx}-${sIdx}`} className="absolute top-1/2 z-10 h-3 -translate-y-1/2 cursor-pointer rounded-full bg-rose-500 shadow-sm transition hover:bg-rose-700 focus:outline-none focus:ring-2 focus:ring-rose-400" style={{ left: `${segment.left}%`, width: `${segment.width}%` }} title={lang === 'ar' ? `${item.nameAr}: ${item.startTime} - ${item.endTime}` : `${item.nameEn}: ${item.startTime} - ${item.endTime}`} onClick={() => setSelectedBreak({ name: lang === 'ar' ? item.nameAr : item.nameEn, startTime: item.startTime, endTime: item.endTime, durationMinutes: item.durationMinutes || 0 })} aria-label={lang === 'ar' ? `عرض وقت ${item.nameAr}` : `Show ${item.nameEn} time`} />
@@ -275,25 +326,26 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
                        )}
                     </div>
 
-                    {(shift.breaks || []).length > 0 && (
+                    {agentBreaks.length > 0 && (
                       <div className="mt-1 space-y-1 pt-1 border-t border-rose-100">
-                        {(shift.breaks || []).map(item => (
+                        {agentBreaks.map(item => (
                           <div key={`detail-${item.id}`} className="flex min-w-0 items-center justify-between gap-1 text-[9px] font-bold text-rose-600">
                             <span className="min-w-0 truncate">{lang === 'ar' ? item.nameAr : item.nameEn}</span>
-                            <span className="shrink-0 font-mono">{item.startTime}–{item.endTime} · {item.durationMinutes || 0}m</span>
+                            <span className="shrink-0 font-mono">{item.startTime}–{item.endTime} · {breakDuration(item.startTime, item.endTime)}m</span>
                           </div>
                         ))}
                       </div>
                     )}
-                    {(shift.breaks || []).length === 0 && (
-                      <div className="mt-2 text-[9px] font-bold text-slate-400 text-center">{lang === 'ar' ? 'لا توجد راحة مضافة' : 'No breaks added'}</div>
+                    {agentBreaks.length === 0 && (
+                      <div className="mt-2 text-[9px] font-bold text-slate-400 text-center">{lang === 'ar' ? 'لا توجد بريكات لهذا الإيجنت' : 'No agent breaks assigned'}</div>
                     )}
+                    {isLeader && <button type="button" onClick={() => setBreakEditorDate(day.key)} className="mt-2 w-full rounded-lg border border-amber-200 bg-white dark:bg-slate-900 px-2 py-1.5 text-[10px] font-black text-amber-800 hover:bg-amber-50">{agentBreaks.length ? (lang === 'ar' ? 'تعديل بريكات الإيجنت' : 'Edit agent breaks') : (lang === 'ar' ? 'إضافة بريك للإيجنت' : 'Add agent break')}</button>}
                   </div>
                 );
               })()}
               <div className={`mt-3 rounded-xl border p-3 ${value === OFF ? 'border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-slate-800' : value === EMPTY ? 'border-dashed border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900' : 'border-emerald-200 bg-emerald-50'}`}>
                 <div className="text-xs font-black text-slate-800 dark:text-slate-200">{value === OFF ? (lang === 'ar' ? 'إجازة أسبوعية' : 'OFF') : value === EMPTY ? (lang === 'ar' ? 'غير مُعيّن' : 'Unassigned') : (shift ? (lang === 'ar' ? shift.nameAr || shift.name : shift.nameEn || shift.name) : (lang === 'ar' ? 'شفت غير معروف' : 'Unknown shift'))}</div>
-                {shift && <><div className="mt-2 flex items-center gap-1.5 text-[11px] font-bold text-slate-600 dark:text-slate-400"><Clock3 className="h-3.5 w-3.5" />{shift.startTime || '--'} - {shift.endTime || '--'}</div>{(shift.breaks?.length || Number(shift.breakMinutes || 0) > 0) && <div className="mt-1 flex items-center gap-1.5 text-[11px] font-bold text-rose-600"><Coffee className="h-3.5 w-3.5" />{shift.breaks?.length ? `${shift.breaks.length} ${lang === 'ar' ? 'بريك' : 'breaks'}` : `${shift.breakMinutes} ${lang === 'ar' ? 'دقيقة راحة' : 'min break'}`}</div>}</>}
+                {shift && <><div className="mt-2 flex items-center gap-1.5 text-[11px] font-bold text-slate-600 dark:text-slate-400"><Clock3 className="h-3.5 w-3.5" />{shift.startTime || '--'} - {shift.endTime || '--'}</div><div className="mt-1 flex items-center gap-1.5 text-[11px] font-bold text-rose-600"><Coffee className="h-3.5 w-3.5" />{agentBreaks.length} {lang === 'ar' ? 'بريك للإيجنت' : 'agent breaks'}</div></>}
               </div>
             </div>;
           })}</div>
@@ -303,6 +355,44 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
 
       {message && <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-black text-emerald-700">{message}</div>}
       {error && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-black text-red-700">{error}</div>}
+      {breakEditorDate && employee && isLeader && (() => {
+        const day = days.find(item => item.key === breakEditorDate);
+        const shiftId = day ? valueFor(day.key) : EMPTY;
+        const shift = shiftId !== OFF && shiftId !== EMPTY ? shiftById(shiftId) : undefined;
+        if (!day || !shift) return null;
+        const legacyBreaks = Array.isArray(shift.breaks) ? shift.breaks : [];
+        const dayBreaks = breaksForDay(day.key);
+        return (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/40 p-4" role="presentation" onClick={() => setBreakEditorDate(null)}>
+            <div className="w-full max-w-2xl rounded-2xl border border-amber-200 bg-white dark:bg-slate-900 p-5 shadow-2xl" dir={lang === 'ar' ? 'rtl' : 'ltr'} role="dialog" aria-modal="true" onClick={event => event.stopPropagation()}>
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-xs font-black text-amber-700">{lang === 'ar' ? 'بريكات الإيجنت' : 'Agent breaks'}</div>
+                  <h3 className="mt-1 text-lg font-black text-slate-900 dark:text-white">{lang === 'ar' ? `${employee.nameAr} — ${day.ar} ${day.key}` : `${employee.nameEn} — ${day.en} ${day.key}`}</h3>
+                  <p className="mt-1 text-xs text-slate-500">{lang === 'ar' ? `الشفت: ${shift.startTime}–${shift.endTime}` : `Shift: ${shift.startTime}–${shift.endTime}`}</p>
+                </div>
+                <button type="button" onClick={() => setBreakEditorDate(null)} className="rounded-lg px-2 py-1 text-xl font-bold text-slate-400 hover:bg-slate-100 dark:bg-slate-800 hover:text-slate-700 dark:text-slate-300" aria-label={lang === 'ar' ? 'إغلاق' : 'Close'}>×</button>
+              </div>
+              <AssignmentBreakEditor
+                breaks={dayBreaks}
+                shiftStart={shift.startTime}
+                shiftEnd={shift.endTime}
+                legacyBreaks={legacyBreaks}
+                lang={lang}
+                onChange={next => { setBreakDraft(previous => ({ ...previous, [day.key]: next })); setError(null); setMessage(null); }}
+                onCopyLegacy={() => setBreakDraft(previous => ({
+                  ...previous,
+                  [day.key]: legacyBreaks.map((item, index) => ({ ...item, id: `agent_legacy_${Date.now()}_${index}` })),
+                }))}
+              />
+              <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <p className="self-center text-xs text-slate-500">{lang === 'ar' ? 'اضغط «حفظ الأسبوع» لحفظ التعديلات.' : 'Use “Save week” to save these changes.'}</p>
+                <button type="button" onClick={() => setBreakEditorDate(null)} className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-black text-white hover:bg-emerald-700">{lang === 'ar' ? 'تم' : 'Done'}</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
       {selectedBreak && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/40 p-4" role="presentation" onClick={() => setSelectedBreak(null)}>
           <div className="w-full max-w-sm rounded-2xl border border-rose-200 bg-white dark:bg-slate-900 p-5 shadow-2xl" dir={lang === 'ar' ? 'rtl' : 'ltr'} role="dialog" aria-modal="true" onClick={event => event.stopPropagation()}>

@@ -581,3 +581,21 @@ html[dir="rtl"] #root .bg-white.rounded-3xl.border.border-slate-200.shadow-sm.ov
   overflow-wrap: normal !important;
   hyphens: none !important;
 }
+
+
+/* Compact employee-management panel and prevent labels/buttons from wrapping awkwardly. */
+#root aside { font-size: 13px; }
+#root aside h2 { font-size: 15px !important; line-height: 1.35 !important; }
+#root aside p { font-size: 11px !important; line-height: 1.55 !important; }
+#root aside input { min-width: 0; font-size: 12px !important; line-height: 1.35; padding: 9px 10px !important; }
+#root aside button { font-size: 11px !important; line-height: 1.35 !important; padding: 8px 9px; white-space: normal !important; overflow-wrap: anywhere; }
+#root aside .text-sm { font-size: 12px !important; line-height: 1.45 !important; }
+#root aside .text-xs { font-size: 10px !important; line-height: 1.4 !important; }
+#root aside .flex.gap-2 { align-items: stretch; }
+#root aside .flex.gap-2 > button { min-width: 0; flex: 1 1 0; }
+#root aside .font-mono { overflow-wrap: anywhere; }
+#root aside .bg-red-50 { font-size: 11px !important; overflow-wrap: anywhere; }
+@media (min-width: 1024px) {
+  #root .grid.lg\\:grid-cols-\\[minmax\\(0\\,1fr\\)_300px\\] { grid-template-columns: minmax(0, 1fr) 300px; }
+  #root aside { padding: 12px !important; }
+}

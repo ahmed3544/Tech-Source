@@ -17,7 +17,12 @@ const normalizeAssignment = (item:any) => {
   const clear = Boolean(item?.clear || item?.isClear || item?.is_clear || status === 'CLEAR');
   const isOffDay = !clear && !rawShiftId && (asBoolean(item?.isOffDay ?? item?.is_off_day) || status === 'OFF');
   const shiftId = clear || isOffDay ? '' : rawShiftId;
-  return { employeeId, date, shiftId, isOffDay, clear, assignedBy: item?.assignedBy ?? item?.assigned_by, updatedAt: item?.updatedAt ?? item?.updated_at };
+  return {
+    employeeId, date, shiftId, isOffDay, clear,
+    assignedBy: item?.assignedBy ?? item?.assigned_by,
+    updatedAt: item?.updatedAt ?? item?.updated_at,
+    ...(Array.isArray(item?.breaks) ? { breaks: item.breaks } : {}),
+  };
 };
 
 const normalizePattern = (item:any) => ({
@@ -56,6 +61,7 @@ export function registerDirectScheduleSync(app:any) {
               isOffDay: Boolean(x.isOffDay),
               assignedBy: x.assignedBy,
               updatedAt: x.updatedAt,
+              ...(Array.isArray(x.breaks) ? { breaks: x.breaks } : {}),
             }))
         : [];
       return res.json({ success: true, dailyShiftAssignments: assignments });
@@ -81,10 +87,11 @@ export function registerDirectScheduleSync(app:any) {
         const key=`${row.employeeId}|${row.date}`; const previous=merged.get(key);
         const previousTime=Date.parse(String(previous?.updatedAt||'')); const incomingTime=Date.parse(String(row.updatedAt||stamp));
         if(!previous||!Number.isFinite(previousTime)||!Number.isFinite(incomingTime)||incomingTime>=previousTime) {
-          if(row.clear) merged.delete(key); else merged.set(key,row);
+          if(row.clear) merged.delete(key);
+          else merged.set(key, row.breaks === undefined && Array.isArray(previous?.breaks) ? { ...row, breaks: previous.breaks } : row);
         }
       }
-      const assignments=Array.from(merged.values()).map(row=>({employeeId:row.employeeId,date:row.date,shiftId:row.shiftId||'',isOffDay:Boolean(row.isOffDay),assignedBy:row.assignedBy,updatedAt:row.updatedAt||stamp}));
+      const assignments=Array.from(merged.values()).map(row=>({employeeId:row.employeeId,date:row.date,shiftId:row.shiftId||'',isOffDay:Boolean(row.isOffDay),assignedBy:row.assignedBy,updatedAt:row.updatedAt||stamp,...(Array.isArray(row.breaks)?{breaks:row.breaks}:{})}));
       if(existingRows[0]) await db.update(schema.settings).set({value:assignments} as any).where(eq(schema.settings.key,'dailyShiftAssignments')); else await db.insert(schema.settings).values({key:'dailyShiftAssignments',value:assignments} as any);
       const stampKey='__sync_updated_at:dailyShiftAssignments'; const stampRow=await db.select().from(schema.settings).where(eq(schema.settings.key,stampKey));
       if(stampRow[0]) await db.update(schema.settings).set({value:stamp} as any).where(eq(schema.settings.key,stampKey)); else await db.insert(schema.settings).values({key:stampKey,value:stamp} as any);

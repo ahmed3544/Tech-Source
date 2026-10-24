@@ -41,7 +41,7 @@ export type NotificationType =
   | 'shift_swap_rejected'
   | 'admin_notice';
 
-/** A planned break configured as part of a shift template. */
+/** A planned break attached to one employee's assignment on one calendar day. */
 export interface ShiftBreak {
   id: string;
   nameAr: string;
@@ -61,10 +61,10 @@ export interface Shift {
   startDate?: string; // YYYY-MM-DD
   endDate?: string; // YYYY-MM-DD
   durationMinutes?: number;
-  breakMinutes?: number;
+  breakMinutes?: number; // Legacy shift-level value; new breaks belong to daily assignments.
   gracePeriodMinutes: number; // e.g. 0 mins
   workDays: number[]; // 0 = Sun, 1 = Mon, ...
-  breaks?: ShiftBreak[];
+  breaks?: ShiftBreak[]; // Legacy shift-level values retained for compatibility.
 }
 
 /** A shift chosen for one employee on one calendar day. */
@@ -72,6 +72,7 @@ export interface DailyShiftAssignment {
   employeeId: string;
   date: string; // YYYY-MM-DD
   shiftId: string;
+  breaks?: ShiftBreak[];
   isOffDay?: boolean; // true when this employee has a scheduled weekly off day
   assignedBy?: string;
   updatedAt: string;
