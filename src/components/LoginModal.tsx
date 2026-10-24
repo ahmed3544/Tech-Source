@@ -69,6 +69,10 @@ export const LoginModal: React.FC<LoginModalProps> = ({
 
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.success && data.employee) {
+        // Keep the typed credential for signing later mutating requests
+        // (the server-side permission guard re-validates it on every call).
+        // sessionStorage is tab-scoped and cleared when the tab closes.
+        try { sessionStorage.setItem('auth_pin', cleanPass); } catch {}
         setLoading(false);
         onLoginSuccess(data.employee);
       } else {

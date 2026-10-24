@@ -4,6 +4,8 @@ import { LoginModal } from './components/LoginModal';
 import { WeeklyShiftSchedule } from './components/WeeklyShiftSchedule';
 import { Employee, Language, Shift, DailyShiftAssignment } from './types';
 import { INITIAL_EMPLOYEES, INITIAL_SHIFTS } from './mockData';
+import { authHeaders, errorToMessage, extractApiError, parseResponse } from './utils/errors';
+import { HolidayRange, LeaveRange } from './utils/scheduleStatus';
 
 const ADMIN_ID = 'emp-002';
 const ADMIN_EMAIL = 'ahmed.mahmoud@techsource-gds.com';
@@ -56,6 +58,9 @@ export default function App() {
   const [employees, setEmployees] = useState<Employee[]>(INITIAL_EMPLOYEES.map(normalizeEmployee));
   const [shifts, setShifts] = useState<Shift[]>(INITIAL_SHIFTS.map(normalizeShift));
   const [assignments, setAssignments] = useState<DailyShiftAssignment[]>([]);
+  const [leaveRequests, setLeaveRequests] = useState<LeaveRange[]>([]);
+  const [holidays, setHolidays] = useState<HolidayRange[]>([]);
+  const [successMessage, setSuccessMessage] = useState('');
   const [currentUser, setCurrentUser] = useState<Employee | null>(() => {
     try {
       const saved = localStorage.getItem('logged_in_user');
@@ -82,11 +87,11 @@ export default function App() {
     const response = await fetch('/api/sync', {
       method: 'POST',
       credentials: 'include',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'Cache-Control': 'no-cache' },
+      headers: authHeaders({ 'Content-Type': 'application/json', Accept: 'application/json', 'Cache-Control': 'no-cache' }),
       body: JSON.stringify({ ...payload, lastUpdated: Date.now() }),
     });
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok || result?.success === false) throw new Error(result?.error || result?.message || 'تعذر حفظ البيانات');
+    const result = await parseResponse(response);
+    if (!response.ok || result?.success === false) throw new Error(extractApiError(result, 'تعذر حفظ البيانات'));
     return result;
   };
 
@@ -110,6 +115,8 @@ export default function App() {
         setShifts(Array.isArray(data.shifts) ? data.shifts.map(normalizeShift) : []);
         const schedule = Array.isArray(data.dailyShiftAssignments) ? data.dailyShiftAssignments : [];
         setAssignments(schedule);
+        setLeaveRequests(Array.isArray(data.leaveRequests) ? data.leaveRequests : []);
+        setHolidays(Array.isArray(data.officialHolidays) ? data.officialHolidays : []);
         try {
           localStorage.setItem('attendance_employees', JSON.stringify(admin ? [admin, ...safeEmployees.filter((e: Employee) => e.id !== admin.id)] : INITIAL_EMPLOYEES));
           localStorage.setItem('attendance_shifts', JSON.stringify(data.shifts || []));
@@ -139,25 +146,29 @@ export default function App() {
 
   const addEmployee = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!isAdmin || !newName.trim() || !newCode.trim() || !newPin.trim()) return;
-    setBusy(true); setError('');
-    const id = 'emp-' + newCode.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
-    if (employees.some(e => e.id === id || e.code.toLowerCase() === newCode.trim().toLowerCase())) {
+    if (!isAdmin || busy) return;
+    if (!newName.trim() || !newCode.trim() || !newPin.trim()) return;
+    setBusy(true); setError(''); setSuccessMessage('');
+    const code = newCode.trim().toUpperCase();
+    if (employees.some(e => e.code?.toLowerCase() === code.toLowerCase())) {
       setError(lang === 'ar' ? 'كود الموظف مستخدم بالفعل.' : 'Employee code already exists.');
       setBusy(false); return;
     }
-    const employee: Employee = {
-      id, companyId: 'tech-source', code: newCode.trim().toUpperCase(), nameAr: newName.trim(), nameEn: newName.trim(),
-      avatar: '', email: '', phone: '', department: 'CX', jobTitleAr: 'Employee', jobTitleEn: 'Employee',
-      shiftId: '', pin: newPin.trim(), role: 'employee', joinedDate: new Date().toISOString().slice(0,10), status: 'active',
-    };
     try {
-      const next = [...employees, employee];
-      await persist({ employees: [employee] });
+      const response = await fetch('/api/employees', {
+        method: 'POST', credentials: 'include', cache: 'no-store',
+        headers: authHeaders({ 'Content-Type': 'application/json', Accept: 'application/json', 'Cache-Control': 'no-cache' }),
+        body: JSON.stringify({ code, nameAr: newName.trim(), nameEn: newName.trim(), pin: newPin.trim(), role: 'employee', department: 'CX' }),
+      });
+      const result = await parseResponse(response);
+      if (!response.ok || result?.success === false) throw new Error(extractApiError(result, lang === 'ar' ? 'تعذر إضافة الموظف' : 'Could not add the employee'));
+      const created = result?.employee ? normalizeEmployee(result.employee) : null;
+      const next = created ? [...employees, created] : employees;
       setEmployees(next);
       localStorage.setItem('attendance_employees', JSON.stringify(next));
       setNewName(''); setNewCode(''); setNewPin(''); setShowAddEmployee(false);
-    } catch (e: any) { setError(e?.message || 'تعذر إضافة الموظف'); }
+      setSuccessMessage(lang === 'ar' ? `تم إضافة الموظف ${code} بنجاح` : `Employee ${code} added successfully`);
+    } catch (e: unknown) { setError(errorToMessage(e, lang === 'ar' ? 'تعذر إضافة الموظف' : 'Could not add the employee')); }
     finally { setBusy(false); }
   };
 
@@ -171,50 +182,89 @@ export default function App() {
 
   const saveEmployeeEdits = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!isAdmin || !editingEmployeeId || !editName.trim() || !editCode.trim()) return;
+    if (!isAdmin || busy || !editingEmployeeId) return;
+    if (!editName.trim() || !editCode.trim()) return;
     const normalizedCode = editCode.trim().toLowerCase();
-    if (employees.some(e => e.id !== editingEmployeeId && e.code.trim().toLowerCase() === normalizedCode)) {
+    if (employees.some(e => e.id !== editingEmployeeId && String(e.code || '').trim().toLowerCase() === normalizedCode)) {
       setError(lang === 'ar' ? 'كود الموظف مستخدم بالفعل.' : 'Employee code is already in use.');
       return;
     }
-    setBusy(true); setError('');
+    setBusy(true); setError(''); setSuccessMessage('');
     try {
-      const payload: Record<string, string> = { code: editCode.trim().toUpperCase(), nameAr: editName.trim(), nameEn: editName.trim() };
+      // Only send the fields the manager actually changed — unchanged fields
+      // are never overwritten with empty or undefined values.
+      const target = employees.find(e => e.id === editingEmployeeId);
+      const payload: Record<string, string> = {};
+      if (!target || target.code !== editCode.trim().toUpperCase()) payload.code = editCode.trim().toUpperCase();
+      if (!target || target.nameAr !== editName.trim()) payload.nameAr = editName.trim();
+      if (!target || target.nameEn !== editName.trim()) payload.nameEn = editName.trim();
       if (editPin.trim()) payload.pin = editPin.trim();
+      if (Object.keys(payload).length === 0) {
+        setEditingEmployeeId(null); setEditName(''); setEditCode(''); setEditPin('');
+        setSuccessMessage(lang === 'ar' ? 'لا توجد تغييرات للحفظ.' : 'No changes to save.');
+        return;
+      }
       const response = await fetch('/api/employees/' + encodeURIComponent(editingEmployeeId), {
-        method: 'PUT', credentials: 'include',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'Cache-Control': 'no-cache' },
+        method: 'PUT', credentials: 'include', cache: 'no-store',
+        headers: authHeaders({ 'Content-Type': 'application/json', Accept: 'application/json', 'Cache-Control': 'no-cache' }),
         body: JSON.stringify(payload),
       });
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok || result?.success === false) throw new Error(result?.error || (lang === 'ar' ? 'تعذر تعديل الموظف.' : 'Could not update employee.'));
-      const next = employees.map(e => e.id === editingEmployeeId ? {
-        ...e, code: editCode.trim().toUpperCase(), nameAr: editName.trim(), nameEn: editName.trim(),
-        ...(editPin.trim() ? { pin: editPin.trim() } : {}),
-      } : e);
+      const result = await parseResponse(response);
+      // Success is only reported after the server confirms the update.
+      if (!response.ok || result?.success === false) throw new Error(extractApiError(result, lang === 'ar' ? 'تعذر تعديل الموظف.' : 'Could not update employee.'));
+      const savedEmployee = result?.employee ? normalizeEmployee(result.employee) : null;
+      // Refresh state from the server's authoritative row (no stale data).
+      const next = employees.map(e => e.id === editingEmployeeId ? (savedEmployee ?? {
+        ...e, ...(payload as Partial<Employee>),
+      }) : e);
       setEmployees(next);
       localStorage.setItem('attendance_employees', JSON.stringify(next));
+      if (currentUser?.id === editingEmployeeId && savedEmployee) {
+        const updatedUser = { ...currentUser, ...savedEmployee };
+        setCurrentUser(updatedUser);
+        localStorage.setItem('logged_in_user', JSON.stringify(updatedUser));
+      }
       setEditingEmployeeId(null); setEditName(''); setEditCode(''); setEditPin('');
-    } catch (e: any) {
-      setError(e?.message || (lang === 'ar' ? 'حدث خطأ أثناء تعديل الموظف.' : 'Failed to update employee.'));
+      setSuccessMessage(lang === 'ar' ? 'تم حفظ بيانات الموظف بنجاح' : 'Employee updated successfully');
+    } catch (e: unknown) {
+      setError(errorToMessage(e, lang === 'ar' ? 'حدث خطأ أثناء تعديل الموظف.' : 'Failed to update employee.'));
     } finally { setBusy(false); }
   };
 
+  const refreshFromServer = async () => {
+    try {
+      const response = await fetch('/api/data?_=' + Date.now(), { cache: 'no-store', headers: { Accept: 'application/json', 'Cache-Control': 'no-cache' } });
+      if (!response.ok) return;
+      const data = await parseResponse(response);
+      if (Array.isArray(data.employees)) setEmployees(data.employees.map(normalizeEmployee).filter((e: Employee) => e.status === 'active' || e.id === ADMIN_ID));
+      if (Array.isArray(data.shifts)) setShifts(data.shifts.map(normalizeShift));
+      if (Array.isArray(data.dailyShiftAssignments)) setAssignments(data.dailyShiftAssignments);
+      if (Array.isArray(data.leaveRequests)) setLeaveRequests(data.leaveRequests);
+      if (Array.isArray(data.officialHolidays)) setHolidays(data.officialHolidays);
+    } catch { /* keep current state */ }
+  };
+
   const deleteEmployee = async (employee: Employee) => {
-    if (!isAdmin || employee.id === ADMIN_ID || employee.id === currentUser?.id) return;
+    if (!isAdmin || busy || employee.id === ADMIN_ID || employee.id === currentUser?.id) return;
     const confirmed = window.confirm(lang === 'ar'
       ? `هل أنت متأكد من حذف حساب ${employee.nameAr || employee.nameEn}؟ لا يمكن التراجع عن الحذف.`
       : `Delete account for ${employee.nameEn || employee.nameAr}? This cannot be undone.`);
     if (!confirmed) return;
-    setBusy(true); setError('');
+    setBusy(true); setError(''); setSuccessMessage('');
     try {
-      await persist({ deletedEmployeeIds: [employee.id] });
+      const response = await fetch('/api/employees/' + encodeURIComponent(employee.id), {
+        method: 'DELETE', credentials: 'include', cache: 'no-store',
+        headers: authHeaders({ Accept: 'application/json', 'Cache-Control': 'no-cache' }),
+      });
+      const result = await parseResponse(response);
+      if (!response.ok || result?.success === false) throw new Error(extractApiError(result, lang === 'ar' ? 'تعذر حذف الموظف.' : 'Could not delete employee.'));
       const next = employees.filter(e => e.id !== employee.id);
       setEmployees(next);
       localStorage.setItem('attendance_employees', JSON.stringify(next));
       if (editingEmployeeId === employee.id) setEditingEmployeeId(null);
-    } catch (e: any) {
-      setError(e?.message || (lang === 'ar' ? 'تعذر حذف الموظف.' : 'Could not delete employee.'));
+      setSuccessMessage(lang === 'ar' ? 'تم حذف الموظف بنجاح' : 'Employee deleted successfully');
+    } catch (e: unknown) {
+      setError(errorToMessage(e, lang === 'ar' ? 'تعذر حذف الموظف.' : 'Could not delete employee.'));
     } finally { setBusy(false); }
   };
 
@@ -226,8 +276,8 @@ export default function App() {
       await persist({ shifts: next, ...(deletedShiftIds.length ? { deletedShiftIds } : {}) });
       setShifts(next);
       localStorage.setItem('attendance_shifts', JSON.stringify(next));
-    } catch (e: any) {
-      setError(e?.message || 'تعذر حفظ الورديات');
+    } catch (e: unknown) {
+      setError(errorToMessage(e, 'تعذر حفظ الورديات'));
     }
   };
 
@@ -251,11 +301,11 @@ export default function App() {
     <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 backdrop-blur">
       <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
         <div className="flex items-center gap-3"><div className="rounded-xl bg-emerald-100 p-2 text-emerald-700"><CalendarDays className="h-6 w-6" /></div><div><h1 className="text-lg font-black">{lang === 'ar' ? 'نظام جداول الورديات' : 'Shift Scheduling System'}</h1><p className="text-xs text-slate-500">TECH SOURCE - GDS</p></div></div>
-        <div className="flex items-center gap-2"><span className="hidden text-sm font-bold sm:inline">{currentUser.nameAr}</span><button onClick={() => setLang(lang === 'ar' ? 'en' : 'ar')} className="rounded-lg border px-3 py-2 text-sm"><Languages className="mr-1 inline h-4 w-4" />{lang === 'ar' ? 'EN' : 'عربي'}</button><button onClick={() => { localStorage.removeItem('logged_in_user'); setCurrentUser(null); setLoginOpen(true); }} className="rounded-lg border px-3 py-2 text-sm"><LogOut className="mr-1 inline h-4 w-4" />{lang === 'ar' ? 'خروج' : 'Log out'}</button></div>
+        <div className="flex items-center gap-2"><span className="hidden text-sm font-bold sm:inline">{currentUser.nameAr}</span><button onClick={() => setLang(lang === 'ar' ? 'en' : 'ar')} className="rounded-lg border px-3 py-2 text-sm"><Languages className="mr-1 inline h-4 w-4" />{lang === 'ar' ? 'EN' : 'عربي'}</button><button onClick={() => { localStorage.removeItem('logged_in_user'); try { sessionStorage.removeItem('auth_pin'); } catch {} setCurrentUser(null); setLoginOpen(true); }} className="rounded-lg border px-3 py-2 text-sm"><LogOut className="mr-1 inline h-4 w-4" />{lang === 'ar' ? 'خروج' : 'Log out'}</button></div>
       </div>
     </header>
     <div className="mx-auto grid max-w-[1600px] gap-5 p-3 sm:p-6 lg:grid-cols-[minmax(0,1fr)_300px]">
-      <section className="min-w-0"><WeeklyShiftSchedule employees={visibleEmployees} shifts={shifts} dailyShiftAssignments={assignments} currentUser={currentUser} lang={lang} onAddShift={handleAddShift} onUpdateShift={handleUpdateShift} onDeleteShift={handleDeleteShift} /></section>
+      <section className="min-w-0"><WeeklyShiftSchedule employees={visibleEmployees} shifts={shifts} dailyShiftAssignments={assignments} leaveRequests={leaveRequests} holidays={holidays} currentUser={currentUser} lang={lang} onAddShift={handleAddShift} onUpdateShift={handleUpdateShift} onDeleteShift={handleDeleteShift} /></section>
       {isAdmin && <aside className="h-fit rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="mb-3 flex items-center justify-between"><h2 className="font-black">{lang === 'ar' ? 'إدارة الموظفين' : 'Employee Management'}</h2><Users className="h-5 w-5 text-slate-500" /></div>
         <p className="mb-4 text-xs leading-5 text-slate-500">{lang === 'ar' ? 'أضف الموظفين الجدد ليظهروا في جدول الورديات. لا توجد بيانات حضور أو إجازات في هذا النظام.' : 'Add employees to make them available in the roster. Attendance and leave data are not part of this system.'}</p>
@@ -267,6 +317,7 @@ export default function App() {
           <button disabled={busy} className="w-full rounded-lg bg-slate-900 px-3 py-2 text-sm font-bold text-white disabled:opacity-50">{busy ? (lang === 'ar' ? 'جاري الحفظ...' : 'Saving...') : (lang === 'ar' ? 'حفظ الموظف' : 'Save employee')}</button>
         </form>}
         {error && <p className="mt-3 rounded-lg bg-red-50 p-3 text-xs text-red-700">{error}</p>}
+        {successMessage && !error && <p className="mt-3 rounded-lg bg-emerald-50 p-3 text-xs font-bold text-emerald-700">{successMessage}</p>}
         <div className="mt-4 space-y-2">{visibleEmployees.filter(e => e.id !== ADMIN_ID).map(e => <div key={e.id} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
           {editingEmployeeId === e.id ? <form onSubmit={saveEmployeeEdits} className="space-y-2">
             <input required value={editName} onChange={event => setEditName(event.target.value)} placeholder={lang === 'ar' ? 'اسم الموظف' : 'Employee name'} className="w-full rounded-lg border bg-white px-3 py-2 text-sm" />

@@ -21,7 +21,7 @@ export const companies = pgTable('companies', {
 }, (table) => [uniqueIndex('companies_code_idx').on(table.code)]);
 
 export const employees = pgTable('employees', {
-  id: text('id').primaryKey(), companyId: text('company_id'), code: text('code'), nameAr: text('name_ar').notNull(), nameEn: text('name_en').notNull(), avatar: text('avatar'), email: text('email'), phone: text('phone'), department: text('department'), jobTitleAr: text('job_title_ar'), jobTitleEn: text('job_title_en'), shiftId: text('shift_id'), pin: text('pin'), role: text('role'), joinedDate: text('joined_date'), status: text('status'), annualLeaveBalance: real('annual_leave_balance'), casualLeaveBalance: real('casual_leave_balance'), regularLeaveBalance: real('regular_leave_balance'), sickLeaveBalance: real('sick_leave_balance'), isPhotoRemoved: boolean('is_photo_removed'), updatedAt: text('updated_at'),
+  id: text('id').primaryKey(), companyId: text('company_id'), code: text('code'), nameAr: text('name_ar').notNull(), nameEn: text('name_en').notNull(), avatar: text('avatar'), email: text('email'), phone: text('phone'), department: text('department'), jobTitleAr: text('job_title_ar'), jobTitleEn: text('job_title_en'), shiftId: text('shift_id'), pin: text('pin'), role: text('role'), joinedDate: text('joined_date'), status: text('status'), annualLeaveBalance: real('annual_leave_balance'), casualLeaveBalance: real('casual_leave_balance'), regularLeaveBalance: real('regular_leave_balance'), sickLeaveBalance: real('sick_leave_balance'), isPhotoRemoved: boolean('is_photo_removed'), teamLeaderId: text('team_leader_id'), teamId: text('team_id'), updatedAt: text('updated_at'),
 });
 export const attendanceRecords = pgTable('attendance_records', {
   id: text('id').primaryKey(), companyId: text('company_id'), employeeId: text('employee_id').notNull(), date: text('date').notNull(), checkIn: text('check_in'), checkOut: text('check_out'), breakStart: text('break_start'), breakEnd: text('break_end'), breaks: jsonb('breaks'), totalBreakSeconds: integer('total_break_seconds'), location: text('location'), deviceInfo: text('device_info'), lateMinutes: integer('late_minutes').default(0), lateSeconds: integer('late_seconds').default(0), earlyLeaveMinutes: integer('early_leave_minutes').default(0), workHours: real('work_hours').default(0), overtimeHours: real('overtime_hours').default(0), minusHours: real('minus_hours').default(0), status: text('status'), leaveType: text('leave_type'), notes: text('notes'), verifiedByFace: boolean('verified_by_face'), isExcused: boolean('is_excused'), excusedBy: text('excused_by'), excusedReason: text('excused_reason'), updatedAt: text('updated_at'), isExplicitCancelCheckOut: boolean('is_explicit_cancel_check_out'),
@@ -38,4 +38,27 @@ export const employeeShiftAssignments = pgTable('employee_shift_assignments', { 
 export const rotationPatterns = pgTable('rotation_patterns', { id: text('id').primaryKey(), companyId: text('company_id'), name: text('name').notNull(), shiftIds: jsonb('shift_ids').notNull(), createdBy: text('created_by'), createdAt: text('created_at').notNull(), updatedAt: text('updated_at').notNull(), });
 export const rotationPatternItems = pgTable('rotation_pattern_items', { id: text('id').primaryKey(), companyId: text('company_id'), patternId: text('pattern_id').notNull(), shiftId: text('shift_id').notNull(), sequence: integer('sequence').notNull(), }, (table) => [uniqueIndex('rotation_pattern_sequence_idx').on(table.patternId, table.sequence)]);
 export const notifications = pgTable('notifications', { id: text('id').primaryKey(), companyId: text('company_id'), recipientId: text('recipient_id').notNull(), type: text('type').notNull(), title: text('title').notNull(), message: text('message').notNull(), relatedEmployeeId: text('related_employee_id'), relatedLeaveId: text('related_leave_id'), relatedOvertimeId: text('related_overtime_id'), relatedShiftSwapId: text('related_shift_swap_id'), isRead: boolean('is_read').default(false), createdAt: text('created_at').notNull(), updatedAt: text('updated_at').notNull(), });
+/**
+ * Employee-specific planned breaks, stored per employee + calendar date.
+ * Replaces the old shift-level-only breaks (settings.shiftBreaks) as the
+ * authoritative source for an employee's breaks on a given day while keeping
+ * shift-level breaks as a backward-compatible fallback.
+ */
+export const employeeBreaks = pgTable('employee_breaks', {
+  id: text('id').primaryKey(),
+  companyId: text('company_id'),
+  employeeId: text('employee_id').notNull(),
+  date: text('date').notNull(), // YYYY-MM-DD — matches dailyShiftAssignments dates
+  name: text('name'),
+  nameAr: text('name_ar'),
+  nameEn: text('name_en'),
+  startTime: text('start_time').notNull(), // HH:mm (24h)
+  endTime: text('end_time').notNull(), // HH:mm (24h)
+  durationMinutes: integer('duration_minutes'),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+}, (table) => [
+  uniqueIndex('employee_breaks_employee_date_start_idx').on(table.employeeId, table.date, table.startTime),
+]);
+
 export const loginAudit = pgTable('login_audit', { id: text('id').primaryKey(), companyId: text('company_id'), employeeId: text('employee_id'), loginIdentifier: text('login_identifier').notNull(), success: boolean('success').notNull().default(false), failureReason: text('failure_reason'), ipAddress: text('ip_address'), userAgent: text('user_agent'), createdAt: text('created_at').notNull(), });

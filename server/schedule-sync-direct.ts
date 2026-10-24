@@ -1,6 +1,7 @@
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { db } from '../src/db/index.js';
 import * as schema from '../src/db/schema.js';
+import { canManageEmployee, isPlatformAdmin, requireManager } from './auth.js';
 
 const asBoolean = (value:any) => {
   if (typeof value === 'boolean') return value;
@@ -68,9 +69,23 @@ export function registerDirectScheduleSync(app:any) {
   app.post('/api/schedule-sync',async(req:any,res:any)=>{
     const requestId = `${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
     try {
-      console.log(`[schedule-sync] ${requestId} POST received`, { count: Array.isArray(req.body?.dailyShiftAssignments) ? req.body.dailyShiftAssignments.length : -1 });
+      // Server-side permission check: only admins and team leaders may edit
+      // schedules, and leaders are scoped to their own team.
+      const manager = await requireManager(req, (status, body) => res.status(status).json(body));
+      if (!manager) return;
       if(!Array.isArray(req.body?.dailyShiftAssignments)) return res.status(400).json({success:false,error:'dailyShiftAssignments must be an array'});
-      const received=req.body.dailyShiftAssignments.map(normalizeAssignment).filter((x:any)=>x.employeeId&&/^\d{4}-\d{2}-\d{2}$/.test(x.date));
+      const receivedRaw=req.body.dailyShiftAssignments.map(normalizeAssignment).filter((x:any)=>x.employeeId&&/^\d{4}-\d{2}-\d{2}$/.test(x.date));
+      if (!isPlatformAdmin(manager.role) && receivedRaw.length) {
+        const targetIds: string[] = Array.from(new Set<string>(receivedRaw.map((x:any)=>String(x.employeeId))));
+        const targets = await db.select().from(schema.employees).where(inArray(schema.employees.id, targetIds));
+        const byId = new Map<string, any>(targets.map((t:any)=>[String(t.id), t] as [string, any]));
+        const denied = targetIds.filter((tid) => !canManageEmployee(manager, byId.get(tid)));
+        if (denied.length) {
+          console.warn(`[schedule-sync] ${requestId} denied for team scoping`, { managerId: manager.id, denied });
+          return res.status(403).json({ success:false, error:'You can only edit schedules for employees in your own team.', deniedEmployeeIds: denied });
+        }
+      }
+      const received=receivedRaw;
       const stamp=new Date().toISOString();
       const incoming=received.map((x:any)=>({...x,updatedAt:x.updatedAt||stamp}));
       const existingRows=await db.select().from(schema.settings).where(eq(schema.settings.key,'dailyShiftAssignments'));

@@ -2,39 +2,10 @@ import crypto from "crypto";
 import { db } from "../src/db/index.js";
 import * as schema from "../src/db/schema.js";
 import { INITIAL_EMPLOYEES } from "../src/mockData.js";
+import { passwordMatches, normalizeDigits } from "../server/passwords.js";
 
 function normalize(value: unknown) {
   return String(value ?? "").trim().toLowerCase();
-}
-
-function normalizeDigits(value: unknown) {
-  return String(value ?? "")
-    .replace(/[٠-٩]/g, (d) => "٠١٢٣٤٥٦٧٨٩".indexOf(d).toString())
-    .trim();
-}
-
-function passwordMatches(employee: any, password: string) {
-  const cleanPass = normalizeDigits(password).toLowerCase();
-  const pin = normalize(employee?.pin);
-  const employeeNumber = String(employee?.code ?? "").replace(/\D/g, "");
-  const defaultEmpPass = `emp${employeeNumber}`.toLowerCase();
-  const defaultPaddedPass = `emp${employeeNumber.padStart(3, "0")}`.toLowerCase();
-
-  let hashedMatch = false;
-  if (employee?.pin && String(employee.pin).length === 64) {
-    const hash = crypto.createHash("sha256").update(cleanPass).digest("hex");
-    hashedMatch = hash === String(employee.pin).toLowerCase();
-  }
-
-  return (
-    hashedMatch ||
-    cleanPass === pin ||
-    (employee?.role === "leader" && cleanPass === "leader123") ||
-    cleanPass === defaultEmpPass ||
-    cleanPass === defaultPaddedPass ||
-    cleanPass === "1234" ||
-    cleanPass === "tech_123"
-  );
 }
 
 function findEmployee(employees: any[], input: string) {

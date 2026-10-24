@@ -12,6 +12,10 @@ import { registerDeviceSyncV2 } from "./server/device-sync-v2.js";
 import { registerScheduleSyncGuard } from "./server/schedule-sync-guard.js";
 import { registerDirectScheduleSync } from "./server/schedule-sync-direct.js";
 import { registerDbWriteVerification } from "./server/db-write-verification.js";
+import { updateEmployeeHandler, createEmployeeHandler, deleteEmployeeHandler } from "./server/employees.js";
+import { registerEmployeeBreaks } from "./server/employee-breaks.js";
+import { ensureSchema } from "./server/ensure-schema.js";
+import loginHandler from "./api/login.js";
 
 const app = express();
 app.use(express.json({ limit: "50mb" }));
@@ -51,44 +55,18 @@ async function dbSnapshot(){
     if (!m.has("urgentNotice")) m.set("urgentNotice", INITIAL_URGENT_NOTICE);
   }
   
-  const breakMap=m.get("shiftBreaks")&&typeof m.get("shiftBreaks")==='object'&&!Array.isArray(m.get("shiftBreaks"))?m.get("shiftBreaks") as any:{};const hydratedShifts=shifts.map((shift:any)=>({...shift,breaks:Array.isArray(shift?.breaks)?shift.breaks:(Array.isArray(breakMap[String(shift?.id)])?breakMap[String(shift.id)]:[])}));const dailyShiftAssignments=Array.isArray(m.get("dailyShiftAssignments"))?m.get("dailyShiftAssignments"):[];localState.employees=employees;localState.attendanceRecords=attendanceRecords;localState.leaveRequests=leaveRequests;localState.overtimeRequests=overtimeRequests;localState.shifts=hydratedShifts;localState.notifications=notifications;localState.dailyShiftAssignments=dailyShiftAssignments;localState.shiftSwapRequests=Array.isArray(m.get("shiftSwapRequests"))?m.get("shiftSwapRequests"):[];return{success:true,employees,attendanceRecords,leaveRequests,overtimeRequests,shifts,notifications,employeeShiftAssignments,dailyShiftAssignments,shiftSwapRequests:localState.shiftSwapRequests,companyNameAr:m.get("companyNameAr")??null,companyNameEn:m.get("companyNameEn")??null,urgentNotice:m.get("urgentNotice")??null,lastUpdated:Date.now()};}
+  const breakMap=m.get("shiftBreaks")&&typeof m.get("shiftBreaks")==='object'&&!Array.isArray(m.get("shiftBreaks"))?m.get("shiftBreaks") as any:{};const hydratedShifts=shifts.map((shift:any)=>({...shift,breaks:Array.isArray(shift?.breaks)?shift.breaks:(Array.isArray(breakMap[String(shift?.id)])?breakMap[String(shift.id)]:[])}));const dailyShiftAssignments=Array.isArray(m.get("dailyShiftAssignments"))?m.get("dailyShiftAssignments"):[];localState.employees=employees;localState.attendanceRecords=attendanceRecords;localState.leaveRequests=leaveRequests;localState.overtimeRequests=overtimeRequests;localState.shifts=hydratedShifts;localState.notifications=notifications;localState.dailyShiftAssignments=dailyShiftAssignments;localState.shiftSwapRequests=Array.isArray(m.get("shiftSwapRequests"))?m.get("shiftSwapRequests"):[];return{success:true,employees,attendanceRecords,leaveRequests,overtimeRequests,shifts:hydratedShifts,notifications,employeeShiftAssignments,dailyShiftAssignments,shiftSwapRequests:localState.shiftSwapRequests,companyNameAr:m.get("companyNameAr")??null,companyNameEn:m.get("companyNameEn")??null,urgentNotice:m.get("urgentNotice")??null,officialHolidays:Array.isArray(m.get("officialHolidays"))?m.get("officialHolidays"):[],lastUpdated:Date.now()};}
 
 registerNotificationSystemV2(app);
 registerNotificationSse(app);
 
-app.put('/api/employees/:id', async (req:any, res:any) => {
-  try {
-    const id = String(req.params.id || '').trim();
-    if (!id || !req.body || typeof req.body !== 'object') return res.status(400).json({ success:false, error:'Invalid employee payload' });
-
-    let requestBody = req.body;
-    if (typeof requestBody === 'string') { try { requestBody = JSON.parse(requestBody); } catch {} }
-    if (!requestBody && req.rawBody) { try { requestBody = JSON.parse(Buffer.from(req.rawBody).toString('utf8')); } catch {} }
-    if (!requestBody || typeof requestBody !== 'object') return res.status(400).json({ success:false, error:'Invalid employee payload' });
-
-    const allowed = ['code','nameAr','nameEn','avatar','email','phone','department','jobTitleAr','jobTitleEn','pin','role','joinedDate','status','annualLeaveBalance','casualLeaveBalance','regularLeaveBalance','sickLeaveBalance','isPhotoRemoved'];
-    const values:any = {};
-    for (const key of allowed) {
-      if (requestBody[key] !== undefined && !(key === 'pin' && String(requestBody[key]) === '***')) values[key] = requestBody[key];
-    }
-    if (values.role !== undefined) {
-      const role = String(values.role).trim().toLowerCase();
-      values.role = role === 'leader' || role === 'team_leader' || role === 'team-leader' || role === 'tl' ? 'leader' : role === 'admin' ? 'admin' : 'employee';
-    }
-    // Employee shifts are managed only by the weekly schedule.
-    values.updatedAt = new Date().toISOString();
-
-    const existing = await db.select().from(schema.employees).where(eq(schema.employees.id, id));
-    if (!existing[0]) return res.status(404).json({ success:false, error:'Employee not found' });
-
-    await db.update(schema.employees).set(values as any).where(eq(schema.employees.id, id));
-    const updated = await db.select().from(schema.employees).where(eq(schema.employees.id, id));
-    return res.json({ success:true, employee:updated[0], lastUpdated:Date.now() });
-  } catch (error:any) {
-    console.error('[EMPLOYEE-UPDATE-ERROR]', error);
-    return res.status(500).json({ success:false, error:String(error?.message || error) });
-  }
-});
+// Employee CRUD + employee-specific breaks (shared handlers, permission-checked).
+app.put('/api/employees/:id', (req:any, res:any) => updateEmployeeHandler(req, res));
+app.post('/api/employees', (req:any, res:any) => createEmployeeHandler(req, res));
+app.delete('/api/employees/:id', (req:any, res:any) => deleteEmployeeHandler(req, res));
+registerEmployeeBreaks(app);
+// Login is also served by the main server so non-Vercel deployments work.
+app.post('/api/login', (req:any, res:any) => loginHandler(req, res));
 
 app.get('/api/data', async (_req, res) => {
   try {
@@ -181,4 +159,8 @@ if (process.env.NODE_ENV !== "production") {
 export default app;
 export { app };
 
-if (process.env.VERCEL !== '1') app.listen(PORT, '0.0.0.0', ()=>console.log(`Server running on port ${PORT} | Database: NEON`));
+if (process.env.VERCEL !== '1') app.listen(PORT, '0.0.0.0', ()=>{
+  console.log(`Server running on port ${PORT} | Database: NEON`);
+  // Self-heal additive schema pieces at boot (idempotent, safe to re-run).
+  ensureSchema().then((ok) => { if (!ok) console.warn('[ensure-schema] not verified yet — will retry on first guarded request'); });
+});
