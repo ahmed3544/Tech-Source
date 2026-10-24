@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, Coffee, Save, Users, Pencil, Trash2, Plus } 
 import { Employee, Language, Shift, DailyShiftAssignment } from '../types';
 import { ShiftManager } from './ShiftManager';
 import { ShiftSwapPanel } from './ShiftSwapPanel';
+import { ExcelImportPanel } from './ExcelImportPanel';
 import { authHeaders, errorToMessage, extractApiError, parseResponse } from '../utils/errors';
 import {
   DayStatus,
@@ -653,6 +654,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
           <div className="rounded-lg bg-slate-900 px-3 py-2 text-white dark:bg-slate-700"><div className="text-sm font-black tracking-wide">TECH SOURCE</div><div className="text-[9px] font-bold opacity-80">{lang === 'ar' ? 'جدول الموظفين' : 'WEEKLY SCHEDULE'}</div></div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <ExcelImportPanel employees={employees} shifts={shifts} currentUser={currentUser} lang={lang} onImported={(next) => { setAssignments(next); setMessage(lang === 'ar' ? 'تم استيراد جدول Excel بنجاح' : 'Excel schedule imported successfully'); }} />
           <div className="flex min-w-0 items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 dark:border-blue-500/40 dark:bg-blue-950/40">
             <Users className="h-5 w-5 shrink-0 text-blue-600 dark:text-blue-400" />
             <div className="min-w-0">
