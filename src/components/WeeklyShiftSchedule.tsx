@@ -609,30 +609,28 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
           </>
         );
       });
-      // Break bars sit on top of the shift block at their real time position.
-      // Always identify whose break it is; short bars show the employee name,
-      // while the full name, break label, and time remain available on hover/tap.
-      const breakEmployeeName = lang === 'ar'
-        ? (employee?.nameAr || employee?.nameEn || '')
-        : (employee?.nameEn || employee?.nameAr || '');
+      // Break bars show the break's time range, not the employee name.
       r.effectiveBreaks.forEach(item => {
         const breakName = lang === 'ar' ? (item.nameAr || item.nameEn || 'استراحة') : (item.nameEn || item.nameAr || 'Break');
         blocksFor(item.startTime, item.endTime).forEach((seg, sIdx) => {
           const barHeightPct = Math.max(seg.height, (8 / (mobile ? gridHeightMobile : gridHeightDesktop)) * 100);
           const barHeightPx = (barHeightPct / 100) * (mobile ? gridHeightMobile : gridHeightDesktop);
           const showTime = barHeightPx >= 26;
+          const timeRange = mobile
+            ? `${fmt12(timeToMinutes(item.startTime), lang)} - ${fmt12(timeToMinutes(item.endTime), lang)}`
+            : `${item.startTime}–${item.endTime}`;
           blocks.push(
             <button
               type="button"
               key={`brk-${item.id}-${sIdx}`}
-              onClick={() => (isLeader ? openBreakEditor({ key: opts.dayKey, en: opts.dayLabel, ar: opts.dayLabel }) : setSelectedBreak({ name: `${breakEmployeeName} — ${breakName}`, startTime: item.startTime, endTime: item.endTime, durationMinutes: item.durationMinutes || 0 }))}
+              onClick={() => (isLeader ? openBreakEditor({ key: opts.dayKey, en: opts.dayLabel, ar: opts.dayLabel }) : setSelectedBreak({ name: breakName, startTime: item.startTime, endTime: item.endTime, durationMinutes: item.durationMinutes || 0 }))}
               className={`absolute inset-x-1 z-10 flex cursor-pointer flex-col items-center justify-center overflow-hidden rounded-sm px-0.5 text-center shadow-md ring-1 ring-red-300/60 focus:outline-none focus:ring-2 focus:ring-red-400 ${TEO.breakBar}`}
               style={{ top: `${seg.top}%`, height: `${barHeightPct}%`, minHeight: 8 }}
-              title={`${breakEmployeeName} — ${breakName}: ${item.startTime} - ${item.endTime}`}
-              aria-label={`${breakEmployeeName} — ${breakName} ${item.startTime}-${item.endTime}`}
+              title={`${lang === 'ar' ? 'البريك' : 'Break'}: ${timeRange}`}
+              aria-label={`${lang === 'ar' ? 'البريك' : 'Break'} ${timeRange}`}
             >
-              <span className="block w-full truncate text-[8px] font-black leading-tight text-white">{breakEmployeeName}</span>
-              {showTime && <span className="block w-full truncate text-[8px] font-bold leading-tight text-white"><span dir="ltr">{mobile ? `${fmt12(timeToMinutes(item.startTime), lang)} - ${fmt12(timeToMinutes(item.endTime), lang)}` : `${item.startTime}–${item.endTime}`}</span> · {breakName}</span>}
+              <span dir="ltr" className="block w-full truncate text-[9px] font-black leading-tight text-white">{timeRange}</span>
+              {showTime && <span className="block w-full truncate text-[8px] font-bold leading-tight text-white">{breakName}</span>}
             </button>
           );
         });
