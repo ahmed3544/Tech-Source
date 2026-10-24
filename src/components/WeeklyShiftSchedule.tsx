@@ -416,7 +416,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
     try {
       let savedCount = 0;
       for (const person of visibleEmployees) {
-        const name = String(person.nameEn || person.nameAr || person.name || '').toLowerCase();
+        const name = String(person.nameEn || person.nameAr || '').toLowerCase();
         const key = name.includes('nancy') ? 'nancy'
           : name.includes('nada') ? 'nada'
           : name.includes('salma') ? 'salma'
@@ -429,11 +429,12 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
             sameId(a.employeeId ?? (a as any).employee_id, person.id) &&
             String(a.date ?? '').slice(0, 10) === dayKey
           ) as any;
-          const assignedShift = assigned?.shiftId ? shifts.find(s => sameId(s.id, assigned.shiftId)) : undefined;
+          const assignedShiftId = String(assigned?.shiftId || person.shiftId || '');
+          const assignedShift = assignedShiftId ? shifts.find(s => sameId(s.id, assignedShiftId)) : undefined;
           const status = resolveDayStatus({
             dateKey: dayKey,
             employeeId: person.id,
-            assignment: assigned || {},
+            assignment: assigned || (assignedShift ? { employeeId: person.id, date: dayKey, shiftId: assignedShift.id } : {}),
             shifts,
             leaves: suppliedLeaves,
             holidays: suppliedHolidays,
