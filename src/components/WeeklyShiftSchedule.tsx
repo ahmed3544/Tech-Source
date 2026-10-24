@@ -200,7 +200,13 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
   // Filter them out before applying role/team visibility so they never receive a
   // shift, break, OFF day, or employee-level schedule row.
   const rosterEmployees = useMemo(
-    () => employees.filter(e => !['admin', 'company_admin', 'platform_admin'].includes(String(e.role || '').toLowerCase())),
+    // Ahmed Mahmoud is the designated non-rostered admin account. Do not
+    // exclude another person (for example Nada) merely because a stale role
+    // value was accidentally set to admin in imported/synced employee data.
+    () => employees.filter(e =>
+      !sameId(e.id, 'emp-002') &&
+      String(e.email || '').trim().toLowerCase() !== 'ahmed.mahmoud@techsource-gds.com'
+    ),
     [employees],
   );
 
