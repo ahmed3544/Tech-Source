@@ -663,7 +663,6 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
       )}
 
 {isLeader && settingsOpen && (
-      {/* Leader weekly assignment editor — compact, Teleopti editing row. */}
       {isLeader && employee && (
         <div className="rounded-xl border border-slate-200 dark:border-slate-700">
           <button type="button" onClick={() => setEditPanelOpen(v => !v)} className="flex w-full items-center justify-between px-4 py-2.5 text-xs font-black text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800/60">
@@ -703,7 +702,6 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
       )}
 
 {settingsOpen && (
-      {/* Compact legend — same palette as the timeline blocks. */}
       <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold text-slate-600 dark:text-slate-300">
         {legendItems.map(item => (
           <span key={item.id} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 dark:border-slate-700 dark:bg-slate-900">{item.swatch}{lang === 'ar' ? item.ar : item.en}</span>
