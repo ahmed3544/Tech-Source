@@ -178,7 +178,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ currentU
   const markRead = async (id: string) => {
     if (!currentUserId) return;
     try {
-      const response = await fetch(`/api/notifications/${encodeURIComponent(id)}/mark-read`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' }, body: JSON.stringify({ userId: currentUserId }), cache: 'no-store' });
+      const response = await fetch('/api/notifications-read', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' }, body: JSON.stringify({ userId: currentUserId, id }), cache: 'no-store' });
       if (!response.ok) throw new Error('mark read failed');
       const data = await response.json();
       if (!data?.success) throw new Error('mark read was not persisted');
@@ -191,7 +191,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ currentU
     if (!currentUserId || !unreadCount) return;
     items.filter(item => !item.isRead).forEach(item => readOverridesRef.current.add(String(item.id)));
     try {
-      const response = await fetch('/api/notifications/mark-all-read', { method: 'PUT', headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' }, body: JSON.stringify({ userId: currentUserId }), cache: 'no-store' });
+      const response = await fetch('/api/notifications-read-all', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' }, body: JSON.stringify({ userId: currentUserId }), cache: 'no-store' });
       if (!response.ok) throw new Error('mark all read failed');
       const data = await response.json();
       if (!data?.success) throw new Error('mark all read was not persisted');
