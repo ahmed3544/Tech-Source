@@ -91,6 +91,11 @@ export interface ShiftSwapRequest {
   reviewedBy?: string;
   reviewedAt?: string;
   targetRespondedAt?: string;
+  requestType?: 'shift' | 'break';
+  currentBreakStart?: string;
+  currentBreakEnd?: string;
+  requestedBreakStart?: string;
+  requestedBreakEnd?: string;
 }
 
 export interface Company {
