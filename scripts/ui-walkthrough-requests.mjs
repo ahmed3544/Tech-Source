@@ -20,7 +20,8 @@ page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
 page.on('pageerror', (e) => errors.push(String(e)));
 
 const exportBtn = page.getByRole('button', { name: /تصدير Excel|Export to Excel/ });
-const requestsToggle = page.getByRole('button', { name: /طلبات الجدول|Schedule requests/ });
+const requestsToggle = page.getByRole('button', { name: /^(تبديل الشيفت|Shift swap)$/ });
+const breakTab = page.getByRole('button', { name: /^(تغيير البريك|Break change)$/ });
 
 const login = async (code, pin) => {
   await page.goto(BASE, { waitUntil: 'networkidle' });
@@ -45,11 +46,15 @@ await weekDownload.saveAs(weekFile);
 check('week export downloads', /TechSource-Schedule-Week-\d{4}-\d{2}-\d{2}\.xlsx/.test(weekDownload.suggestedFilename()), weekDownload.suggestedFilename());
 check('week xlsx is a real zip (xlsx)', fs.readFileSync(weekFile).subarray(0, 2).toString() === 'PK', `${fs.statSync(weekFile).size} bytes`);
 
-// ---- Requests section renders both panels ----
-await requestsToggle.click();
+// ---- Requests card is open by default with the swap tab active ----
+await page.waitForTimeout(700);
+check('shift swap tab visible by default', await requestsToggle.isVisible());
+check('shift swap panel visible', await page.getByText('تبديل الشفت', { exact: true }).first().isVisible().catch(() => false));
+
+// ---- Break tab: panel renders there ----
+await breakTab.click();
 await page.waitForTimeout(700);
 check('break request panel visible', await page.getByText('طلب تغيير البريك', { exact: true }).first().isVisible().catch(() => false));
-check('shift swap panel visible', await page.getByText('تبديل الشفت', { exact: true }).first().isVisible().catch(() => false));
 await page.screenshot({ path: `${SHOTS}/requests-panel-admin.png`, fullPage: false });
 
 // ---- Feature 2: submit a break change request from the UI (admin for self) ----
@@ -87,7 +92,7 @@ await page.getByRole('menuitem', { name: /تسجيل الخروج|Log out/ }).cl
 await page.waitForSelector('input', { timeout: 15000 });
 await login('EMP101', '1234');
 check('employee login works', true);
-await requestsToggle.click();
+await breakTab.click();
 await page.waitForTimeout(700);
 check('employee sees break request form', await page.getByRole('button', { name: /إرسال الطلب للأدمن|Send to admin/ }).isVisible());
 await page.screenshot({ path: `${SHOTS}/requests-panel-employee.png`, fullPage: false });

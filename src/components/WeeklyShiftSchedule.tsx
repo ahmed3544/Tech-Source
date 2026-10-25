@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, Coffee, FileSpreadsheet, Loader2, Save, Users, Pencil, Trash2, Plus } from 'lucide-react';
+import { ArrowLeftRight, ChevronLeft, ChevronRight, Coffee, FileSpreadsheet, Loader2, Save, Users, Pencil, Trash2, Plus } from 'lucide-react';
 import { Employee, Language, Shift, DailyShiftAssignment } from '../types';
 import { ShiftManager } from './ShiftManager';
 import { ShiftSwapPanel } from './ShiftSwapPanel';
@@ -393,7 +393,8 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
 
   const [applyingBreakPreset, setApplyingBreakPreset] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [requestsOpen, setRequestsOpen] = useState(false);
+  const [requestsOpen, setRequestsOpen] = useState(true);
+  const [requestTab, setRequestTab] = useState<'swap' | 'break'>('swap');
 
   // Apply the approved agent-specific break plan for 25–31 Oct 2026 in one action.
   const applyOctoberBreakPreset = async () => {
@@ -778,17 +779,22 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
 
       {/* Schedule requests — visible to EVERYONE: employees submit break-change
           requests and shift swaps, leaders/admins review and approve them.
-          (ShiftSwapPanel used to live inside the leader-only settings panel,
-          which made the employee-side form unreachable.) */}
-      <div className="rounded-xl border border-slate-200 bg-slate-50 p-2 dark:border-slate-700 dark:bg-slate-900/60">
-        <button type="button" onClick={() => setRequestsOpen((v) => !v)} aria-expanded={requestsOpen} className="flex w-full items-center justify-between px-2 py-2 text-xs font-black text-slate-700 hover:bg-slate-100/70 rounded-lg dark:text-slate-200 dark:hover:bg-slate-800/60">
-          <span className="flex items-center gap-2"><Coffee className="h-4 w-4 text-red-500 dark:text-red-400" />{lang === 'ar' ? 'طلبات الجدول — تبديل الشيفت / تغيير البريك' : 'Schedule requests — Shift swap / Break change'}</span>
-          <ChevronLeft className={`h-4 w-4 transition-transform ${requestsOpen ? '-rotate-90' : 'rotate-0 rtl:rotate-180'}`} />
-        </button>
+          Rendered as a prominent always-visible card with explicit tabs so the
+          features are discoverable (previously a collapsed strip that read as
+          "missing"). */}
+      <div className="rounded-xl border-2 border-blue-300 bg-slate-50 p-2 shadow-sm dark:border-blue-500/40 dark:bg-slate-900/60">
+        <div className="flex flex-wrap items-center justify-between gap-2 px-1 py-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="flex items-center gap-2 text-xs font-black text-slate-700 dark:text-slate-200">{lang === 'ar' ? 'طلبات الجدول' : 'Schedule requests'}</span>
+            <button type="button" onClick={() => { setRequestTab('swap'); setRequestsOpen(true); }} aria-expanded={requestsOpen} aria-pressed={requestsOpen && requestTab === 'swap'} className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-black transition ${requestsOpen && requestTab === 'swap' ? 'bg-emerald-600 text-white shadow' : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800'}`}><ArrowLeftRight className="h-3.5 w-3.5" />{lang === 'ar' ? 'تبديل الشيفت' : 'Shift swap'}</button>
+            <button type="button" onClick={() => { setRequestTab('break'); setRequestsOpen(true); }} aria-expanded={requestsOpen} aria-pressed={requestsOpen && requestTab === 'break'} className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-black transition ${requestsOpen && requestTab === 'break' ? 'bg-red-500 text-white shadow' : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800'}`}><Coffee className="h-3.5 w-3.5" />{lang === 'ar' ? 'تغيير البريك' : 'Break change'}</button>
+          </div>
+          <button type="button" onClick={() => setRequestsOpen((v) => !v)} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800">{requestsOpen ? (lang === 'ar' ? 'إخفاء' : 'Hide') : (lang === 'ar' ? 'إظهار' : 'Show')}</button>
+        </div>
         {requestsOpen && (
           <div className="mt-2 space-y-3">
-            <BreakRequestPanel employees={employees} currentUser={currentUser} lang={lang} breaksByDate={breaksByDate} onAuthFailure={onAuthFailure} onBreaksApproved={refreshBreaksFor} />
-            <ShiftSwapPanel employees={employees} shifts={shifts} assignments={assignments} currentUser={currentUser} lang={lang} />
+            {requestTab === 'break' && <BreakRequestPanel employees={employees} currentUser={currentUser} lang={lang} breaksByDate={breaksByDate} onAuthFailure={onAuthFailure} onBreaksApproved={refreshBreaksFor} />}
+            {requestTab === 'swap' && <ShiftSwapPanel employees={employees} shifts={shifts} assignments={assignments} currentUser={currentUser} lang={lang} />}
           </div>
         )}
       </div>
