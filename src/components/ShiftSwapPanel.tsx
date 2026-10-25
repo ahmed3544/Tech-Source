@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ArrowLeftRight, Check, Clock3, X } from 'lucide-react';
 import { DailyShiftAssignment, Employee, Language, Notification, Shift, ShiftSwapRequest } from '../types';
+import { authHeaders } from '../utils/errors';
 
 interface Props {
   employees: Employee[];
@@ -88,6 +89,22 @@ export const ShiftSwapPanel: React.FC<Props> = ({ employees, shifts, assignments
     return () => { cancelled = true; window.removeEventListener('shift-swap-notification-action', onAction); };
   }, [employees]);
 
+  /** Fire-and-forget audit trail entry for the swap flow (server validates the
+      actor from the auth headers — the body can never impersonate anyone). */
+  const reportActivity = (action: string, request: ShiftSwapRequest, extra: Record<string, unknown> = {}) => {
+    void fetch('/api/activity-log', {
+      method: 'POST', credentials: 'include', cache: 'no-store',
+      headers: authHeaders({ 'Content-Type': 'application/json', Accept: 'application/json' }),
+      body: JSON.stringify({
+        action,
+        entityType: 'swap',
+        entityId: request.id,
+        entityLabel: `${request.date}: ${shiftLabel(shifts.find(s => s.id === request.requesterShiftId))} ↔ ${shiftLabel(shifts.find(s => s.id === request.targetShiftId))}`,
+        details: { requester: request.requesterId, target: request.targetEmployeeId, ...extra },
+      }),
+    }).catch(() => {});
+  };
+
   const respondAsTarget = async (swapId: string, status: 'accepted' | 'rejected') => {
     if (!currentUser || isLeader) return;
     const request = requests.find(r => r.id === swapId && r.targetEmployeeId === currentUser.id && r.status === 'awaiting_target');
@@ -106,6 +123,7 @@ export const ShiftSwapPanel: React.FC<Props> = ({ employees, shifts, assignments
       nextNotifications = [...nextNotifications, makeNotification(request.requesterId, 'shift_swap_rejected', lang === 'ar' ? 'تم رفض طلب تبديل الشفت' : 'Shift Swap Rejected', lang === 'ar' ? `${name(currentUser.id)} رفض طلب تبديل الشفت ليوم ${request.date}.` : `${name(currentUser.id)} rejected the shift swap request for ${request.date}.`, swapId, now)];
     }
     await syncState(nextRequests, nextNotifications);
+    reportActivity(status === 'accepted' ? 'swap.accept' : 'swap.reject', request, { targetResponded: status });
     setLoading(false);
   };
 
@@ -121,6 +139,7 @@ export const ShiftSwapPanel: React.FC<Props> = ({ employees, shifts, assignments
     const nextRequests = [...requests, req];
     const nextNotifications = [...notifications, makeNotification(targetId, 'shift_swap_requested', lang === 'ar' ? 'طلب تبديل شفت جديد' : 'New Shift Swap Request', lang === 'ar' ? `${name(currentUser.id)} أرسل لك طلب تبديل شفت ليوم ${date}: ${shiftLabel(mine)} ↔ ${shiftLabel(theirs)}. راجع الطلب واضغط موافقة أو رفض.` : `${name(currentUser.id)} sent you a shift swap request for ${date}: ${shiftLabel(mine)} ↔ ${shiftLabel(theirs)}. Review it and accept or reject.`, req.id, now)];
     await syncState(nextRequests, nextNotifications);
+    reportActivity('swap.submit', req, { status: 'awaiting_target' });
     setTargetId('');
   };
 
@@ -151,6 +170,7 @@ export const ShiftSwapPanel: React.FC<Props> = ({ employees, shifts, assignments
       ];
       await syncState(nextRequests, nextNotifications);
     }
+    reportActivity(status === 'approved' ? 'swap.approve' : 'swap.reject', request, { reviewedBy: currentUser?.id, newStatus: status });
     setLoading(false);
   };
 
