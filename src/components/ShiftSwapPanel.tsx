@@ -139,7 +139,7 @@ export const ShiftSwapPanel: React.FC<Props> = ({ employees, shifts, assignments
   };
 
   const review = async (request: ShiftSwapRequest, status: 'approved' | 'rejected') => {
-    if (!isLeader || request.status !== 'pending') return;
+    if (!isLeader || request.status !== 'pending' || (request.requestType === 'break' && currentUser?.role !== 'admin')) return;
     setLoading(true);
     const now = new Date().toISOString();
     const nextRequests = requests.map(r => r.id === request.id ? { ...r, status, reviewedBy: currentUser?.id, reviewedAt: now } : r);
@@ -208,7 +208,7 @@ export const ShiftSwapPanel: React.FC<Props> = ({ employees, shifts, assignments
           <div className="flex items-center gap-2">
             <span className={`text-[10px] font-black px-2 py-1 rounded-lg ${r.status === 'approved' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' : r.status === 'rejected' ? 'bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300' : 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300'}`}>{r.status === 'approved' ? (lang === 'ar' ? 'معتمد' : 'Approved') : r.status === 'rejected' ? (lang === 'ar' ? 'مرفوض' : 'Rejected') : (lang === 'ar' ? 'موافقة الليدر مطلوبة' : 'Leader approval required')}</span>
             {!isLeader && r.targetEmployeeId === currentUser?.id && r.status === 'awaiting_target' && <><button disabled={loading} type="button" onClick={() => respondAsTarget(r.id, 'accepted')} className="p-2 rounded-lg bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300" title={lang === 'ar' ? 'موافقة' : 'Accept'}><Check className="w-4 h-4" /></button><button disabled={loading} type="button" onClick={() => respondAsTarget(r.id, 'rejected')} className="p-2 rounded-lg bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300" title={lang === 'ar' ? 'رفض' : 'Reject'}><X className="w-4 h-4" /></button></>}
-            {isLeader && r.status === 'pending' && <><button disabled={loading} type="button" onClick={() => review(r, 'approved')} className="p-2 rounded-lg bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300" title={lang === 'ar' ? 'اعتماد' : 'Approve'}><Check className="w-4 h-4" /></button><button disabled={loading} type="button" onClick={() => review(r, 'rejected')} className="p-2 rounded-lg bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300" title={lang === 'ar' ? 'رفض' : 'Reject'}><X className="w-4 h-4" /></button></>}
+            {isLeader && r.status === 'pending' && (r.requestType !== 'break' || currentUser?.role === 'admin') && <><button disabled={loading} type="button" onClick={() => review(r, 'approved')} className="p-2 rounded-lg bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300" title={lang === 'ar' ? 'اعتماد' : 'Approve'}><Check className="w-4 h-4" /></button><button disabled={loading} type="button" onClick={() => review(r, 'rejected')} className="p-2 rounded-lg bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300" title={lang === 'ar' ? 'رفض' : 'Reject'}><X className="w-4 h-4" /></button></>}
           </div>
         </div>
       </div>)}
