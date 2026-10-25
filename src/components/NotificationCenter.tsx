@@ -218,7 +218,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ currentU
     setShowPage(true);
   };
 
-  if (showPage) return <NotificationsPage currentUserId={currentUserId} lang={lang} onBack={() => { setShowPage(false); void load(true); }} />;
+  if (showPage) return <NotificationsPage currentUserId={currentUserId} lang={lang} onBack={() => { setShowPage(false); void load(true); }} onOpenNotification={() => { setShowPage(false); void load(true); }} />;
 
   return (
     <div ref={ref} className="relative flex items-center shrink-0 z-[100]" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
