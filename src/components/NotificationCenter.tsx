@@ -42,6 +42,9 @@ const titleFor = (n: Notification, lang: Language) => {
     shift_swap_requested: lang === 'ar' ? 'طلب تبديل شفت جديد' : 'New Shift Swap Request',
     shift_swap_accepted: lang === 'ar' ? 'تمت الموافقة على تبديل الشفت' : 'Shift Swap Accepted',
     shift_swap_rejected: lang === 'ar' ? 'تم رفض تبديل الشفت' : 'Shift Swap Rejected',
+    break_request_requested: lang === 'ar' ? 'طلب تغيير بريك جديد' : 'New Break Change Request',
+    break_request_approved: lang === 'ar' ? 'تمت الموافقة على تغيير البريك' : 'Break Change Approved',
+    break_request_rejected: lang === 'ar' ? 'تم رفض طلب تغيير البريك' : 'Break Change Rejected',
     admin_notice: lang === 'ar' ? 'إشعار إداري' : 'Admin Notice',
   };
   if (lang === 'ar') return lang === 'ar' ? (n.title?.trim() || titles[n.type] || n.type.replace(/_/g, ' ')) : (titles[n.type] || 'Notification');
@@ -72,6 +75,9 @@ const notificationMessageFor = (n, lang) => {
     shift_swap_requested: 'You received a new shift swap request.',
     shift_swap_accepted: 'The shift swap was accepted and is ready for leader review.',
     shift_swap_rejected: 'The shift swap request was rejected.',
+    break_request_requested: 'A new break change request requires your review.',
+    break_request_approved: 'Your break change request was approved and your schedule was updated.',
+    break_request_rejected: 'Your break change request was rejected.',
     admin_notice: 'You have a new administrative notice.',
   };
   return messages[n?.type] || 'You have a new notification.';

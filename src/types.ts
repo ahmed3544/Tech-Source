@@ -39,6 +39,9 @@ export type NotificationType =
   | 'shift_swap_requested'
   | 'shift_swap_accepted'
   | 'shift_swap_rejected'
+  | 'break_request_requested'
+  | 'break_request_approved'
+  | 'break_request_rejected'
   | 'admin_notice';
 
 /** A planned break configured as part of a shift template. */
@@ -78,6 +81,27 @@ export interface DailyShiftAssignment {
 }
 
 export type ShiftSwapStatus = 'awaiting_target' | 'pending' | 'approved' | 'rejected';
+
+/** Employee request to move one of their breaks to a new time window. */
+export type BreakChangeStatus = 'pending' | 'approved' | 'rejected';
+
+export interface BreakChangeRequest {
+  id: string;
+  employeeId: string;
+  date: string; // YYYY-MM-DD
+  currentStartTime?: string | null; // HH:mm, null when the day had no stored break
+  currentEndTime?: string | null; // HH:mm
+  proposedStartTime: string; // HH:mm
+  proposedEndTime: string; // HH:mm
+  reason?: string | null;
+  status: BreakChangeStatus;
+  requestedBy?: string | null;
+  reviewedBy?: string | null;
+  reviewedAt?: string | null;
+  reviewNotes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
 
 export interface ShiftSwapRequest {
   id: string;

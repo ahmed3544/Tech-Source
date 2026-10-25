@@ -61,6 +61,10 @@ await client.query(migrationSql); // employee_breaks + team columns
 // Idempotency proof: applying the migration twice must not fail.
 await client.query(migrationSql);
 
+const migration0004Sql = fs.readFileSync(path.join(tableDir, '../drizzle/0004_break_change_requests.sql'), 'utf8');
+await client.query(migration0004Sql); // break_change_requests
+await client.query(migration0004Sql); // idempotency proof
+
 await client.query(`INSERT INTO employees (id, code, name_ar, name_en, pin, role, status, shift_id, team_leader_id, company_id) VALUES
   ('admin-1',  'EMP001', 'Admin',    'Admin',    '1234',    'admin',    'active', 'shift-1', NULL,       'tech-source'),
   ('leader-1', 'EMP010', 'Leader',   'Leader',   'lead123', 'leader',   'active', 'shift-1', NULL,       'tech-source'),
@@ -83,6 +87,7 @@ process.env.DATABASE_URL = BASE_URL;
 // ---------------------------------------------------------------------------
 const { registerDirectScheduleSync } = await import('../server/schedule-sync-direct.js');
 const { registerEmployeeBreaks } = await import('../server/employee-breaks.js');
+const { registerBreakRequests } = await import('../server/break-requests.js');
 const { updateEmployeeHandler, createEmployeeHandler, deleteEmployeeHandler } = await import('../server/employees.js');
 const { sanitizeEmployees } = await import('../server/employee-sanitize.js');
 const { listNotificationsForUser, markAllNotificationsRead, markNotificationRead } = await import('../server/notification-reads.js');
@@ -91,6 +96,7 @@ const app = express();
 app.use(express.json({ limit: '1mb' }));
 registerDirectScheduleSync(app);
 registerEmployeeBreaks(app);
+registerBreakRequests(app);
 app.put('/api/employees/:id', (req: any, res: any) => updateEmployeeHandler(req, res));
 app.post('/api/employees', (req: any, res: any) => createEmployeeHandler(req, res));
 app.delete('/api/employees/:id', (req: any, res: any) => deleteEmployeeHandler(req, res));
@@ -577,6 +583,130 @@ await test('POST /api/notifications-read-all marks everything read', async () =>
   assert.equal(r.json?.success, true);
   const unread = await row(`SELECT COUNT(*)::int AS c FROM notifications WHERE recipient_id = 'emp-a' AND is_read = false`);
   assert.equal(unread[0].c, 0);
+});
+
+// ---------------------------------------------------------------------------
+// 9. Break change requests (employee → admin review → schedule + notification)
+// ---------------------------------------------------------------------------
+console.log('\n— Break change requests —');
+// Fresh state for this section: emp-a has a stored lunch break on 2026-11-03.
+await client.query(`INSERT INTO employee_breaks (id, company_id, employee_id, date, name, start_time, end_time, duration_minutes, created_at, updated_at)
+  VALUES ('brk-x-1', 'tech-source', 'emp-a', '2026-11-03', 'Lunch', '12:00', '13:00', 60, '2026-11-01T00:00:00Z', '2026-11-01T00:00:00Z')`);
+// The self-healing-schema tests earlier DROP + re-add team_leader_id, which
+// wipes the seeded team relations (dropping a column loses its data). Restore
+// them so team scoping is meaningful in this section.
+await client.query(`UPDATE employees SET team_leader_id = 'leader-1' WHERE id IN ('emp-a', 'emp-b')`);
+let outsiderEmployeeId = '';
+
+await test('POST /api/break-request without credentials → 401', async () => {
+  const r = await call('POST', '/api/break-request', { body: { date: '2026-11-03', proposedStartTime: '13:00', proposedEndTime: '14:00' } });
+  assert.equal(r.status, 401);
+  assert.equal(r.json?.success, false);
+});
+await test('Employee submits a break change request → pending row + leader notified', async () => {
+  const r = await call('POST', '/api/break-request', { headers: auth('emp-a', 'new-pin-9'), body: {
+    date: '2026-11-03', currentStartTime: '12:00', currentEndTime: '13:00', proposedStartTime: '13:00', proposedEndTime: '14:00', reason: 'Doctor visit',
+  } });
+  assert.equal(r.status, 200);
+  assert.equal(r.json?.request?.status, 'pending');
+  const dbRow = (await row(`SELECT status, employee_id, date FROM break_change_requests WHERE date = '2026-11-03' AND employee_id = 'emp-a'`))[0];
+  assert.equal(dbRow.status, 'pending');
+  const notif = await row(`SELECT id FROM notifications WHERE recipient_id = 'leader-1' AND type = 'break_request_requested'`);
+  assert.ok(notif.length >= 1, 'team leader should receive a break_request_requested notification');
+});
+await test('Duplicate pending request for the same date → 409', async () => {
+  const r = await call('POST', '/api/break-request', { headers: auth('emp-a', 'new-pin-9'), body: {
+    date: '2026-11-03', proposedStartTime: '14:00', proposedEndTime: '15:00',
+  } });
+  assert.equal(r.status, 409);
+  assert.match(r.json?.error, /pending/);
+});
+await test('Break request validation: end before start → 400, identical to current → 400', async () => {
+  const bad = await call('POST', '/api/break-request', { headers: auth('emp-b', '2222'), body: { date: '2026-11-04', proposedStartTime: '14:00', proposedEndTime: '13:00' } });
+  assert.equal(bad.status, 400);
+  const same = await call('POST', '/api/break-request', { headers: auth('emp-a', 'new-pin-9'), body: {
+    date: '2026-11-10', currentStartTime: '12:00', currentEndTime: '13:00', proposedStartTime: '12:00', proposedEndTime: '13:00',
+  } });
+  assert.equal(same.status, 400);
+  assert.match(same.json?.error, /identical/i);
+});
+await test('Plain employee cannot review requests → 403', async () => {
+  const pendingId = (await row(`SELECT id FROM break_change_requests WHERE employee_id = 'emp-a' AND status = 'pending'`))[0].id;
+  const r = await call('POST', '/api/break-request-review', { headers: auth('emp-b', '2222'), body: { id: pendingId, action: 'approve' } });
+  assert.equal(r.status, 403);
+});
+await test('Team leader approval rewrites the day breaks + notifies the employee', async () => {
+  const pendingId = (await row(`SELECT id FROM break_change_requests WHERE employee_id = 'emp-a' AND status = 'pending' AND date = '2026-11-03'`))[0].id;
+  const r = await call('POST', '/api/break-request-review', { headers: auth('leader-1', 'lead123'), body: { id: pendingId, action: 'approve' } });
+  assert.equal(r.status, 200);
+  assert.equal(r.json?.request?.status, 'approved');
+  assert.equal(r.json?.request?.reviewedBy, 'leader-1');
+  const breaks = await row(`SELECT start_time, end_time FROM employee_breaks WHERE employee_id = 'emp-a' AND date = '2026-11-03' ORDER BY start_time`);
+  assert.equal(breaks.length, 1);
+  assert.equal(breaks[0].start_time, '13:00');
+  assert.equal(breaks[0].end_time, '14:00');
+  const notif = await row(`SELECT id FROM notifications WHERE recipient_id = 'emp-a' AND type = 'break_request_approved'`);
+  assert.ok(notif.length >= 1, 'employee should receive an approval notification');
+});
+await test('Reviewing an already-reviewed request → 409', async () => {
+  const approvedId = (await row(`SELECT id FROM break_change_requests WHERE employee_id = 'emp-a' AND status = 'approved'`))[0].id;
+  const r = await call('POST', '/api/break-request-review', { headers: auth('admin-1', '1234'), body: { id: approvedId, action: 'reject' } });
+  assert.equal(r.status, 409);
+  assert.match(r.json?.error, /already reviewed/i);
+});
+await test('Leader outside the team cannot review → 403; admin approval adds break via shift fallback', async () => {
+  const created = await call('POST', '/api/employees', { headers: auth('admin-1', '1234'), body: { code: 'EMP900', nameAr: 'Outsider Agent', pin: '9009' } });
+  assert.equal(created.status, 201);
+  const outsiderId = created.json?.employee?.id as string;
+  outsiderEmployeeId = outsiderId;
+  const submitted = await call('POST', '/api/break-request', { headers: auth(outsiderId, '9009'), body: {
+    date: '2026-11-04', proposedStartTime: '10:00', proposedEndTime: '10:30', reason: 'No stored break yet',
+  } });
+  assert.equal(submitted.status, 200);
+  const pendingId = (await row(`SELECT id FROM break_change_requests WHERE employee_id = '${outsiderId}' AND status = 'pending'`))[0].id;
+  const denied = await call('POST', '/api/break-request-review', { headers: auth('leader-1', 'lead123'), body: { id: pendingId, action: 'approve' } });
+  assert.equal(denied.status, 403);
+  const approved = await call('POST', '/api/break-request-review', { headers: auth('admin-1', '1234'), body: { id: pendingId, action: 'approve' } });
+  assert.equal(approved.status, 200);
+  const breaks = await row(`SELECT start_time, end_time FROM employee_breaks WHERE employee_id = '${outsiderId}' AND date = '2026-11-04'`);
+  assert.equal(breaks.length, 1);
+  assert.equal(breaks[0].start_time, '10:00');
+  assert.equal(breaks[0].end_time, '10:30');
+});
+await test('Rejection notifies the employee and never touches the schedule', async () => {
+  const submitted = await call('POST', '/api/break-request', { headers: auth('emp-b', '2222'), body: {
+    date: '2026-11-05', proposedStartTime: '14:00', proposedEndTime: '15:00',
+  } });
+  assert.equal(submitted.status, 200);
+  const pendingId = (await row(`SELECT id FROM break_change_requests WHERE employee_id = 'emp-b' AND status = 'pending'`))[0].id;
+  const r = await call('POST', '/api/break-request-review', { headers: auth('leader-1', 'lead123'), body: { id: pendingId, action: 'reject', reviewNotes: 'Too busy that day' } });
+  assert.equal(r.status, 200);
+  assert.equal(r.json?.request?.status, 'rejected');
+  const leftover = await row(`SELECT id FROM employee_breaks WHERE employee_id = 'emp-b' AND date = '2026-11-05'`);
+  assert.equal(leftover.length, 0, 'rejected request must not modify breaks');
+  const notif = await row(`SELECT id FROM notifications WHERE recipient_id = 'emp-b' AND type = 'break_request_rejected'`);
+  assert.ok(notif.length >= 1);
+});
+await test('GET /api/break-requests scoping: self / team / all + cross-employee 403', async () => {
+  const own = await call('GET', '/api/break-requests', { headers: auth('emp-a', 'new-pin-9') });
+  assert.equal(own.status, 200);
+  assert.ok(own.json?.requests?.length >= 1);
+  assert.ok(own.json.requests.every((x: any) => x.employeeId === 'emp-a'), 'employee sees only own requests');
+
+  const leader = await call('GET', '/api/break-requests', { headers: auth('leader-1', 'lead123') });
+  assert.equal(leader.status, 200);
+  const leaderIds = new Set(leader.json.requests.map((x: any) => x.employeeId));
+  assert.ok(leaderIds.has('emp-a') && leaderIds.has('emp-b'), 'leader sees own team');
+  assert.ok(!leaderIds.has(outsiderEmployeeId), 'leader must NOT see the outsider request');
+  assert.deepEqual(Array.from(leaderIds).sort(), ['emp-a', 'emp-b'], 'leader sees exactly the two team members');
+
+  const admin = await call('GET', '/api/break-requests?status=approved', { headers: auth('admin-1', '1234') });
+  assert.equal(admin.status, 200);
+  assert.ok(admin.json.requests.length >= 2, 'admin sees all approved requests');
+  assert.ok(admin.json.requests.every((x: any) => x.status === 'approved'));
+
+  const probe = await call('GET', '/api/break-requests?employeeId=emp-a', { headers: auth('emp-b', '2222') });
+  assert.equal(probe.status, 403);
 });
 
 // ---------------------------------------------------------------------------
