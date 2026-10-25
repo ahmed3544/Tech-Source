@@ -193,6 +193,42 @@ if (empRowIdx > 0 && shiftCol > 1) {
 }
 await page.screenshot({ path: `${SHOTS}/import-excel-done.png`, fullPage: false });
 
+// ---- Activity log (audit trail): السجل — who changed what ----
+// The actions performed above (logins, break request submit + approve,
+// schedule edits, Excel import) must now be recorded server-side and
+// visible in the new السجل panel (leaders/admins only).
+
+// 1) API check with the admin's auth headers (from localStorage session).
+const activityJson = await page.evaluate(async () => {
+  try {
+    const saved = JSON.parse(localStorage.getItem('logged_in_user') || 'null');
+    const headers = { Accept: 'application/json' };
+    if (saved?.id) headers['x-auth-employee-id'] = String(saved.id);
+    if (saved?.pin) headers['x-auth-pin'] = String(saved.pin);
+    const r = await fetch('/api/activity-logs?limit=300', { headers });
+    return { status: r.status, body: await r.json() };
+  } catch (e) { return { status: 0, body: { error: String(e) } }; }
+});
+check('activity-logs API reachable', activityJson.status === 200 && activityJson.body?.success === true, `status=${activityJson.status}`);
+const logs = activityJson.body?.logs || [];
+const recordedActions = new Set(logs.map((l) => l.action));
+console.log('Recorded actions:', [...recordedActions].join(', '));
+check('activity log: sign-in recorded', recordedActions.has('auth.login'));
+check('activity log: break request submit recorded', recordedActions.has('break_request.submit'));
+check('activity log: break request approval recorded', recordedActions.has('break_request.approve'));
+check('activity log: excel import recorded', recordedActions.has('schedule.import_excel'));
+check('activity log: rows carry actor + timestamp', logs.length > 0 && logs.every((l) => l.actorId && l.createdAt), `rows=${logs.length}`);
+
+// 2) UI check: السجل button opens the panel populated with entries.
+await page.getByRole('button', { name: /^(السجل|Activity)$/ }).click();
+await page.waitForSelector('[data-testid="activity-log-rows"] > div', { timeout: 15000 });
+const uiRows = await page.locator('[data-testid="activity-log-rows"] > div').count();
+check('activity log panel opens with rows', uiRows > 0, `rows=${uiRows}`);
+await page.screenshot({ path: `${SHOTS}/activity-log-panel.png`, fullPage: false });
+await page.getByRole('button', { name: /إغلاق السجل|Close activity log/ }).click();
+await page.waitForSelector('[data-testid="activity-log-rows"]', { state: 'detached', timeout: 5000 }).catch(() => {});
+check('activity log panel closes', true);
+
 console.log(`\nConsole errors: ${errors.length}`);
 errors.slice(0, 5).forEach((e) => console.log('  !', e.slice(0, 200)));
 const failed = results.filter((r) => !r.ok);

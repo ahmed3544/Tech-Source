@@ -94,3 +94,26 @@ export const breakChangeRequests = pgTable('break_change_requests', {
 ]);
 
 export const loginAudit = pgTable('login_audit', { id: text('id').primaryKey(), companyId: text('company_id'), employeeId: text('employee_id'), loginIdentifier: text('login_identifier').notNull(), success: boolean('success').notNull().default(false), failureReason: text('failure_reason'), ipAddress: text('ip_address'), userAgent: text('user_agent'), createdAt: text('created_at').notNull(), });
+/**
+ * Activity log (audit trail) — who changed what in the application.
+ * Written by the server on every meaningful mutation (employees, schedule,
+ * breaks, break-change requests, shift swaps, logins). Read-only for
+ * leaders/admins through GET /api/activity-logs. Never modified afterwards.
+ */
+export const activityLogs = pgTable('activity_logs', {
+  id: text('id').primaryKey(),
+  companyId: text('company_id'),
+  actorId: text('actor_id').notNull(), // employee id of whoever performed the action
+  actorName: text('actor_name'),
+  actorRole: text('actor_role'),
+  action: text('action').notNull(), // employee.create | employee.update | employee.delete | schedule.update | schedule.import_excel | breaks.update | break_request.submit | break_request.approve | break_request.reject | swap.submit | swap.accept | swap.reject | swap.approve | auth.login
+  entityType: text('entity_type'), // employee | schedule | breaks | break_request | swap | auth
+  entityId: text('entity_id'),
+  entityLabel: text('entity_label'), // human-readable target (employee name, date range, ...)
+  details: text('details'), // JSON string with extra context (changed fields, counts, ...)
+  createdAt: text('created_at').notNull(), // ISO string
+}, (table) => [
+  index('activity_logs_created_at_idx').on(table.createdAt),
+  index('activity_logs_action_idx').on(table.action),
+  index('activity_logs_actor_idx').on(table.actorId),
+]);

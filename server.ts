@@ -15,6 +15,7 @@ import { registerDbWriteVerification } from "./server/db-write-verification.js";
 import { updateEmployeeHandler, createEmployeeHandler, deleteEmployeeHandler } from "./server/employees.js";
 import { registerEmployeeBreaks } from "./server/employee-breaks.js";
 import { registerBreakRequests } from "./server/break-requests.js";
+import { registerActivityLogs } from "./server/activity-logs.js";
 import { ensureSchema } from "./server/ensure-schema.js";
 import { listNotificationsForUser, markAllNotificationsRead, markNotificationRead } from "./server/notification-reads.js";
 import { sanitizeEmployees } from "./server/employee-sanitize.js";
@@ -102,6 +103,8 @@ app.post('/api/notifications-read-all', async (req:any, res:any) => {
 registerEmployeeBreaks(app);
 // Break change requests (employee → admin review → schedule update + notification).
 registerBreakRequests(app);
+// Activity log (audit trail): who changed what + read/write endpoints.
+registerActivityLogs(app);
 // Login is also served by the main server so non-Vercel deployments work.
 app.post('/api/login', (req:any, res:any) => loginHandler(req, res));
 

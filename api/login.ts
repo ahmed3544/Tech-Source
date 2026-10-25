@@ -3,6 +3,7 @@ import { db } from "../src/db/index.js";
 import * as schema from "../src/db/schema.js";
 import { INITIAL_EMPLOYEES } from "../src/mockData.js";
 import { passwordMatches, normalizeDigits } from "../server/passwords.js";
+import { logActivity } from "../server/activity-logs.js";
 
 function normalize(value: unknown) {
   return String(value ?? "").trim().toLowerCase();
@@ -101,6 +102,18 @@ export default async function handler(req: any, res: any) {
     const safeEmployee = { ...employee };
     delete safeEmployee.pin;
     await auditLogin({ employeeId: employee.id, loginIdentifier: loginCode, success: true, req });
+
+    // Activity log: successful sign-ins appear in the audit timeline too.
+    logActivity({
+      actorId: String(employee.id),
+      actorName: String(employee.nameAr || employee.nameEn || employee.code || employee.id),
+      actorRole: String(employee.role || 'employee'),
+      action: 'auth.login',
+      entityType: 'auth',
+      entityId: String(employee.id),
+      entityLabel: String(employee.code || loginCode),
+      companyId: employee.companyId ? String(employee.companyId) : 'tech-source',
+    });
 
     return res.status(200).json({
       success: true,

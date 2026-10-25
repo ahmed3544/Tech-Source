@@ -633,11 +633,14 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
       if (!window.confirm(confirmMessage)) return;
 
       // 1) Shift assignments / OFF / Holiday / Annual / clear — one bulk upsert.
+      // source='excel-import' makes the server log ONE schedule.import_excel
+      // audit entry (with breakDays) instead of a generic schedule.update,
+      // and silences the per-day breaks entries below.
       if (rowsPayload.length) {
         const response = await fetch('/api/schedule-sync', {
           method: 'POST', credentials: 'include', cache: 'no-store',
           headers: authHeaders({ 'Content-Type': 'application/json', Accept: 'application/json', 'Cache-Control': 'no-cache' }),
-          body: JSON.stringify({ dailyShiftAssignments: rowsPayload, syncTimestamp: stamp }),
+          body: JSON.stringify({ dailyShiftAssignments: rowsPayload, syncTimestamp: stamp, source: 'excel-import', breaksCount: preview.breaks.length }),
         });
         const data = await parseResponse(response);
         if (response.status === 401) {
@@ -655,7 +658,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
           const response = await fetch('/api/employee-breaks', {
             method: 'POST', credentials: 'include', cache: 'no-store',
             headers: authHeaders({ 'Content-Type': 'application/json', Accept: 'application/json', 'Cache-Control': 'no-cache' }),
-            body: JSON.stringify({ employeeId: entry.employeeId, date: entry.date, breaks: entry.breaks }),
+            body: JSON.stringify({ employeeId: entry.employeeId, date: entry.date, breaks: entry.breaks, source: 'excel-import' }),
           });
           if (response.ok) breaksSaved++;
         } catch { /* counted as not saved */ }

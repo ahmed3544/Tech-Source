@@ -3,6 +3,7 @@ import { db } from '../src/db/index.js';
 import * as schema from '../src/db/schema.js';
 import { canManageEmployee, findEmployeeById, requireManager } from './auth.js';
 import { sanitizeEmployee } from './employee-sanitize.js';
+import { logActivity } from './activity-logs.js';
 
 /**
  * Shared employee CRUD handlers used by both the Express server (server.ts,
@@ -112,6 +113,18 @@ export async function updateEmployeeHandler(req: any, res: any) {
     await db.update(schema.employees).set(values as any).where(eq(schema.employees.id, id));
     const updated = await findEmployeeById(id);
 
+    logActivity({
+      actorId: manager.id,
+      actorName: (manager as any).nameAr || (manager as any).nameEn || manager.id,
+      actorRole: manager.role,
+      action: 'employee.update',
+      entityType: 'employee',
+      entityId: id,
+      entityLabel: `${(updated as any)?.code || (existing as any).code} — ${(updated as any)?.nameEn || (updated as any)?.nameAr || (existing as any).nameEn || (existing as any).nameAr}`,
+      details: { fields: Object.keys(values).filter(k => k !== 'updatedAt') },
+      companyId: (existing as any).companyId,
+    });
+
     noStore(res);
     // The updated row never carries the pin back to the client: the manager
     // already knows the value they typed, and nobody else needs it.
@@ -166,6 +179,19 @@ export async function createEmployeeHandler(req: any, res: any) {
     };
     await db.insert(schema.employees).values(row as any);
     const created = await findEmployeeById(id);
+
+    logActivity({
+      actorId: manager.id,
+      actorName: (manager as any).nameAr || (manager as any).nameEn || manager.id,
+      actorRole: manager.role,
+      action: 'employee.create',
+      entityType: 'employee',
+      entityId: id,
+      entityLabel: `${code} — ${nameEn || nameAr}`,
+      details: { role: row.role, department: row.department },
+      companyId: row.companyId as string,
+    });
+
     return res.status(201).json({ success: true, employee: sanitizeEmployee(created), lastUpdated: Date.now() });
   } catch (error: any) {
     console.error('[EMPLOYEE-CREATE-ERROR]', error?.message || error);
@@ -196,6 +222,17 @@ export async function deleteEmployeeHandler(req: any, res: any) {
     const nextIds = Array.from(new Set([...oldIds, id])).slice(-5000);
     if (rows[0]) await db.update(schema.settings).set({ value: nextIds } as any).where(eq(schema.settings.key, key));
     else await db.insert(schema.settings).values({ key, value: nextIds } as any);
+
+    logActivity({
+      actorId: manager.id,
+      actorName: (manager as any).nameAr || (manager as any).nameEn || manager.id,
+      actorRole: manager.role,
+      action: 'employee.delete',
+      entityType: 'employee',
+      entityId: id,
+      entityLabel: `${(existing as any).code} — ${(existing as any).nameEn || (existing as any).nameAr}`,
+      companyId: (existing as any).companyId,
+    });
 
     return res.json({ success: true, deletedId: id, lastUpdated: Date.now() });
   } catch (error: any) {

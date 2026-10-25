@@ -2,6 +2,7 @@ import { eq, inArray } from 'drizzle-orm';
 import { db } from '../src/db/index.js';
 import * as schema from '../src/db/schema.js';
 import { canManageEmployee, isPlatformAdmin, requireManager } from './auth.js';
+import { logActivity } from './activity-logs.js';
 
 const asBoolean = (value:any) => {
   if (typeof value === 'boolean') return value;
@@ -103,6 +104,41 @@ export function registerDirectScheduleSync(app:any) {
       if(existingRows[0]) await db.update(schema.settings).set({value:assignments} as any).where(eq(schema.settings.key,'dailyShiftAssignments')); else await db.insert(schema.settings).values({key:'dailyShiftAssignments',value:assignments} as any);
       const stampKey='__sync_updated_at:dailyShiftAssignments'; const stampRow=await db.select().from(schema.settings).where(eq(schema.settings.key,stampKey));
       if(stampRow[0]) await db.update(schema.settings).set({value:stamp} as any).where(eq(schema.settings.key,stampKey)); else await db.insert(schema.settings).values({key:stampKey,value:stamp} as any);
+      // Activity log: one summary entry per successful schedule write. The
+      // Excel import reports itself with body.source='excel-import' so the
+      // audit trail can distinguish bulk imports from manual edits.
+      {
+        const isImport = String(req.body?.source ?? '') === 'excel-import';
+        const existingByKey = new Map<string, any>();
+        for (const row of existing) existingByKey.set(`${row.employeeId}|${row.date}`, row);
+        const changedItems: any[] = [];
+        for (const row of received) {
+          const prev = existingByKey.get(`${row.employeeId}|${row.date}`);
+          const from = prev ? (prev.isOffDay ? 'OFF' : (prev.shiftId || 'WORKING')) : null;
+          const to = row.clear ? null : (row.isOffDay ? 'OFF' : (row.shiftId || 'WORKING'));
+          if (row.clear) { if (prev) changedItems.push({ employeeId: row.employeeId, date: row.date, from, to }); continue; }
+          if (!prev || String(prev.shiftId || '') !== String(row.shiftId || '') || Boolean(prev.isOffDay) !== Boolean(row.isOffDay)) {
+            changedItems.push({ employeeId: row.employeeId, date: row.date, from, to });
+          }
+        }
+        if (changedItems.length || isImport) {
+          const dates = received.map((x: any) => String(x.date)).sort();
+          logActivity({
+            actorId: manager.id,
+            actorName: (manager as any).nameAr || (manager as any).nameEn || manager.id,
+            actorRole: manager.role,
+            action: isImport ? 'schedule.import_excel' : 'schedule.update',
+            entityType: 'schedule',
+            entityLabel: dates.length ? `${dates[0]} → ${dates[dates.length - 1]}` : null,
+            details: {
+              changes: changedItems.length,
+              received: received.length,
+              ...(isImport ? { breakDays: Math.max(0, Number(req.body?.breaksCount ?? 0) || 0) } : {}),
+              items: changedItems.slice(0, 40),
+            },
+          });
+        }
+      }
       console.log(`[schedule-sync] ${requestId} saved`, { received: received.length, total: assignments.length });
       return res.json({success:true,dailyShiftAssignments:assignments,lastUpdated:Date.now(),updatedAt:stamp,syncRequestId:requestId});
     } catch(error){console.error(`[direct-schedule-sync] ${requestId} failed`,error);return res.status(500).json({success:false,error:'DIRECT_SCHEDULE_SYNC_FAILED',syncRequestId:requestId});}

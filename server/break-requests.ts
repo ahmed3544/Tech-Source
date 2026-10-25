@@ -11,6 +11,7 @@ import {
   type AuthedEmployee,
 } from './auth.js';
 import { validateBreakList } from './employee-breaks.js';
+import { logActivity } from './activity-logs.js';
 import { ensureNotificationStorage, saveOne } from './notification-system-v2.js';
 import { publishNotification } from './notification-sse.js';
 import { sendPushToEmployee } from './fcm.js';
@@ -292,6 +293,18 @@ export function registerBreakRequests(app: any) {
       const employee = await findEmployeeById(employeeId);
       const employeeName = clean(employee?.nameAr) || clean(employee?.nameEn) || employeeId;
       const currentLabel = currentStart && currentEnd ? `${currentStart}-${currentEnd}` : 'لا يوجد بريك';
+
+      logActivity({
+        actorId: requester.id,
+        actorName: (requester as any).nameAr || (requester as any).nameEn || requester.id,
+        actorRole: isManagerRole(requester.role) ? 'leader' : 'employee',
+        action: 'break_request.submit',
+        entityType: 'break_request',
+        entityId: String(row.id),
+        entityLabel: `${clean(employee?.code) || employeeId} — ${employeeName} — ${date}`,
+        details: { from: currentLabel, to: `${proposedStart}-${proposedEnd}`, reason: reason || null },
+      });
+
       const recipients = await leaderRecipients(employeeId);
       for (const recipientId of recipients) {
         if (recipientId === requester.id) continue;
@@ -385,6 +398,18 @@ export function registerBreakRequests(app: any) {
       } as any).where(eq(schema.breakChangeRequests.id, id));
 
       const proposedLabel = `${request.proposedStartTime}-${request.proposedEndTime}`;
+
+      logActivity({
+        actorId: manager.id,
+        actorName: (manager as any).nameAr || (manager as any).nameEn || manager.id,
+        actorRole: manager.role,
+        action: approved ? 'break_request.approve' : 'break_request.reject',
+        entityType: 'break_request',
+        entityId: String(id),
+        entityLabel: `${clean(target.code) || String(request.employeeId)} — ${clean(target.nameAr) || clean(target.nameEn) || String(request.employeeId)} — ${String(request.date)}`,
+        details: { proposed: proposedLabel, reviewNotes: reviewNotes || null },
+      });
+
       if (approved) {
         await notify(
           String(request.employeeId),

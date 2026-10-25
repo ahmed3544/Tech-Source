@@ -2,6 +2,7 @@ import { and, eq, gte, lte } from 'drizzle-orm';
 import { db } from '../src/db/index.js';
 import * as schema from '../src/db/schema.js';
 import { canManageEmployee, findEmployeeById, requireManager } from './auth.js';
+import { logActivity } from './activity-logs.js';
 
 /**
  * Employee-specific breaks API.
@@ -145,6 +146,23 @@ export function registerEmployeeBreaks(app: any) {
           createdAt: now,
           updatedAt: now,
         } as any)));
+      }
+
+      // Activity log: one entry per manual breaks save. The Excel import
+      // reports its own summary via /api/schedule-sync (source='excel-import'),
+      // so its many per-day calls are skipped here to avoid spam.
+      if (String(req.body?.source ?? '') !== 'excel-import') {
+        logActivity({
+          actorId: manager.id,
+          actorName: (manager as any).nameAr || (manager as any).nameEn || manager.id,
+          actorRole: manager.role,
+          action: 'breaks.update',
+          entityType: 'breaks',
+          entityId: `${employeeId}|${date}`,
+          entityLabel: `${employee.code} — ${employee.nameAr || employee.nameEn} — ${date}`,
+          details: { breaks: breaks.map(b => `${b.startTime}-${b.endTime}`) },
+          companyId: employee.companyId ?? 'tech-source',
+        });
       }
 
       res.setHeader('Cache-Control', 'no-store');
