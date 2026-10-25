@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ArrowLeftRight, Check, Clock3, X } from 'lucide-react';
 import { DailyShiftAssignment, Employee, Language, Notification, Shift, ShiftSwapRequest } from '../types';
+import { authHeaders, parseResponse } from '../utils/errors';
 
 interface Props {
   employees: Employee[];
@@ -47,12 +48,21 @@ export const ShiftSwapPanel: React.FC<Props> = ({ employees, shifts, assignments
     localStorage.setItem('notifications', JSON.stringify(nextNotifications));
     if (nextAssignments !== assignments) localStorage.setItem('daily_shift_assignments', JSON.stringify(nextAssignments));
     try {
-      await fetch('/api/sync', {
+      const response = await fetch('/api/sync', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        cache: 'no-store',
+        headers: authHeaders({ 'Content-Type': 'application/json', Accept: 'application/json', 'Cache-Control': 'no-cache' }),
         body: JSON.stringify({ shiftSwapRequests: nextRequests, notifications: nextNotifications, ...(nextAssignments !== assignments ? { dailyShiftAssignments: nextAssignments } : {}) })
       });
-    } catch {}
+      if (!response.ok) {
+        const payload = await parseResponse(response);
+        throw new Error(String(payload?.error || payload?.message || `Request failed (${response.status})`));
+      }
+    } catch (error) {
+      console.error('[ShiftSwap] Failed to persist request/action:', error);
+      throw error;
+    }
   };
 
   const makeNotification = (recipientId: string, type: Notification['type'], title: string, message: string, swapId: string, now = new Date().toISOString()): Notification => ({
@@ -144,20 +154,75 @@ export const ShiftSwapPanel: React.FC<Props> = ({ employees, shifts, assignments
     const now = new Date().toISOString();
     const nextRequests = requests.map(r => r.id === request.id ? { ...r, status, reviewedBy: currentUser?.id, reviewedAt: now } : r);
     let nextNotifications = notifications;
-    if (status === 'approved') {
+    if (status === 'approved' && request.requestType === 'break') {
+      if (currentUser?.role !== 'admin') { setLoading(false); return; }
+      try {
+        const query = new URLSearchParams({ employeeId: request.requesterId, from: request.date, to: request.date });
+        const getResponse = await fetch(`/api/employee-breaks?${query.toString()}`, {
+          credentials: 'include', cache: 'no-store',
+          headers: authHeaders({ Accept: 'application/json', 'Cache-Control': 'no-cache' })
+        });
+        const existingPayload = await parseResponse(getResponse);
+        if (!getResponse.ok || existingPayload?.success !== true) throw new Error(String(existingPayload?.error || 'Could not load current breaks'));
+        let currentBreaks = Array.isArray(existingPayload?.breaksByDate?.[request.date]) ? existingPayload.breaksByDate[request.date] : [];
+        if (!currentBreaks.length) {
+          const assigned = assignmentAt(request.requesterId, request.date);
+          const assignedShift = shifts.find(s => s.id === assigned?.shiftId) || shifts.find(s => s.id === employees.find(e => e.id === request.requesterId)?.shiftId);
+          currentBreaks = Array.isArray(assignedShift?.breaks) ? assignedShift.breaks : [];
+        }
+        const matchIndex = currentBreaks.findIndex((b: any) => b.startTime === request.currentBreakStart && b.endTime === request.currentBreakEnd);
+        const updatedBreaks = [...currentBreaks];
+        const replacementBreak = {
+          ...(matchIndex >= 0 ? updatedBreaks[matchIndex] : {}),
+          id: matchIndex >= 0 ? updatedBreaks[matchIndex].id : `break-${request.id}`,
+          name: matchIndex >= 0 ? updatedBreaks[matchIndex].name : 'Break',
+          nameAr: matchIndex >= 0 ? updatedBreaks[matchIndex].nameAr : 'بريك',
+          nameEn: matchIndex >= 0 ? updatedBreaks[matchIndex].nameEn : 'Break',
+          startTime: request.requestedBreakStart,
+          endTime: request.requestedBreakEnd,
+          durationMinutes: (Number(String(request.requestedBreakEnd).split(':')[0]) * 60 + Number(String(request.requestedBreakEnd).split(':')[1])) - (Number(String(request.requestedBreakStart).split(':')[0]) * 60 + Number(String(request.requestedBreakStart).split(':')[1]))
+        };
+        if (matchIndex >= 0) updatedBreaks[matchIndex] = replacementBreak;
+        else updatedBreaks.push(replacementBreak);
+        const saveResponse = await fetch('/api/employee-breaks', {
+          method: 'POST', credentials: 'include', cache: 'no-store',
+          headers: authHeaders({ 'Content-Type': 'application/json', Accept: 'application/json', 'Cache-Control': 'no-cache' }),
+          body: JSON.stringify({ employeeId: request.requesterId, date: request.date, breaks: updatedBreaks })
+        });
+        const savedPayload = await parseResponse(saveResponse);
+        if (!saveResponse.ok || savedPayload?.success !== true) throw new Error(String(savedPayload?.error || 'Could not save approved break'));
+        nextNotifications = [...notifications, makeNotification(request.requesterId, 'shift_changed', lang === 'ar' ? 'تم اعتماد تغيير البريك' : 'Break Change Approved', lang === 'ar' ? `تم اعتماد البريك الجديد ليوم ${request.date}: ${request.requestedBreakStart}-${request.requestedBreakEnd}.` : `Your break change for ${request.date} was approved: ${request.requestedBreakStart}-${request.requestedBreakEnd}.`, request.id, now)];
+        await syncState(nextRequests, nextNotifications);
+      } catch (error) {
+        console.error('[ShiftSwap] Break approval failed:', error);
+        setLoading(false);
+        window.alert(lang === 'ar' ? 'تعذر حفظ تغيير البريك. لم يتم اعتماد الطلب؛ راجع صلاحيات الأدمن واتصال قاعدة البيانات.' : 'Could not save the break change. The request was not approved; check admin permissions and database connectivity.');
+        return;
+      }
+    } else if (status === 'approved') {
       const nextAssignments = [...assignments];
       const a = nextAssignments.findIndex(x => key(x.employeeId, x.date) === key(request.requesterId, request.date));
       const b = nextAssignments.findIndex(x => key(x.employeeId, x.date) === key(request.targetEmployeeId, request.date));
       const requesterCurrent = a >= 0 ? nextAssignments[a] : undefined;
       const targetCurrent = b >= 0 ? nextAssignments[b] : undefined;
-      if (!requesterCurrent || !targetCurrent) { setLoading(false); return; }
+      if (!requesterCurrent || !targetCurrent) {
+        setLoading(false);
+        window.alert(lang === 'ar' ? 'تعذر اعتماد الاسواب: لا يوجد سجل شيفت محفوظ لأحد الموظفين في هذا التاريخ.' : 'Cannot approve swap: a saved shift assignment is missing for one of the employees on this date.');
+        return;
+      }
       nextAssignments[a] = { ...requesterCurrent, shiftId: request.targetShiftId, assignedBy: currentUser?.id, updatedAt: now };
       nextAssignments[b] = { ...targetCurrent, shiftId: request.requesterShiftId, assignedBy: currentUser?.id, updatedAt: now };
       nextNotifications = [...notifications,
         makeNotification(request.requesterId, 'shift_changed', lang === 'ar' ? 'تم اعتماد تبديل الشفت' : 'Shift Swap Approved', lang === 'ar' ? `تم اعتماد تبديل الشفت مع ${name(request.targetEmployeeId)} ليوم ${request.date}. شفتك الآن ${shiftName(request.targetShiftId)}.` : `Your shift swap with ${name(request.targetEmployeeId)} for ${request.date} was approved. Your new shift is ${shiftName(request.targetShiftId)}.`, request.id, now),
         makeNotification(request.targetEmployeeId, 'shift_changed', lang === 'ar' ? 'تم اعتماد تبديل الشفت' : 'Shift Swap Approved', lang === 'ar' ? `تم اعتماد تبديل الشفت مع ${name(request.requesterId)} ليوم ${request.date}. شفتك الآن ${shiftName(request.requesterShiftId)}.` : `Your shift swap with ${name(request.requesterId)} for ${request.date} was approved. Your new shift is ${shiftName(request.requesterShiftId)}.`, request.id, now)
       ];
-      await syncState(nextRequests, nextNotifications, nextAssignments);
+      try { await syncState(nextRequests, nextNotifications, nextAssignments); }
+      catch (error) {
+        console.error('[ShiftSwap] Shift swap persistence failed:', error);
+        setLoading(false);
+        window.alert(lang === 'ar' ? 'تعذر حفظ الاسواب في قاعدة البيانات. لم يتم تأكيد نجاح التبديل.' : 'Could not save the shift swap to the database. The swap has not been confirmed.');
+        return;
+      }
     } else {
       nextNotifications = [...notifications,
         makeNotification(request.requesterId, 'shift_swap_rejected', lang === 'ar' ? 'تم رفض تبديل الشفت' : 'Shift Swap Rejected', lang === 'ar' ? `الليدر رفض تبديل الشفت مع ${name(request.targetEmployeeId)} ليوم ${request.date}.` : `The leader rejected the shift swap with ${name(request.targetEmployeeId)} for ${request.date}.`, request.id, now),
