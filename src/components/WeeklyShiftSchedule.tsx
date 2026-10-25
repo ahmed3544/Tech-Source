@@ -218,7 +218,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
         row[day] = status.status === 'off' ? (lang === 'ar' ? 'راحة' : 'OFF')
           : status.status === 'holiday' ? (lang === 'ar' ? 'عطلة رسمية' : 'HOLIDAY')
           : status.status === 'annual' ? (lang === 'ar' ? 'إجازة سنوية' : 'ANNUAL LEAVE')
-          : shift ? `${shift.startTime}-${shift.endTime}` : '';
+          : shift ? [`${shift.startTime}-${shift.endTime}`, ...(status.effectiveBreaks || []).map((b: any) => `${b.name || 'Break'} ${b.startTime}-${b.endTime}`)].join(' | ') : '';
       });
       return row;
     });
