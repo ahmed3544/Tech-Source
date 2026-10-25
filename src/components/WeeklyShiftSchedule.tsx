@@ -1,11 +1,12 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeftRight, ChevronLeft, ChevronRight, Coffee, FileSpreadsheet, Loader2, Save, Users, Pencil, Trash2, Plus } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowLeftRight, ChevronLeft, ChevronRight, Coffee, FileSpreadsheet, Loader2, Save, Upload, Users, Pencil, Trash2, Plus } from 'lucide-react';
 import { Employee, Language, Shift, DailyShiftAssignment } from '../types';
 import { ShiftManager } from './ShiftManager';
 import { ShiftSwapPanel } from './ShiftSwapPanel';
 import { BreakRequestPanel } from './BreakRequestPanel';
 import { authHeaders, errorToMessage, extractApiError, parseResponse } from '../utils/errors';
 import { exportScheduleToExcel } from '../utils/scheduleExport';
+import { ImportPreview, parseScheduleWorkbook } from '../utils/scheduleImport';
 import {
   DayStatus,
   HolidayRange,
@@ -36,6 +37,8 @@ interface WeeklyShiftScheduleProps {
 }
 
 const pad = (n: number) => String(n).padStart(2, '0');
+const DAY_NAMES_AR = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+const DAY_NAMES_EN = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const dateKey = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const startOfWeek = (value: Date) => { const d = new Date(value); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - d.getDay()); return d; };
 const addDays = (value: Date, amount: number) => { const d = new Date(value); d.setDate(d.getDate() + amount); return d; };
@@ -160,7 +163,12 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
   const [breakDraft, setBreakDraft] = useState<ScheduleBreak[]>([]);
   const [breakSaving, setBreakSaving] = useState(false);
   const [breakError, setBreakError] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'week' | 'month'>('week');
+  const [viewMode, setViewMode] = useState<'week' | 'month' | 'day'>('week');
+  const [dayDate, setDayDate] = useState(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; });
+  const [importing, setImporting] = useState(false);
+  const importInputRef = useRef<HTMLInputElement | null>(null);
+  const requestsCardRef = useRef<HTMLDivElement | null>(null);
+  const [cardFlash, setCardFlash] = useState(false);
   const [mobileDayIndex, setMobileDayIndex] = useState(() => new Date().getDay());
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
   const [editPanelOpen, setEditPanelOpen] = useState(true);
@@ -264,6 +272,51 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
     void loadBreaks();
     return () => { cancelled = true; };
   }, [employee?.id, weekStart]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Navigate the day view to an arbitrary date (keeps week + mobile index in sync). */
+  const goToDate = (value: Date) => {
+    const day = new Date(value); day.setHours(0, 0, 0, 0);
+    setDayDate(day);
+    setWeekStart(startOfWeek(day));
+    setMobileDayIndex(day.getDay());
+  };
+
+  // Clicking a notification (bell dropdown or the full notifications page)
+  // jumps to the Schedule requests card: break_* → break tab, everything
+  // else (shift_swap_*, shift_changed) → shift swap tab. The card scrolls
+  // into view and flashes so the user can't miss it.
+  useEffect(() => {
+    const onNavigate = (event: Event) => {
+      const detail = (event as CustomEvent<{ type?: string } | undefined>).detail;
+      const type = String(detail?.type || '');
+      setRequestTab(/break/i.test(type) ? 'break' : 'swap');
+      setRequestsOpen(true);
+      setCardFlash(true);
+      window.setTimeout(() => requestsCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 60);
+      window.setTimeout(() => setCardFlash(false), 2600);
+    };
+    window.addEventListener('techsource:navigate-notification', onNavigate);
+    return () => window.removeEventListener('techsource:navigate-notification', onNavigate);
+  }, []);
+
+  // Day view: breaks for the selected date (fetched when not already cached
+  // from the visible-week load — e.g. after navigating to another week).
+  const dayViewKey = dateKey(dayDate);
+  useEffect(() => {
+    if (viewMode !== 'day' || !employee || breaksByDate[dayViewKey]) return;
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const response = await fetch(`/api/employee-breaks?employeeId=${encodeURIComponent(employee.id)}&from=${dayViewKey}&to=${dayViewKey}`, { cache: 'no-store', headers: { Accept: 'application/json' } });
+        if (!response.ok) return;
+        const data = await parseResponse(response);
+        const forDay = data?.breaksByDate?.[dayViewKey];
+        if (!cancelled && data?.success && Array.isArray(forDay)) setBreaksByDate(prev => ({ ...prev, [dayViewKey]: forDay }));
+      } catch { /* employee-specific breaks are optional */ }
+    };
+    void load();
+    return () => { cancelled = true; };
+  }, [viewMode, dayViewKey, employee?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const valueFor = (key: string) => {
     if (draft[key] !== undefined) return draft[key];
@@ -495,6 +548,9 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
 
   const weekLabel = `${dateKey(days[0].date)} → ${dateKey(days[6].date)}`;
   const rangeLabel = `${fmtDMY(days[0].date)} – ${fmtDMY(days[6].date)}`;
+  const toolbarRangeLabel = viewMode === 'day'
+    ? `${lang === 'ar' ? DAY_NAMES_AR[dayDate.getDay()] : DAY_NAMES_EN[dayDate.getDay()]} · ${fmtDMY(dayDate)}`
+    : rangeLabel;
 
   /** Fetches employee-specific breaks for every visible employee over [from,to]. */
   const fetchExportBreaks = async (from: string, to: string) => {
@@ -544,6 +600,80 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
     } catch (err: unknown) {
       setError(errorToMessage(err, lang === 'ar' ? 'تعذر تصدير ملف Excel' : 'Could not export the Excel file'));
     } finally { setExporting(false); }
+  };
+
+  /** Feature: "Import Excel" — applies a weekly roster workbook (round-trip of
+      the export) to the DISPLAYED week: shift assignments via /api/schedule-sync
+      (upsert per employee+date, team-scoped server-side) and employee breaks
+      via /api/employee-breaks. Parsed cells are previewed and confirmed first. */
+  const handleImportExcel = async (file: File) => {
+    if (importing || !isLeader) return;
+    setImporting(true); setError(null); setMessage(null);
+    try {
+      const XLSX = await import('xlsx');
+      const buffer = await file.arrayBuffer();
+      const workbook = XLSX.read(buffer, { type: 'array' });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      if (!sheet) throw new Error(lang === 'ar' ? 'الملف لا يحتوي على أوراق عمل.' : 'The file has no worksheets.');
+      const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: '' }) as unknown[][];
+      const preview: ImportPreview = parseScheduleWorkbook(rows, {
+        employees: visibleEmployees,
+        shifts,
+        weekDateKeys: days.map(d => d.key),
+        lang,
+      });
+      if (!preview.matchedDates.length) throw new Error(preview.warnings[0] || (lang === 'ar' ? 'لم يتم العثور على أعمدة تواريخ مطابقة.' : 'No matching date columns found.'));
+      const stamp = new Date().toISOString();
+      const rowsPayload = preview.assignments.map(r => ({ ...r, assignedBy: currentUser?.id, updatedAt: stamp }));
+      const total = rowsPayload.length + preview.breaks.length;
+      if (!total) throw new Error(preview.warnings[0] || (lang === 'ar' ? 'لم يتم العثور على بيانات قابلة للاستيراد.' : 'Nothing to import found.'));
+      const confirmMessage = lang === 'ar'
+        ? `سيتم تطبيق ${rowsPayload.length} تعيين شيفت و${preview.breaks.length} يوم بريكات على ${preview.employeeCount} موظف للأسبوع المعروض. متابعة؟`
+        : `Apply ${rowsPayload.length} shift assignments and ${preview.breaks.length} break days for ${preview.employeeCount} employees to the displayed week?`;
+      if (!window.confirm(confirmMessage)) return;
+
+      // 1) Shift assignments / OFF / Holiday / Annual / clear — one bulk upsert.
+      if (rowsPayload.length) {
+        const response = await fetch('/api/schedule-sync', {
+          method: 'POST', credentials: 'include', cache: 'no-store',
+          headers: authHeaders({ 'Content-Type': 'application/json', Accept: 'application/json', 'Cache-Control': 'no-cache' }),
+          body: JSON.stringify({ dailyShiftAssignments: rowsPayload, syncTimestamp: stamp }),
+        });
+        const data = await parseResponse(response);
+        if (response.status === 401) {
+          onAuthFailure?.();
+          throw new Error(lang === 'ar' ? 'انتهت الجلسة. يرجى تسجيل الدخول من جديد.' : 'Session ended. Please sign in again.');
+        }
+        if (!response.ok || data?.success === false) throw new Error(extractApiError(data, lang === 'ar' ? 'تعذر حفظ الجدول المستورد' : 'Server rejected the imported schedule'));
+        if (Array.isArray(data?.dailyShiftAssignments)) setAssignments(data.dailyShiftAssignments);
+      }
+
+      // 2) Per-employee per-date break schedules (replace-all per day).
+      let breaksSaved = 0;
+      for (const entry of preview.breaks) {
+        try {
+          const response = await fetch('/api/employee-breaks', {
+            method: 'POST', credentials: 'include', cache: 'no-store',
+            headers: authHeaders({ 'Content-Type': 'application/json', Accept: 'application/json', 'Cache-Control': 'no-cache' }),
+            body: JSON.stringify({ employeeId: entry.employeeId, date: entry.date, breaks: entry.breaks }),
+          });
+          if (response.ok) breaksSaved++;
+        } catch { /* counted as not saved */ }
+      }
+      if (employee) await refreshBreaksFor(employee.id, days[0].key);
+
+      const parts: string[] = [];
+      parts.push(rowsPayload.length ? (lang === 'ar' ? `تم استيراد ${rowsPayload.length} تعيين شيفت` : `${rowsPayload.length} shift assignments imported`) : '');
+      parts.push(breaksSaved ? (lang === 'ar' ? `و${breaksSaved} يوم بريكات` : `and ${breaksSaved} break days`) : '');
+      if (preview.warnings.length) parts.push(lang === 'ar' ? ` (${preview.warnings.length} تحذير)` : ` (${preview.warnings.length} warnings)`);
+      setMessage(parts.filter(Boolean).join(' ') + (lang === 'ar' ? ' بنجاح.' : ' successfully.'));
+      if (preview.warnings.length) console.warn('[import-excel] warnings:', preview.warnings);
+    } catch (err: unknown) {
+      setError(errorToMessage(err, lang === 'ar' ? 'تعذر استيراد ملف Excel' : 'Could not import the Excel file'));
+    } finally {
+      setImporting(false);
+      if (importInputRef.current) importInputRef.current.value = '';
+    }
   };
 
   /** Reloads the selected employee's breaks after a break-change approval. */
@@ -603,6 +733,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
 
   const gridHeightDesktop = (span / 60) * HOUR_PX_DESKTOP;
   const gridHeightMobile = (span / 60) * HOUR_PX_MOBILE;
+  const gridHeightDay = (span / 60) * 72;
   const todayKey = dateKey(new Date());
   const mobileDay = weekResults[Math.min(6, Math.max(0, mobileDayIndex))] ?? weekResults[0];
   const monthName = new Intl.DateTimeFormat(lang === 'ar' ? 'ar-EG' : 'en', { month: 'long' }).format(days[0].date);
@@ -745,25 +876,35 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
         </div>
       </header>
 
-      {/* Teleopti toolbar: range navigation + Today + Week/Month toggle. */}
+      {/* Teleopti toolbar: range navigation + Today + Day/Week/Month toggle. */}
       <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-2 dark:border-slate-700 dark:bg-slate-900/60">
         <div className="flex items-center justify-center gap-2">
-          <button type="button" onClick={() => setWeekStart(addDays(weekStart, -7))} className="shrink-0 rounded-lg border border-slate-300 bg-white p-2 text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800/70" aria-label={lang === 'ar' ? 'الأسبوع السابق' : 'Previous week'}><ChevronRight className="h-4 w-4" /></button>
-          <span className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-2 py-2 text-center font-mono text-xs font-black text-slate-800 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100">{rangeLabel}</span>
-          <button type="button" onClick={() => setWeekStart(addDays(weekStart, 7))} className="shrink-0 rounded-lg border border-slate-300 bg-white p-2 text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800/70" aria-label={lang === 'ar' ? 'الأسبوع التالي' : 'Next week'}><ChevronLeft className="h-4 w-4" /></button>
+          <button type="button" onClick={() => { if (viewMode === 'day') goToDate(addDays(dayDate, -1)); else setWeekStart(addDays(weekStart, -7)); }} className="shrink-0 rounded-lg border border-slate-300 bg-white p-2 text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800/70" aria-label={viewMode === 'day' ? (lang === 'ar' ? 'اليوم السابق' : 'Previous day') : (lang === 'ar' ? 'الأسبوع السابق' : 'Previous week')}><ChevronRight className="h-4 w-4" /></button>
+          <span data-range-label className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-2 py-2 text-center font-mono text-xs font-black text-slate-800 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100">{toolbarRangeLabel}</span>
+          <button type="button" onClick={() => { if (viewMode === 'day') goToDate(addDays(dayDate, 1)); else setWeekStart(addDays(weekStart, 7)); }} className="shrink-0 rounded-lg border border-slate-300 bg-white p-2 text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800/70" aria-label={viewMode === 'day' ? (lang === 'ar' ? 'اليوم التالي' : 'Next day') : (lang === 'ar' ? 'الأسبوع التالي' : 'Next week')}><ChevronLeft className="h-4 w-4" /></button>
         </div>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-2">
-            <button type="button" onClick={() => { const today = new Date(); setWeekStart(startOfWeek(today)); setMobileDayIndex(today.getDay()); setViewMode('week'); }} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800/70">📅 {lang === 'ar' ? 'اليوم' : 'Today'}</button>
+            <button type="button" onClick={() => { goToDate(new Date()); setViewMode('day'); }} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800/70">📅 {lang === 'ar' ? 'اليوم' : 'Today'}</button>
             <button type="button" onClick={handleExportExcel} disabled={exporting} title={lang === 'ar' ? 'تصدير العرض الحالي (أسبوعي/شهري) إلى Excel' : 'Export the current view (weekly/monthly) to Excel'} className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-500/40 dark:bg-emerald-500/15 dark:text-emerald-300 dark:hover:bg-emerald-500/25">
               {exporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileSpreadsheet className="h-3.5 w-3.5" />}
               {exporting ? (lang === 'ar' ? 'جاري التصدير...' : 'Exporting...') : (lang === 'ar' ? 'تصدير Excel' : 'Export to Excel')}
             </button>
+            {isLeader && (
+              <>
+                <input ref={importInputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleImportExcel(f); }} />
+                <button type="button" onClick={() => importInputRef.current?.click()} disabled={importing} title={lang === 'ar' ? 'استيراد جدول الأسبوع من ملف Excel (نفس تنسيق التصدير الأسبوعي)' : 'Import the weekly roster from an Excel file (same format as the weekly export)'} className="inline-flex items-center gap-1.5 rounded-lg border border-violet-300 bg-violet-50 px-3 py-2 text-xs font-black text-violet-700 hover:bg-violet-100 disabled:opacity-50 dark:border-violet-500/40 dark:bg-violet-500/15 dark:text-violet-300 dark:hover:bg-violet-500/25">
+                  {importing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                  {importing ? (lang === 'ar' ? 'جاري الاستيراد...' : 'Importing...') : (lang === 'ar' ? 'استيراد Excel' : 'Import Excel')}
+                </button>
+              </>
+            )}
             {isLeader && Object.keys(draft).length > 0 && (
               <button type="button" onClick={saveWeek} disabled={saving} className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs font-black text-white hover:bg-blue-700 disabled:opacity-50"><Save className="h-3.5 w-3.5" />{saving ? (lang === 'ar' ? 'جاري الحفظ...' : 'Saving...') : (lang === 'ar' ? `حفظ التعديلات (${Object.keys(draft).length})` : `Save changes (${Object.keys(draft).length})`)}</button>
             )}
           </div>
           <div className="flex overflow-hidden rounded-lg border border-slate-300 dark:border-slate-600">
+            <button type="button" onClick={() => setViewMode('day')} className={`px-4 py-2 text-xs font-black transition ${viewMode === 'day' ? 'bg-blue-600 text-white' : 'bg-white text-slate-700 hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'}`}>{lang === 'ar' ? 'يوم' : 'Day'}</button>
             <button type="button" onClick={() => setViewMode('week')} className={`px-4 py-2 text-xs font-black transition ${viewMode === 'week' ? 'bg-blue-600 text-white' : 'bg-white text-slate-700 hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'}`}>{lang === 'ar' ? 'أسبوع' : 'Week'}</button>
             <button type="button" onClick={() => setViewMode('month')} className={`px-4 py-2 text-xs font-black transition ${viewMode === 'month' ? 'bg-blue-600 text-white' : 'bg-white text-slate-700 hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'}`}>{lang === 'ar' ? 'شهر' : 'Month'}</button>
           </div>
@@ -782,7 +923,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
           Rendered as a prominent always-visible card with explicit tabs so the
           features are discoverable (previously a collapsed strip that read as
           "missing"). */}
-      <div className="rounded-xl border-2 border-blue-300 bg-slate-50 p-2 shadow-sm dark:border-blue-500/40 dark:bg-slate-900/60">
+      <div ref={requestsCardRef} data-requests-card className={`rounded-xl border-2 border-blue-300 bg-slate-50 p-2 shadow-sm transition-shadow dark:border-blue-500/40 dark:bg-slate-900/60 ${cardFlash ? 'ring-4 ring-blue-400' : ''}`}>
         <div className="flex flex-wrap items-center justify-between gap-2 px-1 py-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="flex items-center gap-2 text-xs font-black text-slate-700 dark:text-slate-200">{lang === 'ar' ? 'طلبات الجدول' : 'Schedule requests'}</span>
@@ -811,7 +952,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
               const resolved = resolveFor(cell.key);
               const isToday = cell.key === todayKey;
               return (
-                <button type="button" key={cell.key} onClick={() => { setWeekStart(startOfWeek(cell.date as Date)); setMobileDayIndex((cell.date as Date).getDay()); setViewMode('week'); }} className={`relative min-h-[64px] border-b border-l border-slate-100 p-1 text-start transition hover:bg-blue-50/60 dark:border-slate-800 dark:hover:bg-blue-500/10 ${isToday ? 'bg-blue-50 dark:bg-blue-500/15' : 'bg-white dark:bg-slate-900'}`}>
+                <button type="button" key={cell.key} onClick={() => { goToDate(cell.date as Date); setViewMode('day'); }} className={`relative min-h-[64px] border-b border-l border-slate-100 p-1 text-start transition hover:bg-blue-50/60 dark:border-slate-800 dark:hover:bg-blue-500/10 ${isToday ? 'bg-blue-50 dark:bg-blue-500/15' : 'bg-white dark:bg-slate-900'}`}>
                   <span className={`text-[11px] font-black ${isToday ? 'text-blue-700 dark:text-blue-300' : 'text-slate-700 dark:text-slate-200'}`}>{cell.dayNumber}</span>
                   {resolved.status === 'working' && resolved.shift && (
                     <div className="mt-0.5 rounded bg-orange-400 px-1 py-0.5 text-[8px] font-black leading-tight text-white">{lang === 'ar' ? (resolved.shift.nameAr || resolved.shift.name) : (resolved.shift.nameEn || resolved.shift.name)}<br />{resolved.shift.startTime}–{resolved.shift.endTime}</div>
@@ -825,7 +966,42 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
             })}
           </div>
         </div>
-      ) : (
+      ) : viewMode === 'day' ? (() => {
+        /* ---------------- DAY VIEW (one day, full screen size) ---------------- */
+        const day = { key: dayViewKey, date: dayDate, ar: DAY_NAMES_AR[dayDate.getDay()], en: DAY_NAMES_EN[dayDate.getDay()] };
+        const resolved = resolveFor(day.key);
+        const shift = resolved.shift;
+        const bannerSub = resolved.status === 'working' && shift
+          ? `${lang === 'ar' ? 'وردية' : 'Shift'} ${fmt12(timeToMinutes(shift.startTime), lang)} - ${fmt12(timeToMinutes(shift.endTime), lang)}`
+          : lang === 'ar' ? (STATUS_LABELS[resolved.label] ?? STATUS_LABELS.unassigned).ar : (STATUS_LABELS[resolved.label] ?? STATUS_LABELS.unassigned).en;
+        return (
+          <div className="relative rounded-xl border border-slate-200 p-2 touch-pan-y dark:border-slate-700" onTouchStart={e => setTouchStartX(e.touches[0]?.clientX ?? null)} onTouchEnd={e => { if (touchStartX === null) return; const delta = e.changedTouches[0].clientX - touchStartX; if (Math.abs(delta) > 55) goToDate(addDays(dayDate, delta < 0 ? 1 : -1)); setTouchStartX(null); }}>
+            <div className="mb-2 flex items-center justify-center gap-2">
+              <button type="button" onClick={() => goToDate(addDays(dayDate, -1))} className="shrink-0 rounded-lg border border-slate-300 bg-white p-2 text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800/70" aria-label={lang === 'ar' ? 'اليوم السابق' : 'Previous day'}><ChevronRight className="h-4 w-4" /></button>
+              <span className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-2 py-2 text-center text-xs font-black text-slate-800 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100">{lang === 'ar' ? day.ar : day.en} · <span dir="ltr" className="font-mono">{fmtDMY(dayDate)}</span></span>
+              <button type="button" onClick={() => goToDate(addDays(dayDate, 1))} className="shrink-0 rounded-lg border border-slate-300 bg-white p-2 text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800/70" aria-label={lang === 'ar' ? 'اليوم التالي' : 'Next day'}><ChevronLeft className="h-4 w-4" /></button>
+              <button type="button" onClick={() => goToDate(new Date())} className="shrink-0 rounded-lg border border-blue-300 bg-blue-50 px-3 py-2 text-xs font-black text-blue-700 hover:bg-blue-100 dark:border-blue-500/40 dark:bg-blue-500/15 dark:text-blue-300">{lang === 'ar' ? 'اليوم' : 'Today'}</button>
+            </div>
+            <div className="mb-2 rounded-lg bg-blue-600 px-3 py-2 text-center text-white">
+              <div className="text-sm font-black tracking-wide">{(lang === 'ar' ? day.ar : day.en).toUpperCase()} {dayDate.getDate()}</div>
+              <div className="text-[11px] font-bold opacity-95">{resolved.status === 'working' && shift ? <span dir="ltr">{fmt12(timeToMinutes(shift.startTime), lang)} - {fmt12(timeToMinutes(shift.endTime), lang)}</span> : bannerSub}</div>
+            </div>
+            <div className="relative flex" dir="ltr">
+              <div className="relative w-12 shrink-0" style={{ height: gridHeightDay }}>
+                {axisHours.map(minutes => (
+                  <span key={minutes} className="absolute -translate-y-1/2 text-end font-mono text-[9px] font-bold text-slate-400 dark:text-slate-500" style={{ top: `${pctTop(minutes)}%`, right: 4, width: '100%' }}>{fmt12(minutes, lang)}</span>
+                ))}
+              </div>
+              <div className={`relative flex-1 rounded-md border border-slate-200 bg-slate-50/60 dark:border-slate-800 dark:bg-slate-900/60 ${draft[day.key] !== undefined ? 'ring-2 ring-inset ring-blue-400' : ''}`} style={{ height: gridHeightDay }}>
+                {renderTimelineBlocks(resolved, { mobile: true, dayKey: day.key, dayLabel: lang === 'ar' ? day.ar : day.en })}
+              </div>
+            </div>
+            {isLeader && resolved.status === 'working' && (
+              <button type="button" onClick={() => openBreakEditor(day)} className="absolute bottom-3 end-3 flex h-11 w-11 items-center justify-center rounded-full bg-blue-600 text-white shadow-lg hover:bg-blue-700" aria-label={lang === 'ar' ? 'تعديل الاستراحات' : 'Edit breaks'}><Plus className="h-5 w-5" /></button>
+            )}
+          </div>
+        );
+      })() : (
         <>
           {/* ---------------- DESKTOP WEEK GRID (Teleopti style) ---------------- */}
           <div className="hidden overflow-x-auto rounded-xl border border-slate-200 lg:block dark:border-slate-700" dir="ltr">

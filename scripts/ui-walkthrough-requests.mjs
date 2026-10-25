@@ -1,7 +1,10 @@
-// Visual walkthrough for the 3 new features on the demo environment:
+// Visual walkthrough for the new features on the demo environment:
 //   1. Export to Excel (week + month) — real .xlsx downloads
 //   2. Break change request — employee submits, admin sees pending + approves
 //   3. Shift swap panel visible for everyone
+//   4. Notification click navigates to the requests card (flash + tab)
+//   5. Day view — one day sized to screen with prev/next navigation
+//   6. Import Excel — round-trip of the weekly export with one modified cell
 // Run while scripts/ui-demo-env.mjs is up on :3112.
 import { chromium } from 'playwright';
 import fs from 'node:fs';
@@ -74,6 +77,37 @@ await page.locator('button[title*="اعتماد وتحديث الجدول"], but
 await page.waitForSelector('text=/تم اعتماد الطلب|Request approved/i', { timeout: 15000 });
 check('approval from UI works (schedule updated + notified)', true);
 
+// ---- Notification click navigates to the requests card ----
+await page.locator('header').getByRole('button', { name: /فتح الإشعارات|Open notifications/i }).click();
+await page.waitForTimeout(600);
+const notifDialog = page.locator('[role="dialog"][aria-label*="الإشعارات"], [role="dialog"][aria-label*="Notification"]').first();
+const firstNotif = notifDialog.locator('button').filter({ hasText: /بريك|break|طلب|request|swap|شيفت/i }).first();
+if (await firstNotif.count()) {
+  await firstNotif.click();
+  await page.waitForTimeout(500);
+  const requestsCard = page.locator('[data-requests-card]');
+  check('notification click flashes the requests card', await requestsCard.evaluate((el) => el.className.includes('ring-4')).catch(() => false));
+  check('notification click opens the break tab', await page.getByText('طلب تغيير البريك', { exact: true }).first().isVisible().catch(() => false));
+  await page.screenshot({ path: `${SHOTS}/notification-navigates-card.png`, fullPage: false });
+} else {
+  check('notification item available for click-nav', false, 'no notification items for admin in demo — skipped');
+}
+
+// ---- Day view: Today → one day, sized to screen, prev/next navigation ----
+await page.getByRole('button', { name: /^(يوم|Day)$/ }).click();
+await page.waitForTimeout(500);
+check('day view opens from toggle', await page.getByRole('button', { name: /اليوم السابق|Previous day/ }).first().isVisible());
+const label1 = (await page.locator('[data-range-label]').innerText()).trim();
+await page.getByRole('button', { name: /اليوم التالي|Next day/ }).first().click();
+await page.waitForTimeout(400);
+const label2 = (await page.locator('[data-range-label]').innerText()).trim();
+check('day navigation moves to next day', label1 !== label2, `${label1} → ${label2}`);
+await page.getByRole('button', { name: 'اليوم', exact: true }).last().click();
+await page.waitForTimeout(400);
+await page.screenshot({ path: `${SHOTS}/day-view.png`, fullPage: false });
+await page.getByRole('button', { name: /^(أسبوع|Week)$/ }).click();
+await page.waitForTimeout(300);
+
 // ---- Month export ----
 await page.getByRole('button', { name: /^شهر$|^Month$/ }).click();
 await page.waitForTimeout(400);
@@ -118,6 +152,46 @@ const detailRows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[1]], { heade
 check('breaks detail sheet has data rows', detailRows.length >= 2, `${detailRows.length - 1} break rows`);
 console.log('\nRoster header:', JSON.stringify(rosterRows[0]));
 console.log('Sample row:', JSON.stringify(rosterRows[1]).slice(0, 220));
+
+// ---- Import Excel: round-trip the week export with one modified cell ----
+// Back to admin (import is leader-only), then upload a modified workbook.
+await page.getByRole('button', { name: /التفضيلات|Preferences/ }).click();
+await page.getByRole('menuitem', { name: /تسجيل الخروج|Log out/ }).click();
+await page.waitForSelector('input', { timeout: 15000 });
+await login('EMP002', '1234');
+check('admin re-login for import', true);
+
+const importWb = XLSX.readFile(weekFile);
+const importSheet = importWb.Sheets[importWb.SheetNames[0]];
+const importAoa = XLSX.utils.sheet_to_json(importSheet, { header: 1, defval: '' });
+const tmrLabel = `${String(tomorrow.getDate()).padStart(2, '0')}/${String(tomorrow.getMonth() + 1).padStart(2, '0')}`;
+let shiftCol = -1;
+(importAoa[0] || []).forEach((h, i) => { if (i >= 2 && String(h).includes(tmrLabel) && !String(h).includes('بريكات') && !/breaks?/i.test(String(h))) shiftCol = i; });
+const empRowIdx = importAoa.findIndex((r, i) => i > 0 && String(r[0]).includes('EMP101'));
+check('import fixture: found EMP101 row + tomorrow column', empRowIdx > 0 && shiftCol > 1, `row=${empRowIdx}, col=${shiftCol}, header=${String(importAoa[0]?.[shiftCol])}`);
+if (empRowIdx > 0 && shiftCol > 1) {
+  importAoa[empRowIdx][shiftCol] = 'OFF — راحة أسبوعية';
+  if (shiftCol + 1 < importAoa[empRowIdx].length) importAoa[empRowIdx][shiftCol + 1] = '—';
+  const outPath = '/tmp/import-roundtrip.xlsx';
+  // Replace sheet 0's content so the parser (which reads sheet 0) sees the modified roster.
+  importWb.Sheets[importWb.SheetNames[0]] = XLSX.utils.aoa_to_sheet(importAoa);
+  fs.writeFileSync(outPath, XLSX.write(importWb, { type: 'buffer', bookType: 'xlsx' }));
+
+  page.on('dialog', (d) => d.accept());
+  await page.locator('input[type="file"]').setInputFiles(outPath);
+  await page.waitForSelector('text=/تم استيراد|imported/i', { timeout: 25000 });
+  check('import applies the modified roster (success message)', true);
+
+  // Verify server state: tomorrow's EMP101 assignment is now an OFF day.
+  const employeesJson = await (await fetch(`${BASE}/api/data`)).json();
+  const emp101 = (employeesJson.employees || []).find((e) => String(e.code).toUpperCase() === 'EMP101');
+  const syncJson = await (await fetch(`${BASE}/api/schedule-sync`)).json();
+  const row = (syncJson.dailyShiftAssignments || []).find((a) => emp101 && String(a.employeeId) === String(emp101.id) && String(a.date).slice(0, 10) === tomorrowKey);
+  check('imported OFF persisted server-side', Boolean(row?.isOffDay), JSON.stringify(row));
+} else {
+  check('import fixture found', false, 'EMP101 row or date column missing from export');
+}
+await page.screenshot({ path: `${SHOTS}/import-excel-done.png`, fullPage: false });
 
 console.log(`\nConsole errors: ${errors.length}`);
 errors.slice(0, 5).forEach((e) => console.log('  !', e.slice(0, 200)));
