@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, Coffee, Save, Users, Pencil, Trash2, Plus } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Coffee, FileSpreadsheet, Loader2, Save, Users, Pencil, Trash2, Plus } from 'lucide-react';
 import { Employee, Language, Shift, DailyShiftAssignment } from '../types';
 import { ShiftManager } from './ShiftManager';
 import { ShiftSwapPanel } from './ShiftSwapPanel';
+import { BreakRequestPanel } from './BreakRequestPanel';
 import { authHeaders, errorToMessage, extractApiError, parseResponse } from '../utils/errors';
+import { exportScheduleToExcel } from '../utils/scheduleExport';
 import {
   DayStatus,
   HolidayRange,
@@ -162,7 +164,10 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
   const [mobileDayIndex, setMobileDayIndex] = useState(() => new Date().getDay());
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
   const [editPanelOpen, setEditPanelOpen] = useState(true);
-  const settingsOpen = externalSettingsOpen;
+  // The hide button inside the panel can only manage a LOCAL flag — the open
+  // intent itself comes from App via props (externalSettingsOpen).
+  const [settingsHiddenLocally, setSettingsHiddenLocally] = useState(false);
+  const settingsOpen = externalSettingsOpen && !settingsHiddenLocally;
 
   const isLeader = ['leader', 'admin', 'company_admin', 'platform_admin'].includes(String(currentUser?.role || ''));
 
@@ -387,6 +392,8 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
 
 
   const [applyingBreakPreset, setApplyingBreakPreset] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [requestsOpen, setRequestsOpen] = useState(false);
 
   // Apply the approved agent-specific break plan for 25–31 Oct 2026 in one action.
   const applyOctoberBreakPreset = async () => {
@@ -487,6 +494,67 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
 
   const weekLabel = `${dateKey(days[0].date)} → ${dateKey(days[6].date)}`;
   const rangeLabel = `${fmtDMY(days[0].date)} – ${fmtDMY(days[6].date)}`;
+
+  /** Fetches employee-specific breaks for every visible employee over [from,to]. */
+  const fetchExportBreaks = async (from: string, to: string) => {
+    const map: Record<string, Record<string, ScheduleBreak[]>> = {};
+    await Promise.all(visibleEmployees.map(async (person) => {
+      try {
+        const response = await fetch(`/api/employee-breaks?employeeId=${encodeURIComponent(person.id)}&from=${from}&to=${to}`, { cache: 'no-store', headers: { Accept: 'application/json' } });
+        if (!response.ok) return;
+        const data = await parseResponse(response);
+        if (data?.success && data?.breaksByDate) map[person.id] = data.breaksByDate;
+      } catch { /* shift-level fallback applies per day */ }
+    }));
+    return map;
+  };
+
+  /** Feature: "Export to Excel" — exports the week or the month currently shown. */
+  const handleExportExcel = async () => {
+    if (exporting || !visibleEmployees.length) return;
+    setExporting(true); setError(null); setMessage(null);
+    try {
+      const isMonth = viewMode === 'month';
+      const dates = isMonth
+        ? monthCells.cells.filter((c) => c.key).map((c) => c.key as string)
+        : days.map((d) => d.key);
+      const from = dates[0];
+      const to = dates[dates.length - 1];
+      const breaksByEmployee = await fetchExportBreaks(from, to);
+      const fileBase = isMonth
+        ? `TechSource-Schedule-Month-${from.slice(0, 7)}`
+        : `TechSource-Schedule-Week-${from}`;
+      const title = isMonth
+        ? (lang === 'ar' ? `جدول شهر ${monthName} ${days[0].date.getFullYear()}` : `Monthly roster — ${monthName} ${days[0].date.getFullYear()}`)
+        : (lang === 'ar' ? `جدول الأسبوع ${rangeLabel}` : `Weekly schedule ${rangeLabel}`);
+      await exportScheduleToExcel({
+        employees: visibleEmployees,
+        shifts,
+        assignments,
+        leaves: suppliedLeaves,
+        holidays: suppliedHolidays,
+        lang,
+        dates,
+        breaksByEmployee,
+        fileBase,
+        title,
+      });
+      setMessage(lang === 'ar' ? 'تم تنزيل ملف Excel بنجاح' : 'Excel file downloaded successfully');
+    } catch (err: unknown) {
+      setError(errorToMessage(err, lang === 'ar' ? 'تعذر تصدير ملف Excel' : 'Could not export the Excel file'));
+    } finally { setExporting(false); }
+  };
+
+  /** Reloads the selected employee's breaks after a break-change approval. */
+  const refreshBreaksFor = async (employeeId: string, date: string) => {
+    if (employeeId !== employee?.id) return;
+    try {
+      const response = await fetch(`/api/employee-breaks?employeeId=${encodeURIComponent(employeeId)}&from=${date}&to=${date}`, { cache: 'no-store', headers: { Accept: 'application/json' } });
+      if (!response.ok) return;
+      const data = await parseResponse(response);
+      if (data?.success && data?.breaksByDate) setBreaksByDate((prev) => ({ ...prev, ...data.breaksByDate }));
+    } catch { /* ignore */ }
+  };
 
   /* Timeline window: from the earliest activity hour to the latest one. */
   const timeWindow = useMemo(() => {
@@ -686,6 +754,10 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-2">
             <button type="button" onClick={() => { const today = new Date(); setWeekStart(startOfWeek(today)); setMobileDayIndex(today.getDay()); setViewMode('week'); }} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800/70">📅 {lang === 'ar' ? 'اليوم' : 'Today'}</button>
+            <button type="button" onClick={handleExportExcel} disabled={exporting} title={lang === 'ar' ? 'تصدير العرض الحالي (أسبوعي/شهري) إلى Excel' : 'Export the current view (weekly/monthly) to Excel'} className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-500/40 dark:bg-emerald-500/15 dark:text-emerald-300 dark:hover:bg-emerald-500/25">
+              {exporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileSpreadsheet className="h-3.5 w-3.5" />}
+              {exporting ? (lang === 'ar' ? 'جاري التصدير...' : 'Exporting...') : (lang === 'ar' ? 'تصدير Excel' : 'Export to Excel')}
+            </button>
             {isLeader && Object.keys(draft).length > 0 && (
               <button type="button" onClick={saveWeek} disabled={saving} className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs font-black text-white hover:bg-blue-700 disabled:opacity-50"><Save className="h-3.5 w-3.5" />{saving ? (lang === 'ar' ? 'جاري الحفظ...' : 'Saving...') : (lang === 'ar' ? `حفظ التعديلات (${Object.keys(draft).length})` : `Save changes (${Object.keys(draft).length})`)}</button>
             )}
@@ -699,11 +771,27 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
 
       {isLeader && settingsOpen && (
         <div className="space-y-3 rounded-2xl border border-blue-200 bg-slate-50 p-3 shadow-sm dark:border-blue-500/30 dark:bg-slate-900/80">
-          <div className="flex items-center justify-between gap-3"><h2 className="text-sm font-black text-slate-800 dark:text-slate-100">{lang === 'ar' ? 'إعدادات الجدول' : 'Schedule settings'}</h2><button type="button" onClick={() => setSettingsOpen(false)} className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-bold dark:border-slate-600">{lang === 'ar' ? 'إخفاء الإعدادات' : 'Hide settings'}</button></div>
+          <div className="flex items-center justify-between gap-3"><h2 className="text-sm font-black text-slate-800 dark:text-slate-100">{lang === 'ar' ? 'إعدادات الجدول' : 'Schedule settings'}</h2><button type="button" onClick={() => setSettingsHiddenLocally(true)} className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-bold dark:border-slate-600">{lang === 'ar' ? 'إخفاء الإعدادات' : 'Hide settings'}</button></div>
           <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-950"><ShiftManager shifts={shifts} lang={lang} onAddShift={onAddShift} onUpdateShift={onUpdateShift} onDeleteShift={onDeleteShift} /></div>
-          <ShiftSwapPanel employees={employees} shifts={shifts} assignments={assignments} currentUser={currentUser} lang={lang} />
         </div>
       )}
+
+      {/* Schedule requests — visible to EVERYONE: employees submit break-change
+          requests and shift swaps, leaders/admins review and approve them.
+          (ShiftSwapPanel used to live inside the leader-only settings panel,
+          which made the employee-side form unreachable.) */}
+      <div className="rounded-xl border border-slate-200 bg-slate-50 p-2 dark:border-slate-700 dark:bg-slate-900/60">
+        <button type="button" onClick={() => setRequestsOpen((v) => !v)} aria-expanded={requestsOpen} className="flex w-full items-center justify-between px-2 py-2 text-xs font-black text-slate-700 hover:bg-slate-100/70 rounded-lg dark:text-slate-200 dark:hover:bg-slate-800/60">
+          <span className="flex items-center gap-2"><Coffee className="h-4 w-4 text-red-500 dark:text-red-400" />{lang === 'ar' ? 'طلبات الجدول — تبديل الشيفت / تغيير البريك' : 'Schedule requests — Shift swap / Break change'}</span>
+          <ChevronLeft className={`h-4 w-4 transition-transform ${requestsOpen ? '-rotate-90' : 'rotate-0 rtl:rotate-180'}`} />
+        </button>
+        {requestsOpen && (
+          <div className="mt-2 space-y-3">
+            <BreakRequestPanel employees={employees} currentUser={currentUser} lang={lang} breaksByDate={breaksByDate} onAuthFailure={onAuthFailure} onBreaksApproved={refreshBreaksFor} />
+            <ShiftSwapPanel employees={employees} shifts={shifts} assignments={assignments} currentUser={currentUser} lang={lang} />
+          </div>
+        )}
+      </div>
 
       {!employee ? <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm font-bold text-slate-500 dark:border-slate-600 dark:text-slate-400">{lang === 'ar' ? 'لا يوجد موظف متاح للعرض' : 'No employee available'}</div> : viewMode === 'month' ? (
         /* ---------------- MONTH VIEW ---------------- */

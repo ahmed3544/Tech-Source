@@ -66,6 +66,7 @@ await client.query(`
     shift_id text NOT NULL, sequence integer NOT NULL);
 `);
 await client.query(fs.readFileSync(path.join(ROOT, 'drizzle/0003_employee_breaks.sql'), 'utf8'));
+await client.query(fs.readFileSync(path.join(ROOT, 'drizzle/0004_break_change_requests.sql'), 'utf8'));
 
 // Seed: admin + leader + two same-shift agents
 await client.query(`INSERT INTO employees (id, code, name_ar, name_en, pin, role, status, shift_id, company_id, team_leader_id) VALUES

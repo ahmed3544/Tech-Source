@@ -5,6 +5,7 @@ import {
   timestamp,
   boolean,
   uniqueIndex,
+  index,
   jsonb,
   real
 } from 'drizzle-orm/pg-core';
@@ -59,6 +60,37 @@ export const employeeBreaks = pgTable('employee_breaks', {
   updatedAt: text('updated_at').notNull(),
 }, (table) => [
   uniqueIndex('employee_breaks_employee_date_start_idx').on(table.employeeId, table.date, table.startTime),
+]);
+
+/**
+ * Break change requests — an employee asks the admin/leader to move one of
+ * their breaks on a specific date to a new time window. On approval the
+ * server rewrites the matching employee_breaks row for that date and notifies
+ * the employee; the request row keeps the full audit trail.
+ */
+export const breakChangeRequests = pgTable('break_change_requests', {
+  id: text('id').primaryKey(),
+  companyId: text('company_id'),
+  employeeId: text('employee_id').notNull(),
+  date: text('date').notNull(), // YYYY-MM-DD
+  currentStartTime: text('current_start_time'), // HH:mm — null when the day has no stored break yet
+  currentEndTime: text('current_end_time'), // HH:mm
+  proposedStartTime: text('proposed_start_time').notNull(), // HH:mm
+  proposedEndTime: text('proposed_end_time').notNull(), // HH:mm
+  reason: text('reason'),
+  status: text('status').notNull().default('pending'), // pending | approved | rejected
+  requestedBy: text('requested_by'),
+  reviewedBy: text('reviewed_by'),
+  reviewedAt: text('reviewed_at'),
+  reviewNotes: text('review_notes'),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+}, (table) => [
+  // Non-unique lookup index. "One pending request per employee+date" is
+  // enforced in the handler (a unique status index would wrongly block a
+  // second approval for the same date after an earlier one was approved).
+  index('break_change_requests_employee_date_idx').on(table.employeeId, table.date),
+  index('break_change_requests_status_idx').on(table.status),
 ]);
 
 export const loginAudit = pgTable('login_audit', { id: text('id').primaryKey(), companyId: text('company_id'), employeeId: text('employee_id'), loginIdentifier: text('login_identifier').notNull(), success: boolean('success').notNull().default(false), failureReason: text('failure_reason'), ipAddress: text('ip_address'), userAgent: text('user_agent'), createdAt: text('created_at').notNull(), });
