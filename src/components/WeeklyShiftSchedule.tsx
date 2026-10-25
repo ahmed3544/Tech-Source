@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import * as XLSX from 'xlsx';
 import { ChevronLeft, ChevronRight, Coffee, Save, Users, Pencil, Trash2, Plus } from 'lucide-react';
 import { Employee, Language, Shift, DailyShiftAssignment } from '../types';
 import { ShiftManager } from './ShiftManager';
@@ -199,6 +200,34 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
     const interval = window.setInterval(pullSchedule, 1500);
     return () => { cancelled = true; window.clearInterval(interval); };
   }, []);
+
+  const exportScheduleToExcel = () => {
+    const days = viewMode === 'month'
+      ? Array.from({ length: new Date(weekStart.getFullYear(), weekStart.getMonth() + 1, 0).getDate() }, (_, i) => dateKey(new Date(weekStart.getFullYear(), weekStart.getMonth(), i + 1)))
+      : Array.from({ length: 7 }, (_, i) => dateKey(addDays(weekStart, i)));
+    const rows = visibleEmployees.map(person => {
+      const row: Record<string, string> = {
+        [lang === 'ar' ? 'كود الموظف' : 'Employee Code']: person.code || '',
+        [lang === 'ar' ? 'اسم الموظف' : 'Employee Name']: lang === 'ar' ? person.nameAr : person.nameEn,
+        [lang === 'ar' ? 'القسم' : 'Department']: person.department || '',
+      };
+      days.forEach(day => {
+        const assignment = assignments.find(a => sameId(a.employeeId, person.id) && String(a.date).slice(0, 10) === day);
+        const status = resolveDayStatus({ dateKey: day, employeeId: person.id, assignment, shifts, leaves: leaveRequests, holidays });
+        const shift = status.shift;
+        row[day] = status.status === 'off' ? (lang === 'ar' ? 'راحة' : 'OFF')
+          : status.status === 'holiday' ? (lang === 'ar' ? 'عطلة رسمية' : 'HOLIDAY')
+          : status.status === 'annual' ? (lang === 'ar' ? 'إجازة سنوية' : 'ANNUAL LEAVE')
+          : shift ? `${shift.startTime}-${shift.endTime}` : '';
+      });
+      return row;
+    });
+    const sheet = XLSX.utils.json_to_sheet(rows);
+    sheet['!cols'] = [{ wch: 16 }, { wch: 28 }, { wch: 20 }, ...days.map(() => ({ wch: 16 }))];
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, sheet, lang === 'ar' ? 'جدول الشيفتات' : 'Shift Schedule');
+    XLSX.writeFile(workbook, `TECH_SOURCE_Schedule_${days[0]}_${days[days.length - 1]}.xlsx`);
+  };
 
   // Admin accounts manage schedules and approvals but are not rostered employees.
   // Filter them out before applying role/team visibility so they never receive a
@@ -686,6 +715,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-2">
             <button type="button" onClick={() => { const today = new Date(); setWeekStart(startOfWeek(today)); setMobileDayIndex(today.getDay()); setViewMode('week'); }} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800/70">📅 {lang === 'ar' ? 'اليوم' : 'Today'}</button>
+            <button type="button" onClick={exportScheduleToExcel} className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-800 hover:bg-emerald-100 dark:border-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">{lang === 'ar' ? 'تصدير Excel' : 'Export to Excel'}</button>
             {isLeader && Object.keys(draft).length > 0 && (
               <button type="button" onClick={saveWeek} disabled={saving} className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs font-black text-white hover:bg-blue-700 disabled:opacity-50"><Save className="h-3.5 w-3.5" />{saving ? (lang === 'ar' ? 'جاري الحفظ...' : 'Saving...') : (lang === 'ar' ? `حفظ التعديلات (${Object.keys(draft).length})` : `Save changes (${Object.keys(draft).length})`)}</button>
             )}
