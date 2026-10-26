@@ -480,7 +480,7 @@ export function registerDashboardImport(app: any) {
 
   // POST /api/dashboard-import/apply — managers apply a parsed workbook
   // (rows already extracted client-side from the uploaded Excel file).
-  app.post('/api/dashboard-import/apply', async (req: any, res: any) => {
+  const applyHandler = async (req: any, res: any) => {
     try {
       const manager = await requireManager(req, (status: number, body: unknown) => res.status(status).json(body));
       if (!manager) return;
@@ -517,10 +517,12 @@ export function registerDashboardImport(app: any) {
       console.error('[dashboard-import] apply failed:', error?.message || error);
       return res.status(500).json({ success: false, error: 'DASHBOARD_IMPORT_APPLY_FAILED' });
     }
-  });
+  };
+  app.post('/api/dashboard-import/apply', applyHandler);
+  app.post('/api/dashboard-import-apply', applyHandler); // single-segment alias (Vercel multi-segment routing quirk)
 
   // POST /api/dashboard-import/url — admins trigger a manual auto-sync run.
-  app.post('/api/dashboard-import/url', async (req: any, res: any) => {
+  const urlSyncHandler = async (req: any, res: any) => {
     let manager: AuthedEmployee | null = null;
     try {
       manager = await requireManager(req, (status: number, body: unknown) => res.status(status).json(body));
@@ -569,12 +571,14 @@ export function registerDashboardImport(app: any) {
       console.error('[dashboard-import] url sync failed:', error?.message || error);
       return res.status(500).json({ success: false, error: 'DASHBOARD_IMPORT_URL_FAILED' });
     }
-  });
+  };
+  app.post('/api/dashboard-import/url', urlSyncHandler);
+  app.post('/api/dashboard-import-url', urlSyncHandler); // single-segment alias
 
   // GET /api/dashboard-import/cron — Vercel Cron entry point (daily).
   // Authorized via CRON_SECRET bearer token, Vercel's x-vercel-cron header,
   // or admin auth headers (local testing).
-  app.get('/api/dashboard-import/cron', async (req: any, res: any) => {
+  const cronHandler = async (req: any, res: any) => {
     try {
       const secret = String(process.env.CRON_SECRET ?? '');
       const bearer = String(req.headers?.authorization ?? '').replace(/^Bearer\s+/i, '').trim();
@@ -634,5 +638,7 @@ export function registerDashboardImport(app: any) {
       console.error('[dashboard-import] cron failed:', error?.message || error);
       return res.status(500).json({ success: false, error: 'DASHBOARD_IMPORT_CRON_FAILED' });
     }
-  });
+  };
+  app.get('/api/dashboard-import/cron', cronHandler);
+  app.get('/api/dashboard-import-cron', cronHandler); // single-segment alias
 }

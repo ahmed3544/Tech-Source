@@ -6,7 +6,7 @@
     "api/[...path].ts": { "maxDuration": 60 }
   },
   "crons": [
-    { "path": "/api/dashboard-import/cron", "schedule": "0 1 * * *" }
+    { "path": "/api/dashboard-import-cron", "schedule": "0 1 * * *" }
   ],
   "rewrites": [
     {
