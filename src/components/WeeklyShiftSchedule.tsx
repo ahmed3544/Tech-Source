@@ -889,19 +889,6 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-2">
             <button type="button" onClick={() => { goToDate(new Date()); setViewMode('day'); }} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800/70">📅 {lang === 'ar' ? 'اليوم' : 'Today'}</button>
-            <button type="button" onClick={handleExportExcel} disabled={exporting} title={lang === 'ar' ? 'تصدير العرض الحالي (أسبوعي/شهري) إلى Excel' : 'Export the current view (weekly/monthly) to Excel'} className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-500/40 dark:bg-emerald-500/15 dark:text-emerald-300 dark:hover:bg-emerald-500/25">
-              {exporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileSpreadsheet className="h-3.5 w-3.5" />}
-              {exporting ? (lang === 'ar' ? 'جاري التصدير...' : 'Exporting...') : (lang === 'ar' ? 'تصدير Excel' : 'Export to Excel')}
-            </button>
-            {isLeader && (
-              <>
-                <input ref={importInputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleImportExcel(f); }} />
-                <button type="button" onClick={() => importInputRef.current?.click()} disabled={importing} title={lang === 'ar' ? 'استيراد جدول الأسبوع من ملف Excel (نفس تنسيق التصدير الأسبوعي)' : 'Import the weekly roster from an Excel file (same format as the weekly export)'} className="inline-flex items-center gap-1.5 rounded-lg border border-violet-300 bg-violet-50 px-3 py-2 text-xs font-black text-violet-700 hover:bg-violet-100 disabled:opacity-50 dark:border-violet-500/40 dark:bg-violet-500/15 dark:text-violet-300 dark:hover:bg-violet-500/25">
-                  {importing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
-                  {importing ? (lang === 'ar' ? 'جاري الاستيراد...' : 'Importing...') : (lang === 'ar' ? 'استيراد Excel' : 'Import Excel')}
-                </button>
-              </>
-            )}
             {isLeader && Object.keys(draft).length > 0 && (
               <button type="button" onClick={saveWeek} disabled={saving} className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs font-black text-white hover:bg-blue-700 disabled:opacity-50"><Save className="h-3.5 w-3.5" />{saving ? (lang === 'ar' ? 'جاري الحفظ...' : 'Saving...') : (lang === 'ar' ? `حفظ التعديلات (${Object.keys(draft).length})` : `Save changes (${Object.keys(draft).length})`)}</button>
             )}
@@ -917,6 +904,20 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
       {isLeader && settingsOpen && (
         <div className="space-y-3 rounded-2xl border border-blue-200 bg-slate-50 p-3 shadow-sm dark:border-blue-500/30 dark:bg-slate-900/80">
           <div className="flex items-center justify-between gap-3"><h2 className="text-sm font-black text-slate-800 dark:text-slate-100">{lang === 'ar' ? 'إعدادات الجدول' : 'Schedule settings'}</h2><button type="button" onClick={() => setSettingsHiddenLocally(true)} className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-bold dark:border-slate-600">{lang === 'ar' ? 'إخفاء الإعدادات' : 'Hide settings'}</button></div>
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-950">
+            <h3 className="w-full text-xs font-black text-slate-600 dark:text-slate-300">{lang === 'ar' ? 'استيراد وتصدير Excel' : 'Excel Import & Export'}</h3>
+            <button type="button" onClick={handleExportExcel} disabled={exporting} title={lang === 'ar' ? 'تصدير العرض الحالي (أسبوعي/شهري) إلى Excel' : 'Export the current view (weekly/monthly) to Excel'} className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-500/40 dark:bg-emerald-500/15 dark:text-emerald-300 dark:hover:bg-emerald-500/25">
+              {exporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileSpreadsheet className="h-3.5 w-3.5" />}
+              {exporting ? (lang === 'ar' ? 'جاري التصدير...' : 'Exporting...') : (lang === 'ar' ? 'تصدير Excel' : 'Export to Excel')}
+            </button>
+            {isLeader && <>
+              <input ref={importInputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleImportExcel(f); }} />
+              <button type="button" onClick={() => importInputRef.current?.click()} disabled={importing} title={lang === 'ar' ? 'استيراد جدول الأسبوع من ملف Excel (نفس تنسيق التصدير الأسبوعي)' : 'Import the weekly roster from an Excel file (same format as the weekly export)'} className="inline-flex items-center gap-1.5 rounded-lg border border-violet-300 bg-violet-50 px-3 py-2 text-xs font-black text-violet-700 hover:bg-violet-100 disabled:opacity-50 dark:border-violet-500/40 dark:bg-violet-500/15 dark:text-violet-300 dark:hover:bg-violet-500/25">
+                {importing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                {importing ? (lang === 'ar' ? 'جاري الاستيراد...' : 'Importing...') : (lang === 'ar' ? 'استيراد Excel' : 'Import Excel')}
+              </button>
+            </>}
+          </div>
           <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-950"><ShiftManager shifts={shifts} lang={lang} onAddShift={onAddShift} onUpdateShift={onUpdateShift} onDeleteShift={onDeleteShift} /></div>
         </div>
       )}
