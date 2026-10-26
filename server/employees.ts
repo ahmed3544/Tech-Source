@@ -142,6 +142,10 @@ export async function createEmployeeHandler(req: any, res: any) {
     if (!manager) return;
 
     const body = req.body ?? {};
+    const requestedRole = normalizeRoleValue(body.role ?? 'employee');
+    if (requestedRole === 'admin' && String((manager as any).role ?? '').toLowerCase() !== 'admin') {
+      return res.status(403).json({ success: false, error: 'Only an admin can create another admin account.' });
+    }
     const code = String(body.code ?? '').trim();
     const nameAr = String(body.nameAr ?? '').trim();
     const nameEn = String(body.nameEn ?? '').trim() || nameAr;
@@ -171,7 +175,7 @@ export async function createEmployeeHandler(req: any, res: any) {
       jobTitleEn: body.jobTitleEn ?? 'Employee',
       shiftId: body.shiftId ?? '',
       pin,
-      role: normalizeRoleValue(body.role ?? 'employee'),
+      role: requestedRole,
       joinedDate: body.joinedDate ?? now.slice(0, 10),
       status: 'active',
       annualLeaveBalance: Number.isFinite(Number(body.annualLeaveBalance)) ? Number(body.annualLeaveBalance) : 15,
