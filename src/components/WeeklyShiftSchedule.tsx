@@ -824,7 +824,6 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
         blocksFor(item.startTime, item.endTime).forEach((seg, sIdx) => {
           const barHeightPct = Math.max(seg.height, (8 / (mobile ? gridHeightMobile : gridHeightDesktop)) * 100);
           const barHeightPx = (barHeightPct / 100) * (mobile ? gridHeightMobile : gridHeightDesktop);
-          const showTime = barHeightPx >= 26;
           const timeRange = mobile
             ? `${fmt12(timeToMinutes(item.startTime), lang)} - ${fmt12(timeToMinutes(item.endTime), lang)}`
             : `${item.startTime}–${item.endTime}`;
@@ -839,7 +838,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
               aria-label={`${lang === 'ar' ? 'البريك' : 'Break'} ${timeRange}`}
             >
               <span dir="ltr" className="block w-full truncate text-[9px] font-black leading-tight text-white">{timeRange}</span>
-              {showTime && <span className="block w-full truncate text-[8px] font-bold leading-tight text-white">{breakName}</span>}
+              <span className="block w-full truncate text-[8px] font-bold leading-tight text-white">{breakName}</span>
             </button>
           );
         });
