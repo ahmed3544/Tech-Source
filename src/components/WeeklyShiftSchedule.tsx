@@ -213,17 +213,16 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
     return () => { cancelled = true; window.clearInterval(interval); };
   }, []);
 
-  // Admin accounts manage schedules and approvals but are not rostered employees.
-  // Filter them out before applying role/team visibility so they never receive a
-  // shift, break, OFF day, or employee-level schedule row.
+  // Admins and team leaders are accounts for managing the schedule, not
+  // roster rows. Exclude them from every employee/day schedule view.
   const rosterEmployees = useMemo(
-    // Ahmed Mahmoud is the designated non-rostered admin account. Do not
-    // exclude another person (for example Nada) merely because a stale role
-    // value was accidentally set to admin in imported/synced employee data.
-    () => employees.filter(e =>
-      !sameId(e.id, 'emp-002') &&
-      String(e.email || '').trim().toLowerCase() !== 'ahmed.mahmoud@techsource-gds.com'
-    ),
+    () => employees.filter(e => {
+      const role = String(e.role || 'employee').trim().toLowerCase().replace(/[ -]/g, '_');
+      const isManagementAccount = ['admin', 'company_admin', 'platform_admin', 'leader', 'team_leader', 'tl'].includes(role);
+      const isPrimaryAdmin = sameId(e.id, 'emp-002') ||
+        String(e.email || '').trim().toLowerCase() === 'ahmed.mahmoud@techsource-gds.com';
+      return !isManagementAccount && !isPrimaryAdmin;
+    }),
     [employees],
   );
 
