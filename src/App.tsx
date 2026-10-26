@@ -100,6 +100,7 @@ export default function App() {
   const [newName, setNewName] = useState('');
   const [newCode, setNewCode] = useState('');
   const [newPin, setNewPin] = useState('');
+  const [newRole, setNewRole] = useState<'employee' | 'leader' | 'admin'>('employee');
   const [editingEmployeeId, setEditingEmployeeId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [editCode, setEditCode] = useState('');
@@ -220,7 +221,7 @@ export default function App() {
       const response = await fetch('/api/employees', {
         method: 'POST', credentials: 'include', cache: 'no-store',
         headers: authHeaders({ 'Content-Type': 'application/json', Accept: 'application/json', 'Cache-Control': 'no-cache' }),
-        body: JSON.stringify({ code, nameAr: newName.trim(), nameEn: newName.trim(), pin: newPin.trim(), role: 'employee', department: 'CX' }),
+        body: JSON.stringify({ code, nameAr: newName.trim(), nameEn: newName.trim(), pin: newPin.trim(), role: newRole, department: 'CX' }),
       });
       const result = await parseResponse(response);
       if (response.status === 401) { forceReLogin(); return; }
@@ -229,8 +230,8 @@ export default function App() {
       const next = created ? [...employees, created] : employees;
       setEmployees(next);
       localStorage.setItem('attendance_employees', JSON.stringify(next));
-      setNewName(''); setNewCode(''); setNewPin(''); setShowAddEmployee(false);
-      setSuccessMessage(lang === 'ar' ? `تم إضافة الموظف ${code} بنجاح` : `Employee ${code} added successfully`);
+      setNewName(''); setNewCode(''); setNewPin(''); setNewRole('employee'); setShowAddEmployee(false);
+      setSuccessMessage(lang === 'ar' ? `تم إضافة ${newRole === 'admin' ? 'الأدمن' : newRole === 'leader' ? 'قائد الفريق' : 'الموظف'} ${code} بنجاح` : `${newRole === 'admin' ? 'Admin' : newRole === 'leader' ? 'Team Leader' : 'Employee'} ${code} added successfully`);
     } catch (e: unknown) { setError(errorToMessage(e, lang === 'ar' ? 'تعذر إضافة الموظف' : 'Could not add the employee')); }
     finally { setBusy(false); }
   };
@@ -382,7 +383,12 @@ export default function App() {
         {showAddEmployee && <form onSubmit={addEmployee} className="mt-4 space-y-3">
           <input required value={newName} onChange={e => setNewName(e.target.value)} placeholder={lang === 'ar' ? 'اسم الموظف' : 'Employee name'} className="w-full rounded-lg border px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100" />
           <input required value={newCode} onChange={e => setNewCode(e.target.value)} placeholder={lang === 'ar' ? 'كود الموظف' : 'Employee code'} className="w-full rounded-lg border px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100" />
-          <input required value={newPin} onChange={e => setNewPin(e.target.value)} placeholder={lang === 'ar' ? 'كلمة مرور مؤقتة' : 'Temporary password'} className="w-full rounded-lg border px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100" />
+          <input required type="password" autoComplete="new-password" value={newPin} onChange={e => setNewPin(e.target.value)} placeholder={lang === 'ar' ? 'كلمة مرور مؤقتة' : 'Temporary password'} className="w-full rounded-lg border px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100" />
+          <select value={newRole} onChange={e => setNewRole(e.target.value as 'employee' | 'leader' | 'admin')} className="w-full rounded-lg border px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
+            <option value="employee">{lang === 'ar' ? 'موظف' : 'Employee'}</option>
+            <option value="leader">{lang === 'ar' ? 'قائد فريق' : 'Team Leader'}</option>
+            <option value="admin">{lang === 'ar' ? 'أدمن' : 'Admin'}</option>
+          </select>
           <button disabled={busy} className="w-full rounded-lg bg-slate-900 px-3 py-2 text-sm font-bold text-white disabled:opacity-50 dark:bg-slate-700">{busy ? (lang === 'ar' ? 'جاري الحفظ...' : 'Saving...') : (lang === 'ar' ? 'حفظ الموظف' : 'Save employee')}</button>
         </form>}
         {error && <p className="mt-3 rounded-lg bg-red-50 p-3 text-xs text-red-700 dark:bg-red-500/15 dark:text-red-300">{error}</p>}
