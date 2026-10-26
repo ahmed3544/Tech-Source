@@ -30,7 +30,19 @@ export const ShiftSwapPanel: React.FC<Props> = ({ employees, shifts, assignments
   const assignmentAt = (employeeId: string, day: string) => assignments.find(x => x.employeeId === employeeId && x.date === day);
   const shiftAt = (employeeId: string, day: string) => {
     const assignment = assignmentAt(employeeId, day);
-    return assignment ? shifts.find(s => s.id === assignment.shiftId) : undefined;
+    if (!assignment || assignment.isOffDay || ['__OFF__', 'OFF', 'off'].includes(String(assignment.shiftId))) return undefined;
+    return shifts.find(s => s.id === assignment.shiftId);
+  };
+  const isOff = (employeeId: string, day: string) => {
+    const assignment = assignmentAt(employeeId, day);
+    return !!assignment && (assignment.isOffDay === true || ['__OFF__', 'OFF', 'off'].includes(String(assignment.shiftId)));
+  };
+  const assignmentLabel = (employeeId: string, day: string) => {
+    const assignment = assignmentAt(employeeId, day);
+    if (!assignment) return lang === 'ar' ? 'غير محدد' : 'Unassigned';
+    if (isOff(employeeId, day)) return 'OFF';
+    const shift = shifts.find(s => s.id === assignment.shiftId);
+    return shift ? `${shift.startTime}-${shift.endTime}` : (lang === 'ar' ? 'غير محدد' : 'Unassigned');
   };
   const shiftLabel = (shift?: Shift) => shift ? `${shift.startTime}-${shift.endTime}` : (lang === 'ar' ? 'غير محدد' : 'Unassigned');
   const name = (id: string) => { const e = employees.find(x => x.id === id); return e ? (lang === 'ar' ? e.nameAr : e.nameEn) : id; };
@@ -129,13 +141,18 @@ export const ShiftSwapPanel: React.FC<Props> = ({ employees, shifts, assignments
 
   const submit = async () => {
     if (!currentUser || isLeader || !date || !targetId || targetId === currentUser.id) return;
+    const mineAssignment = assignmentAt(currentUser.id, date);
+    const targetAssignment = assignmentAt(targetId, date);
     const mine = shiftAt(currentUser.id, date);
     const theirs = shiftAt(targetId, date);
-    if (!mine || !theirs) return;
+    if (!mineAssignment || !targetAssignment) return;
+    if (!mine && !isOff(currentUser.id, date)) return;
+    if (!theirs && !isOff(targetId, date)) return;
+    if (isOff(currentUser.id, date) && isOff(targetId, date)) return;
     const exists = requests.some(r => ['awaiting_target', 'pending'].includes(r.status) && r.date === date && ((r.requesterId === currentUser.id && r.targetEmployeeId === targetId) || (r.requesterId === targetId && r.targetEmployeeId === currentUser.id)));
     if (exists) return;
     const now = new Date().toISOString();
-    const req: ShiftSwapRequest = { id: `swap-${Date.now()}-${Math.random().toString(36).slice(2,8)}`, requesterId: currentUser.id, targetEmployeeId: targetId, date, requesterShiftId: mine.id, targetShiftId: theirs.id, status: 'awaiting_target', createdAt: now };
+    const req: ShiftSwapRequest = { id: `swap-${Date.now()}-${Math.random().toString(36).slice(2,8)}`, requesterId: currentUser.id, targetEmployeeId: targetId, date, requesterShiftId: mineAssignment.shiftId, targetShiftId: targetAssignment.shiftId, requesterWasOff: isOff(currentUser.id, date), targetWasOff: isOff(targetId, date), status: 'awaiting_target', createdAt: now };
     const nextRequests = [...requests, req];
     const nextNotifications = [...notifications, makeNotification(targetId, 'shift_swap_requested', lang === 'ar' ? 'طلب تبديل شفت جديد' : 'New Shift Swap Request', lang === 'ar' ? `${name(currentUser.id)} أرسل لك طلب تبديل شفت ليوم ${date}: ${shiftLabel(mine)} ↔ ${shiftLabel(theirs)}. راجع الطلب واضغط موافقة أو رفض.` : `${name(currentUser.id)} sent you a shift swap request for ${date}: ${shiftLabel(mine)} ↔ ${shiftLabel(theirs)}. Review it and accept or reject.`, req.id, now)];
     await syncState(nextRequests, nextNotifications);
@@ -156,8 +173,8 @@ export const ShiftSwapPanel: React.FC<Props> = ({ employees, shifts, assignments
       const requesterCurrent = a >= 0 ? nextAssignments[a] : undefined;
       const targetCurrent = b >= 0 ? nextAssignments[b] : undefined;
       if (!requesterCurrent || !targetCurrent) { setLoading(false); return; }
-      nextAssignments[a] = { ...requesterCurrent, shiftId: request.targetShiftId, assignedBy: currentUser?.id, updatedAt: now };
-      nextAssignments[b] = { ...targetCurrent, shiftId: request.requesterShiftId, assignedBy: currentUser?.id, updatedAt: now };
+      nextAssignments[a] = { ...requesterCurrent, shiftId: request.targetShiftId, isOffDay: request.targetWasOff ?? ['__OFF__', 'OFF', 'off'].includes(String(request.targetShiftId)), assignedBy: currentUser?.id, updatedAt: now };
+      nextAssignments[b] = { ...targetCurrent, shiftId: request.requesterShiftId, isOffDay: request.requesterWasOff ?? ['__OFF__', 'OFF', 'off'].includes(String(request.requesterShiftId)), assignedBy: currentUser?.id, updatedAt: now };
       nextNotifications = [...notifications,
         makeNotification(request.requesterId, 'shift_changed', lang === 'ar' ? 'تم اعتماد تبديل الشفت' : 'Shift Swap Approved', lang === 'ar' ? `تم اعتماد تبديل الشفت مع ${name(request.targetEmployeeId)} ليوم ${request.date}. شفتك الآن ${shiftName(request.targetShiftId)}.` : `Your shift swap with ${name(request.targetEmployeeId)} for ${request.date} was approved. Your new shift is ${shiftName(request.targetShiftId)}.`, request.id, now),
         makeNotification(request.targetEmployeeId, 'shift_changed', lang === 'ar' ? 'تم اعتماد تبديل الشفت' : 'Shift Swap Approved', lang === 'ar' ? `تم اعتماد تبديل الشفت مع ${name(request.requesterId)} ليوم ${request.date}. شفتك الآن ${shiftName(request.requesterShiftId)}.` : `Your shift swap with ${name(request.requesterId)} for ${request.date} was approved. Your new shift is ${shiftName(request.requesterShiftId)}.`, request.id, now)
@@ -186,18 +203,18 @@ export const ShiftSwapPanel: React.FC<Props> = ({ employees, shifts, assignments
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <label className="text-xs font-bold text-slate-700 dark:text-slate-300">{lang === 'ar' ? 'تاريخ التبديل' : 'Swap Date'}<input type="date" value={date} onChange={e => setDate(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2" /></label>
         <label className="text-xs font-bold text-slate-700 dark:text-slate-300">{lang === 'ar' ? 'التبديل مع' : 'Swap With'}<select value={targetId} onChange={e => setTargetId(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2"><option value="">{lang === 'ar' ? 'اختيار الموظف' : 'Select employee'}</option>{team.map(e => <option key={e.id} value={e.id}>{e.code} - {lang === 'ar' ? e.nameAr : e.nameEn}</option>)}</select></label>
-        <div className="flex items-end"><button type="button" onClick={submit} disabled={!date || !targetId || !selectedMine || !selectedTarget} className="w-full rounded-xl bg-emerald-600 text-white px-4 py-2.5 text-xs font-black disabled:opacity-50">{lang === 'ar' ? 'إرسال الطلب' : 'Submit Request'}</button></div>
+        <div className="flex items-end"><button type="button" onClick={submit} disabled={!date || !targetId || !assignmentAt(currentUser.id, date) || !assignmentAt(targetId, date) || (isOff(currentUser.id, date) && isOff(targetId, date)) || (!selectedMine && !isOff(currentUser.id, date)) || (!selectedTarget && !isOff(targetId, date))} className="w-full rounded-xl bg-emerald-600 text-white px-4 py-2.5 text-xs font-black disabled:opacity-50">{lang === 'ar' ? 'إرسال الطلب' : 'Submit Request'}</button></div>
       </div>
       {date && targetId && <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 text-xs">
         <div className="font-black text-slate-800 dark:text-slate-200 mb-2">{lang === 'ar' ? `الشفتات في يوم ${date}` : `Shifts on ${date}`}</div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-2"><div className="rounded-lg bg-slate-50 dark:bg-slate-800/50 px-3 py-2"><span className="font-bold">{name(currentUser.id)}:</span> {shiftLabel(selectedMine)}</div><div className="rounded-lg bg-slate-50 dark:bg-slate-800/50 px-3 py-2"><span className="font-bold">{name(targetId)}:</span> {shiftLabel(selectedTarget)}</div></div>
-        {(!selectedMine || !selectedTarget) && <div className="mt-2 text-amber-700 dark:text-amber-300">{lang === 'ar' ? 'لا يمكن إرسال Swap إلا إذا كان الموظفان محدد لهما شفت في هذا التاريخ.' : 'Both employees must have a shift assigned on this exact date.'}</div>}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2"><div className="rounded-lg bg-slate-50 dark:bg-slate-800/50 px-3 py-2"><span className="font-bold">{name(currentUser.id)}:</span> {assignmentLabel(currentUser.id, date)}</div><div className="rounded-lg bg-slate-50 dark:bg-slate-800/50 px-3 py-2"><span className="font-bold">{name(targetId)}:</span> {assignmentLabel(targetId, date)}</div></div>
+        {(!assignmentAt(currentUser.id, date) || !assignmentAt(targetId, date) || (isOff(currentUser.id, date) && isOff(targetId, date)) || (!selectedMine && !isOff(currentUser.id, date)) || (!selectedTarget && !isOff(targetId, date))) && <div className="mt-2 text-amber-700 dark:text-amber-300">{lang === 'ar' ? 'لازم يكون لكل موظف تعيين في اليوم، ويسمح بتبديل شفت مع OFF.' : 'Both employees need an assignment; a working shift can be swapped with OFF.'}</div>}
       </div>}
     </div>}
     <div className="space-y-2">
       {visibleRequests.length === 0 ? <div className="text-xs text-slate-500 dark:text-slate-400">{lang === 'ar' ? 'لا توجد طلبات تبديل.' : 'No shift swap requests.'}</div> : visibleRequests.map(r => <div key={r.id} className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
-          <div className="min-w-0"><div className="text-xs font-black text-slate-900 dark:text-white dark:text-slate-100">{name(r.requesterId)} ↔ {name(r.targetEmployeeId)}</div><div className="text-[11px] text-slate-500 mt-1 dark:text-slate-400">{r.date} · {shiftName(r.requesterShiftId)} ↔ {shiftName(r.targetShiftId)}</div></div>
+          <div className="min-w-0"><div className="text-xs font-black text-slate-900 dark:text-white dark:text-slate-100">{name(r.requesterId)} ↔ {name(r.targetEmployeeId)}</div><div className="text-[11px] text-slate-500 mt-1 dark:text-slate-400">{r.date} · {r.requesterWasOff ? 'OFF' : shiftName(r.requesterShiftId)} ↔ {r.targetWasOff ? 'OFF' : shiftName(r.targetShiftId)}</div></div>
           <div className="flex items-center gap-2">
             <span className={`text-[10px] font-black px-2 py-1 rounded-lg ${r.status === 'approved' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' : r.status === 'rejected' ? 'bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300' : 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300'}`}>{r.status === 'approved' ? (lang === 'ar' ? 'معتمد' : 'Approved') : r.status === 'rejected' ? (lang === 'ar' ? 'مرفوض' : 'Rejected') : (lang === 'ar' ? 'موافقة الليدر مطلوبة' : 'Leader approval required')}</span>
             {!isLeader && r.targetEmployeeId === currentUser?.id && r.status === 'awaiting_target' && <><button disabled={loading} type="button" onClick={() => respondAsTarget(r.id, 'accepted')} className="p-2 rounded-lg bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300" title={lang === 'ar' ? 'موافقة' : 'Accept'}><Check className="w-4 h-4" /></button><button disabled={loading} type="button" onClick={() => respondAsTarget(r.id, 'rejected')} className="p-2 rounded-lg bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300" title={lang === 'ar' ? 'رفض' : 'Reject'}><X className="w-4 h-4" /></button></>}
