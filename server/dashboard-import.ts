@@ -38,11 +38,26 @@ const MAX_SHEETS = 20;
 const MAX_ROWS_PER_SHEET = 5000;
 const MAX_FILE_BYTES = 15 * 1024 * 1024;
 const AUTO_MIN_INTERVAL_MS = 6 * 60 * 60 * 1000; // cron auto runs at most every 6h
+// Stored-workbook auto-import: the raw uploaded file is kept (base64) so the
+// daily cron can re-apply it without any manual step. Cap keeps the settings
+// JSON row well under Postgres/Vercel limits (3 MB binary ≈ 4 MB base64).
+const MAX_STORED_FILE_BYTES = 3 * 1024 * 1024;
+const MAX_STORED_B64_CHARS = 4_100_000;
 
 export interface DashboardImportConfig {
   sourceUrl: string;
   autoSync: boolean;
   defaultPin: string;
+  // Auto re-import of the last uploaded workbook (local-file story).
+  autoImport?: boolean;
+  storedFile?: {
+    name: string;
+    data: string; // base64 of the .xlsx/.xls/.csv bytes
+    size: number;
+    uploadedAt: string;
+    uploadedBy: string;
+    uploadedByName: string;
+  } | null;
   lastSyncAt?: string | null;
   lastSyncStatus?: 'ok' | 'error' | null;
   lastSyncError?: string | null;
@@ -57,6 +72,8 @@ async function readConfig(): Promise<DashboardImportConfig> {
     sourceUrl: String(raw.sourceUrl ?? ''),
     autoSync: Boolean(raw.autoSync),
     defaultPin: String(raw.defaultPin ?? ''),
+    autoImport: Boolean(raw.autoImport),
+    storedFile: raw.storedFile && typeof raw.storedFile === 'object' && typeof raw.storedFile.data === 'string' ? raw.storedFile : null,
     lastSyncAt: raw.lastSyncAt ?? null,
     lastSyncStatus: raw.lastSyncStatus ?? null,
     lastSyncError: raw.lastSyncError ?? null,
@@ -409,6 +426,35 @@ async function optionsFromConfig(cfg: DashboardImportConfig): Promise<ApplyOptio
   };
 }
 
+/**
+ * Re-apply the stored workbook (the last uploaded dashboard file).
+ * Powers both "استيراد الملف المحفوظ الآن" and the daily cron auto-import,
+ * so a LOCAL Excel file keeps the site in sync without any manual step:
+ * the user re-uploads the file when it changes, the server reapplies it
+ * automatically every day in between.
+ */
+export async function applyStoredFile(cfg: DashboardImportConfig, manager: AuthedEmployee | null, source: 'manual' | 'cron'): Promise<{ ok: true; summary: ApplySummary } | { ok: false; error: string }> {
+  try {
+    const stored = cfg.storedFile;
+    if (!stored?.data) return { ok: false, error: 'NO_STORED_FILE' };
+    const buffer = Buffer.from(stored.data, 'base64');
+    if (!buffer.byteLength) return { ok: false, error: 'EMPTY_STORED_FILE' };
+
+    const XLSX: any = await import('xlsx');
+    const workbook = XLSX.read(buffer, { type: 'buffer' });
+    if (!workbook.SheetNames?.length) throw new Error('WORKBOOK_HAS_NO_SHEETS');
+    const sheets: DashboardSheetInput[] = workbook.SheetNames.slice(0, MAX_SHEETS).map((name: string) => ({
+      name,
+      rows: XLSX.utils.sheet_to_json(workbook.Sheets[name], { header: 1, defval: '' }) as unknown[][],
+    }));
+
+    const summary = await applyDashboardImport(sheets, await optionsFromConfig(cfg), manager);
+    return { ok: true, summary };
+  } catch (error: any) {
+    return { ok: false, error: String(error?.message || error || 'STORED_FILE_IMPORT_FAILED').slice(0, 200) };
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /* Route registration                                                  */
 /* ------------------------------------------------------------------ */
@@ -433,6 +479,12 @@ export function registerDashboardImport(app: any) {
           sourceUrl: cfg.sourceUrl,
           autoSync: cfg.autoSync,
           hasDefaultPin: Boolean(cfg.defaultPin),
+          autoImport: Boolean(cfg.autoImport),
+          hasStoredFile: Boolean(cfg.storedFile?.data),
+          storedFileName: cfg.storedFile?.name ?? null,
+          storedFileSize: cfg.storedFile?.size ?? null,
+          storedFileUploadedAt: cfg.storedFile?.uploadedAt ?? null,
+          storedFileUploadedBy: cfg.storedFile?.uploadedByName ?? cfg.storedFile?.uploadedBy ?? null,
           lastSyncAt: cfg.lastSyncAt,
           lastSyncStatus: cfg.lastSyncStatus,
           lastSyncError: cfg.lastSyncError,
@@ -453,25 +505,44 @@ export function registerDashboardImport(app: any) {
       if (!isPlatformAdmin(manager.role)) {
         return res.status(403).json({ success: false, error: 'Only admins can change the dashboard import settings.' });
       }
-      const sourceUrl = String(req.body?.sourceUrl ?? '').trim();
+      // Partial update: only the fields present in the body are changed, so the
+      // auto-import toggle can be flipped without re-sending the URL settings.
+      const cfgBefore = await readConfig();
+      const hasSourceUrl = req.body?.sourceUrl !== undefined;
+      const sourceUrl = hasSourceUrl ? String(req.body?.sourceUrl ?? '').trim() : cfgBefore.sourceUrl;
       if (sourceUrl && (!URL_RE.test(sourceUrl) || sourceUrl.length > 1000)) {
         return res.status(400).json({ success: false, error: 'INVALID_URL' });
       }
-      const autoSync = Boolean(req.body?.autoSync);
+      const autoSync = req.body?.autoSync === undefined ? cfgBefore.autoSync : Boolean(req.body?.autoSync);
+      const autoImport = req.body?.autoImport === undefined ? cfgBefore.autoImport : Boolean(req.body?.autoImport);
       let defaultPin = String(req.body?.defaultPin ?? '').trim();
-      if (defaultPin === '***') defaultPin = (await readConfig()).defaultPin; // mask round-trip
+      if (defaultPin === '***') defaultPin = cfgBefore.defaultPin; // mask round-trip
       else if (defaultPin) defaultPin = defaultPin.slice(0, 64);
-      else defaultPin = (await readConfig()).defaultPin; // empty = keep existing
+      else defaultPin = cfgBefore.defaultPin; // empty = keep existing
 
-      const cfg = await readConfig();
-      const next: DashboardImportConfig = { ...cfg, sourceUrl, autoSync, defaultPin };
+      const next: DashboardImportConfig = { ...cfgBefore, sourceUrl, autoSync, autoImport, defaultPin };
+      if (req.body?.removeStoredFile === true) next.storedFile = null;
+      if (req.body?.resetSyncClock === true) { next.lastSyncAt = null; next.lastSyncStatus = null; next.lastSyncError = null; next.lastSyncSummary = null; }
       await writeConfig(next);
       logActivity({
         actorId: manager.id, actorRole: manager.role, action: 'dashboard.config', entityType: 'dashboard', entityId: 'excel-import',
-        entityLabel: autoSync ? 'Dashboard import settings updated (auto-sync on)' : 'Dashboard import settings updated',
+        entityLabel: [
+          autoSync || autoImport ? 'Dashboard import settings updated (auto on' : 'Dashboard import settings updated',
+          autoSync ? ' URL' : '', autoImport ? ' file' : '', autoSync || autoImport ? ')' : '',
+          req.body?.removeStoredFile === true ? ' — stored file cleared' : '',
+        ].join(''),
         companyId: 'tech-source',
       });
-      return res.json({ success: true, config: { sourceUrl, autoSync, hasDefaultPin: Boolean(next.defaultPin) } });
+      return res.json({
+        success: true,
+        config: {
+          sourceUrl,
+          autoSync,
+          autoImport,
+          hasDefaultPin: Boolean(next.defaultPin),
+          hasStoredFile: Boolean(next.storedFile?.data),
+        },
+      });
     } catch (error: any) {
       console.error('[dashboard-import] PUT failed:', error?.message || error);
       return res.status(500).json({ success: false, error: 'Could not save the dashboard import settings.' });
@@ -575,6 +646,113 @@ export function registerDashboardImport(app: any) {
   app.post('/api/dashboard-import/url', urlSyncHandler);
   app.post('/api/dashboard-import-url', urlSyncHandler); // single-segment alias
 
+  // POST /api/dashboard-import/store — managers keep a copy of the uploaded
+  // workbook on the server so it can be re-applied automatically (cron) or
+  // manually ("استيراد الملف المحفوظ الآن") later. Body: { name, data(base64) }.
+  const storeHandler = async (req: any, res: any) => {
+    try {
+      const manager = await requireManager(req, (status: number, body: unknown) => res.status(status).json(body));
+      if (!manager) return;
+      const name = String(req.body?.name ?? 'dashboard.xlsx').trim().slice(0, 200) || 'dashboard.xlsx';
+      const data = String(req.body?.data ?? '').replace(/\s/g, '');
+      if (!data || !/^[A-Za-z0-9+/]+={0,2}$/.test(data)) {
+        return res.status(400).json({ success: false, error: 'INVALID_FILE_DATA' });
+      }
+      if (data.length > MAX_STORED_B64_CHARS) {
+        return res.status(400).json({ success: false, error: 'STORED_FILE_TOO_LARGE', maxSizeBytes: MAX_STORED_FILE_BYTES });
+      }
+      const buffer = Buffer.from(data, 'base64');
+      if (!buffer.byteLength) return res.status(400).json({ success: false, error: 'EMPTY_FILE' });
+      if (buffer.byteLength > MAX_STORED_FILE_BYTES) {
+        return res.status(400).json({ success: false, error: 'STORED_FILE_TOO_LARGE', maxSizeBytes: MAX_STORED_FILE_BYTES });
+      }
+
+      const cfg = await readConfig();
+      // The auth context carries only id/role — resolve the display name for
+      // the audit trail from the employees table (cosmetic only).
+      let uploaderName = manager.id;
+      try {
+        const rows = await db.select({ nameAr: schema.employees.nameAr, nameEn: schema.employees.nameEn }).from(schema.employees).where(eq(schema.employees.id, manager.id)).limit(1);
+        uploaderName = String(rows[0]?.nameAr || rows[0]?.nameEn || manager.id);
+      } catch { /* keep id as fallback */ }
+      const next: DashboardImportConfig = {
+        ...cfg,
+        storedFile: {
+          name,
+          data,
+          size: buffer.byteLength,
+          uploadedAt: new Date().toISOString(),
+          uploadedBy: manager.id,
+          uploadedByName: uploaderName,
+        },
+      };
+      await writeConfig(next);
+      logActivity({
+        actorId: manager.id, actorRole: manager.role, action: 'dashboard.config', entityType: 'dashboard', entityId: 'excel-stored-file',
+        entityLabel: `تم حفظ نسخة ملف الداش بورد للاستيراد التلقائي: ${name} (${Math.round(buffer.byteLength / 1024)} KB)`,
+        companyId: 'tech-source',
+      });
+      return res.json({
+        success: true,
+        storedFile: { name, size: buffer.byteLength, uploadedAt: next.storedFile!.uploadedAt },
+      });
+    } catch (error: any) {
+      console.error('[dashboard-import] store failed:', error?.message || error);
+      return res.status(500).json({ success: false, error: 'DASHBOARD_IMPORT_STORE_FAILED' });
+    }
+  };
+  app.post('/api/dashboard-import/store', storeHandler);
+  app.post('/api/dashboard-import-store', storeHandler); // single-segment alias
+
+  // POST /api/dashboard-import/file — managers re-apply the stored workbook
+  // right now (same engine as the cron auto-import).
+  const fileHandler = async (req: any, res: any) => {
+    try {
+      const manager = await requireManager(req, (status: number, body: unknown) => res.status(status).json(body));
+      if (!manager) return;
+      const cfg = await readConfig();
+      if (!cfg.storedFile?.data) {
+        return res.status(400).json({ success: false, error: 'NO_STORED_FILE' });
+      }
+      const result = await applyStoredFile(cfg, manager, 'manual');
+      const next: DashboardImportConfig = { ...cfg, lastSyncAt: new Date().toISOString() };
+      let action = 'dashboard.import_failed';
+      let entityLabel = '';
+      let details: Record<string, unknown>;
+      let status = 200;
+      let payload: Record<string, unknown>;
+      if (result.ok === true) {
+        next.lastSyncStatus = 'ok';
+        next.lastSyncError = null;
+        next.lastSyncSummary = `+${result.summary.employeesCreated} موظف، ${result.summary.assignmentsApplied} تعيين شيفت`;
+        action = 'dashboard.import';
+        entityLabel = `استيراد الملف المحفوظ (${cfg.storedFile.name}): +${result.summary.employeesCreated} موظف، ${result.summary.assignmentsApplied} تعيين`;
+        details = { source: 'stored-file', assignmentsApplied: result.summary.assignmentsApplied, employeesCreated: result.summary.employeesCreated, dateRange: result.summary.dateRange };
+        payload = { success: true, summary: result.summary };
+      } else {
+        next.lastSyncStatus = 'error';
+        next.lastSyncError = result.error;
+        next.lastSyncSummary = null;
+        action = 'dashboard.import_failed';
+        entityLabel = `استيراد الملف المحفوظ فشل: ${result.error}`;
+        details = { source: 'stored-file', error: result.error };
+        status = 502;
+        payload = { success: false, error: result.error };
+      }
+      await writeConfig(next);
+      logActivity({
+        actorId: manager.id, actorRole: manager.role, action, entityType: 'dashboard', entityId: 'excel-stored-file', entityLabel, details,
+        companyId: 'tech-source',
+      });
+      return res.status(status).json(payload);
+    } catch (error: any) {
+      console.error('[dashboard-import] stored-file apply failed:', error?.message || error);
+      return res.status(500).json({ success: false, error: 'DASHBOARD_IMPORT_FILE_FAILED' });
+    }
+  };
+  app.post('/api/dashboard-import/file', fileHandler);
+  app.post('/api/dashboard-import-file', fileHandler); // single-segment alias
+
   // GET /api/dashboard-import/cron — Vercel Cron entry point (daily).
   // Authorized via CRON_SECRET bearer token, Vercel's x-vercel-cron header,
   // or admin auth headers (local testing).
@@ -594,8 +772,12 @@ export function registerDashboardImport(app: any) {
       }
 
       const cfg = await readConfig();
-      if (!cfg.autoSync || !cfg.sourceUrl) {
-        return res.json({ success: true, skipped: true, reason: 'AUTO_SYNC_DISABLED' });
+      // Auto import sources: a hosted file URL (autoSync) takes precedence;
+      // otherwise the stored copy of the last uploaded workbook (autoImport).
+      const useUrl = Boolean(cfg.autoSync && cfg.sourceUrl);
+      const useStored = Boolean(!useUrl && cfg.autoImport && cfg.storedFile?.data);
+      if (!useUrl && !useStored) {
+        return res.json({ success: true, skipped: true, reason: !cfg.autoSync && !cfg.autoImport ? 'AUTO_SYNC_DISABLED' : 'NO_SOURCE' });
       }
       const last = cfg.lastSyncAt ? Date.parse(cfg.lastSyncAt) : 0;
       if (Number.isFinite(last) && Date.now() - last < AUTO_MIN_INTERVAL_MS) {
@@ -603,7 +785,9 @@ export function registerDashboardImport(app: any) {
       }
 
       const options = await optionsFromConfig(cfg);
-      const result = await runUrlSync(cfg.sourceUrl, options, admin, 'cron');
+      const result = useUrl
+        ? await runUrlSync(cfg.sourceUrl, options, admin, 'cron')
+        : await applyStoredFile(cfg, admin, 'cron');
       const next: DashboardImportConfig = { ...cfg, lastSyncAt: new Date().toISOString() };
       let action = 'dashboard.import_failed';
       let entityLabel = '';
@@ -615,8 +799,8 @@ export function registerDashboardImport(app: any) {
         next.lastSyncError = null;
         next.lastSyncSummary = `+${result.summary.employeesCreated} موظف، ${result.summary.assignmentsApplied} تعيين شيفت`;
         action = 'dashboard.import';
-        entityLabel = `مزامنة تلقائية يومية: +${result.summary.employeesCreated} موظف، ${result.summary.assignmentsApplied} تعيين`;
-        details = { source: 'cron', assignmentsApplied: result.summary.assignmentsApplied, employeesCreated: result.summary.employeesCreated };
+        entityLabel = `مزامنة تلقائية يومية (${useUrl ? 'رابط' : `الملف المحفوظ: ${cfg.storedFile?.name ?? 'dashboard'}`}): +${result.summary.employeesCreated} موظف، ${result.summary.assignmentsApplied} تعيين`;
+        details = { source: useUrl ? 'cron-url' : 'cron-stored-file', assignmentsApplied: result.summary.assignmentsApplied, employeesCreated: result.summary.employeesCreated };
         payload = { success: true, summary: result.summary };
       } else {
         next.lastSyncStatus = 'error';
@@ -624,7 +808,7 @@ export function registerDashboardImport(app: any) {
         next.lastSyncSummary = null;
         action = 'dashboard.import_failed';
         entityLabel = `المزامنة التلقائية فشلت: ${result.error}`;
-        details = { source: 'cron', error: result.error };
+        details = { source: useUrl ? 'cron-url' : 'cron-stored-file', error: result.error };
         status = 502;
         payload = { success: false, error: result.error };
       }
