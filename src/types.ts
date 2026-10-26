@@ -110,6 +110,8 @@ export interface ShiftSwapRequest {
   date: string;
   requesterShiftId: string;
   targetShiftId: string;
+  requesterWasOff?: boolean;
+  targetWasOff?: boolean;
   status: ShiftSwapStatus;
   createdAt: string;
   reviewedBy?: string;
