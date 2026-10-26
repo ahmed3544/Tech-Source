@@ -16,6 +16,7 @@ import { updateEmployeeHandler, createEmployeeHandler, deleteEmployeeHandler } f
 import { registerEmployeeBreaks } from "./server/employee-breaks.js";
 import { registerBreakRequests } from "./server/break-requests.js";
 import { registerActivityLogs } from "./server/activity-logs.js";
+import { registerSheetSync } from "./server/sheet-sync.js";
 import { ensureSchema } from "./server/ensure-schema.js";
 import { listNotificationsForUser, markAllNotificationsRead, markNotificationRead } from "./server/notification-reads.js";
 import { sanitizeEmployees } from "./server/employee-sanitize.js";
@@ -105,6 +106,8 @@ registerEmployeeBreaks(app);
 registerBreakRequests(app);
 // Activity log (audit trail): who changed what + read/write endpoints.
 registerActivityLogs(app);
+// Google Sheets dashboard sync (config/test/push-to-webhook endpoints).
+registerSheetSync(app);
 // Login is also served by the main server so non-Vercel deployments work.
 app.post('/api/login', (req:any, res:any) => loginHandler(req, res));
 

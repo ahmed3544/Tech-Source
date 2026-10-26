@@ -30,7 +30,8 @@ export type ActivityAction =
   | 'breaks.update'
   | 'break_request.submit' | 'break_request.approve' | 'break_request.reject'
   | 'swap.submit' | 'swap.accept' | 'swap.reject' | 'swap.approve' | 'swap.cancel'
-  | 'auth.login';
+  | 'auth.login'
+  | 'sheet.config' | 'sheet.sync' | 'sheet.sync_failed';
 
 /** Actions the client may self-report (shift swap flow has no dedicated endpoint). */
 const CLIENT_ACTIONS = new Set<string>(['swap.submit', 'swap.accept', 'swap.reject', 'swap.approve', 'swap.cancel']);

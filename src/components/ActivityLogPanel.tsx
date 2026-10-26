@@ -37,6 +37,7 @@ const CATEGORY_STYLES: Record<string, string> = {
   breaks: 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
   break_request: 'bg-pink-50 text-pink-700 dark:bg-pink-500/15 dark:text-pink-300',
   swap: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300',
+  sheet: 'bg-cyan-50 text-cyan-700 dark:bg-cyan-500/15 dark:text-cyan-300',
   auth: 'bg-slate-100 text-slate-600 dark:bg-slate-500/15 dark:text-slate-300',
 };
 
@@ -56,6 +57,9 @@ const ACTION_LABELS: Record<string, { ar: string; en: string }> = {
   'swap.approve': { ar: 'اعتماد تبديل الشيفت', en: 'Swap approved' },
   'swap.cancel': { ar: 'إلغاء التبديل', en: 'Swap cancelled' },
   'auth.login': { ar: 'تسجيل دخول', en: 'Signed in' },
+  'sheet.config': { ar: 'تحديث رابط Google Sheets', en: 'Google Sheets link updated' },
+  'sheet.sync': { ar: 'مزامنة Google Sheets', en: 'Google Sheets sync' },
+  'sheet.sync_failed': { ar: 'فشل مزامنة Google Sheets', en: 'Google Sheets sync failed' },
 };
 
 const CATEGORIES: Array<{ value: string; ar: string; en: string }> = [
@@ -65,6 +69,7 @@ const CATEGORIES: Array<{ value: string; ar: string; en: string }> = [
   { value: 'breaks', ar: 'البريكات', en: 'Breaks' },
   { value: 'break_request', ar: 'طلبات البريك', en: 'Break requests' },
   { value: 'swap', ar: 'تبديل الشيفت', en: 'Shift swap' },
+  { value: 'sheet', ar: 'مزامنة الشيت', en: 'Sheet sync' },
   { value: 'auth', ar: 'تسجيل الدخول', en: 'Sign-ins' },
 ];
 
