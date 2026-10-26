@@ -9,7 +9,10 @@ import { analyzeDashboardSheets, type DashboardAnalysis, type DashboardSheetInpu
  *
  * Section 1 (all managers): upload ANY Excel dashboard → the shared engine
  * auto-detects sheets (staff lists / shift grids / long rosters), shows a
- * preview, then applies employees + shifts + schedule server-side.
+ * preview, then applies employees + shifts + schedule server-side. A copy of
+ * the file (≤ 3 MB) is kept on the server so the daily cron can re-apply it
+ * AUTOMATICALLY — the local-file story for "import تلقائي": re-upload the
+ * file when it changes and the site stays in sync every day in between.
  *
  * Section 2 (admins): paste a direct link to a hosted copy of the file
  * (OneDrive / Google Drive / any URL) → the server downloads, parses and
@@ -21,6 +24,12 @@ interface DashboardImportConfigDto {
   sourceUrl: string;
   autoSync: boolean;
   hasDefaultPin: boolean;
+  autoImport: boolean;
+  hasStoredFile: boolean;
+  storedFileName: string | null;
+  storedFileSize: number | null;
+  storedFileUploadedAt: string | null;
+  storedFileUploadedBy: string | null;
   lastSyncAt: string | null;
   lastSyncStatus: 'ok' | 'error' | null;
   lastSyncError: string | null;
@@ -48,6 +57,19 @@ const KIND_BADGES: Record<string, { ar: string; en: string; cls: string }> = {
   unknown: { ar: 'غير معروفة', en: 'Not recognized', cls: 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400' },
 };
 
+/** Files up to 3 MB are kept server-side for the daily auto re-import. */
+const MAX_STORE_FILE_BYTES = 3 * 1024 * 1024;
+
+const arrayBufferToBase64 = (buffer: ArrayBuffer): string => {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+};
+
 function formatDateTime(value: string | null | undefined, lang: Language): string {
   if (!value) return lang === 'ar' ? 'لم تتم بعد' : 'Never';
   const d = new Date(value);
@@ -65,9 +87,10 @@ export function DashboardImportPanel({ lang, currentUser, onClose, onImported }:
   const isAdmin = ['admin', 'company_admin', 'platform_admin'].includes(String(currentUser?.role || ''));
 
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState<'' | 'apply' | 'save' | 'sync'>('');
+  const [busy, setBusy] = useState<'' | 'apply' | 'save' | 'sync' | 'reapply' | 'auto'>('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [storedNote, setStoredNote] = useState('');
 
   // Upload section
   const [fileName, setFileName] = useState('');
@@ -76,9 +99,10 @@ export function DashboardImportPanel({ lang, currentUser, onClose, onImported }:
   const [analysis, setAnalysis] = useState<DashboardAnalysis | null>(null);
   const [summary, setSummary] = useState<ApplySummaryDto | null>(null);
   const [options, setOptions] = useState({ defaultPin: '1234', createMissingEmployees: true, autoCreateShifts: true, overwriteAssignments: true });
+  const lastFileRef = React.useRef<File | null>(null);
 
-  // URL auto-sync section
-  const [config, setConfig] = useState<DashboardImportConfigDto>({ sourceUrl: '', autoSync: false, hasDefaultPin: false, lastSyncAt: null, lastSyncStatus: null, lastSyncError: null, lastSyncSummary: null });
+  // URL auto-sync + stored-file auto-import section
+  const [config, setConfig] = useState<DashboardImportConfigDto>({ sourceUrl: '', autoSync: false, hasDefaultPin: false, autoImport: false, hasStoredFile: false, storedFileName: null, storedFileSize: null, storedFileUploadedAt: null, storedFileUploadedBy: null, lastSyncAt: null, lastSyncStatus: null, lastSyncError: null, lastSyncSummary: null });
   const [urlDraft, setUrlDraft] = useState({ sourceUrl: '', autoSync: false, defaultPin: '' });
 
   useEffect(() => {
@@ -89,7 +113,7 @@ export function DashboardImportPanel({ lang, currentUser, onClose, onImported }:
         const data = await parseResponse(response);
         if (cancelled) return;
         if (response.ok && data?.success) {
-          setConfig(data.config);
+          setConfig({ ...data.config });
           setUrlDraft({ sourceUrl: data.config.sourceUrl ?? '', autoSync: Boolean(data.config.autoSync), defaultPin: '' });
         }
       } catch { /* panel still usable without saved config */ }
@@ -99,7 +123,8 @@ export function DashboardImportPanel({ lang, currentUser, onClose, onImported }:
   }, []);
 
   const handleFile = async (file: File) => {
-    setAnalyzing(true); setError(''); setNotice(''); setSummary(null);
+    setAnalyzing(true); setError(''); setNotice(''); setSummary(null); setStoredNote('');
+    lastFileRef.current = file;
     try {
       const XLSX = await import('xlsx');
       const buffer = await file.arrayBuffer();
@@ -126,9 +151,39 @@ export function DashboardImportPanel({ lang, currentUser, onClose, onImported }:
     }
   };
 
+  /**
+   * Keep a server-side copy of the uploaded workbook so the daily cron can
+   * re-apply it automatically (the local-file auto-import). Best-effort: the
+   * import itself has already succeeded when this runs.
+   */
+  const storeFileForAutoImport = async (file: File) => {
+    if (file.size > MAX_STORE_FILE_BYTES) {
+      setStoredNote(ar
+        ? `الملف أكبر من 3 ميجا (${Math.round(file.size / (1024 * 1024))} ميجا) — تم استيراده لكن لن يتم إعادة استيراده تلقائياً. استخدم رابط الملف (القسم ٢) لاستيراد تلقائي لأي حجم.`
+        : `The file is larger than 3 MB (${Math.round(file.size / (1024 * 1024))} MB) — imported, but it will not be re-imported automatically. Use the file URL (section 2) for auto-import of any size.`);
+      return;
+    }
+    try {
+      const data = arrayBufferToBase64(await file.arrayBuffer());
+      const response = await fetch('/api/dashboard-import-store', {
+        method: 'POST', credentials: 'include', cache: 'no-store',
+        headers: authHeaders({ 'Content-Type': 'application/json', Accept: 'application/json' }),
+        body: JSON.stringify({ name: file.name, data }),
+      });
+      const responseData = await parseResponse(response);
+      if (!response.ok || responseData?.success === false) throw new Error(extractApiError(responseData, 'STORE_FAILED'));
+      setConfig((c) => ({ ...c, hasStoredFile: true, storedFileName: file.name, storedFileSize: file.size, storedFileUploadedAt: responseData.storedFile?.uploadedAt ?? new Date().toISOString() }));
+      setStoredNote(ar
+        ? `تم حفظ نسخة من "${file.name}" على السيرفر — الجدول هيتستورد منه تلقائياً كل يوم.`
+        : `A copy of "${file.name}" was saved on the server — it will be re-imported automatically every day.`);
+    } catch {
+      setStoredNote(ar ? 'تعذر حفظ نسخة الملف للاستيراد التلقائي (الاستيراد نفسه نجح).' : 'Could not save the file copy for auto-import (the import itself succeeded).');
+    }
+  };
+
   const applyImport = async () => {
     if (!rawSheets || busy) return;
-    setBusy('apply'); setError(''); setNotice('');
+    setBusy('apply'); setError(''); setNotice(''); setStoredNote('');
     try {
       const response = await fetch('/api/dashboard-import-apply', {
         method: 'POST', credentials: 'include', cache: 'no-store',
@@ -141,9 +196,83 @@ export function DashboardImportPanel({ lang, currentUser, onClose, onImported }:
       setSummary(data.summary as ApplySummaryDto);
       setNotice(ar ? 'تم استيراد الداش بورد بنجاح — سيتم تحديث الصفحة.' : 'Dashboard imported successfully — refreshing the page.');
       setAnalysis(null); setRawSheets(null); setFileName('');
+      const uploaded = lastFileRef.current;
+      lastFileRef.current = null;
+      if (uploaded) void storeFileForAutoImport(uploaded);
       onImported?.();
     } catch (err: unknown) {
       setError(errorToMessage(err, ar ? 'فشل استيراد الداش بورد' : 'Dashboard import failed'));
+    } finally {
+      setBusy('');
+    }
+  };
+
+  /** Re-apply the stored workbook right now (same engine as the daily cron). */
+  const reApplyStored = async () => {
+    if (busy) return;
+    setBusy('reapply'); setError(''); setNotice(''); setStoredNote(''); setSummary(null);
+    try {
+      const response = await fetch('/api/dashboard-import-file', {
+        method: 'POST', credentials: 'include', cache: 'no-store',
+        headers: authHeaders({ 'Content-Type': 'application/json', Accept: 'application/json' }),
+        body: JSON.stringify({}),
+      });
+      const data = await parseResponse(response);
+      if (response.status === 401) throw new Error(ar ? 'انتهت الجلسة. يرجى تسجيل الدخول من جديد.' : 'Session ended. Please sign in again.');
+      if (!response.ok || data?.success === false) throw new Error(extractApiError(data, ar ? 'تعذر استيراد الملف المحفوظ' : 'Could not import the stored file'));
+      setSummary(data.summary as ApplySummaryDto);
+      setNotice(ar ? 'تم استيراد الملف المحفوظ بنجاح — سيتم تحديث الصفحة.' : 'Stored file imported successfully — refreshing the page.');
+      setConfig((c) => ({ ...c, lastSyncAt: new Date().toISOString(), lastSyncStatus: 'ok', lastSyncError: null }));
+      onImported?.();
+    } catch (err: unknown) {
+      setError(errorToMessage(err, ar ? 'فشل استيراد الملف المحفوظ' : 'Stored-file import failed'));
+    } finally {
+      setBusy('');
+    }
+  };
+
+  /** Toggle the daily auto re-import of the stored file (admins only). */
+  const toggleAutoImport = async (value: boolean) => {
+    if (busy) return;
+    setBusy('auto'); setError(''); setNotice('');
+    try {
+      const response = await fetch('/api/dashboard-import', {
+        method: 'PUT', credentials: 'include', cache: 'no-store',
+        headers: authHeaders({ 'Content-Type': 'application/json', Accept: 'application/json' }),
+        body: JSON.stringify({ autoImport: value }),
+      });
+      const data = await parseResponse(response);
+      if (response.status === 401) throw new Error(ar ? 'انتهت الجلسة. يرجى تسجيل الدخول من جديد.' : 'Session ended. Please sign in again.');
+      if (!response.ok || data?.success === false) throw new Error(extractApiError(data, ar ? 'تعذر حفظ الإعداد' : 'Could not save the setting'));
+      setConfig((c) => ({ ...c, autoImport: Boolean(data.config?.autoImport ?? value) }));
+      setNotice(value
+        ? (ar ? 'تم تفعيل الاستيراد التلقائي — الملف المحفوظ هيتطبق يومياً على السيرفر.' : 'Auto-import enabled — the stored file is re-applied daily on the server.')
+        : (ar ? 'تم إيقاف الاستيراد التلقائي للملف المحفوظ.' : 'Auto-import of the stored file is now off.'));
+    } catch (err: unknown) {
+      setError(errorToMessage(err, ar ? 'فشل حفظ الإعداد' : 'Saving the setting failed'));
+    } finally {
+      setBusy('');
+    }
+  };
+
+  /** Remove the stored workbook copy (admins only). */
+  const removeStoredFile = async () => {
+    if (busy) return;
+    if (!window.confirm(ar ? 'هل تريد حذف النسخة المحفوظة من الملف؟' : 'Delete the stored copy of the file?')) return;
+    setBusy('auto'); setError(''); setNotice(''); setStoredNote('');
+    try {
+      const response = await fetch('/api/dashboard-import', {
+        method: 'PUT', credentials: 'include', cache: 'no-store',
+        headers: authHeaders({ 'Content-Type': 'application/json', Accept: 'application/json' }),
+        body: JSON.stringify({ removeStoredFile: true }),
+      });
+      const data = await parseResponse(response);
+      if (response.status === 401) throw new Error(ar ? 'انتهت الجلسة. يرجى تسجيل الدخول من جديد.' : 'Session ended. Please sign in again.');
+      if (!response.ok || data?.success === false) throw new Error(extractApiError(data, ar ? 'تعذر حذف النسخة المحفوظة' : 'Could not remove the stored copy'));
+      setConfig((c) => ({ ...c, hasStoredFile: false, storedFileName: null, storedFileSize: null, storedFileUploadedAt: null }));
+      setStoredNote(ar ? 'تم حذف النسخة المحفوظة.' : 'Stored copy removed.');
+    } catch (err: unknown) {
+      setError(errorToMessage(err, ar ? 'فشل حذف النسخة المحفوظة' : 'Removing the stored copy failed'));
     } finally {
       setBusy('');
     }
@@ -227,8 +356,8 @@ export function DashboardImportPanel({ lang, currentUser, onClose, onImported }:
             <div className="font-bold">{ar ? '١) ارفع ملف الداش بورد (Excel)' : '1) Upload your dashboard file (Excel)'}</div>
             <p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-300">
               {ar
-                ? 'أي ملف إكسل — النظام هيكتشف الأعمدة والأوراق تلقائي (عربي أو إنجليزي): أسماء الموظفين، الشيفتات بالتوقيت، أيام الراحة (OFF / راحة / إجازة)، وجدول الأيام. هتشوف معاينة كاملة قبل الحفظ.'
-                : 'Any Excel file — columns and sheets are auto-detected (Arabic or English): employee names, shifts with times, OFF/rest/leave days, and day columns. You will see a full preview before saving.'}
+                ? 'أي ملف إكسل — النظام هيكتشف الأعمدة والأوراق تلقائي (عربي أو إنجليزي): أسماء الموظفين، الشيفتات بالتوقيت، أيام الراحة (OFF / راحة / إجازة)، وجدول الأيام. هتشوف معاينة كاملة قبل الحفظ. ونسخة من الملف بتتحفظ على السيرفر لإعادة الاستيراد التلقائي كل يوم (لحد 3 ميجا).'
+                : 'Any Excel file — columns and sheets are auto-detected (Arabic or English): employee names, shifts with times, OFF/rest/leave days, and day columns. You will see a full preview before saving. A copy of the file is kept on the server for the daily automatic re-import (up to 3 MB).'}
             </p>
             <label className="mt-3 flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-violet-300 bg-violet-50/60 px-4 py-6 text-center transition hover:bg-violet-100/60 dark:border-violet-500/40 dark:bg-violet-500/10 dark:hover:bg-violet-500/20">
               <FileSpreadsheet className="h-7 w-7 text-violet-600 dark:text-violet-300" />
@@ -287,6 +416,61 @@ export function DashboardImportPanel({ lang, currentUser, onClose, onImported }:
             )}
           </div>
 
+          {/* ---- Section 1b: stored-file auto import (the local-file story) ---- */}
+          <div className="rounded-xl border border-violet-200 bg-violet-50/40 p-3 dark:border-violet-500/30 dark:bg-violet-500/5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2 font-bold"><RefreshCw className="h-4 w-4 text-violet-600 dark:text-violet-400" />{ar ? 'الاستيراد التلقائي للملف المرفوع' : 'Automatic re-import of the uploaded file'}</div>
+              <label className="flex items-center gap-2 text-sm font-semibold">
+                <input
+                  type="checkbox" checked={Boolean(config.autoImport)} disabled={busy !== '' || !isAdmin}
+                  onChange={(e) => void toggleAutoImport(e.target.checked)}
+                  className="h-4 w-4 accent-violet-600 disabled:opacity-40"
+                />
+                <span>{ar ? 'استيراد تلقائي كل يوم' : 'Re-import daily'}</span>
+                {!isAdmin && <span className="text-[10px] font-bold text-slate-400">({ar ? 'للأدمن' : 'admins'})</span>}
+              </label>
+            </div>
+            <p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-300">
+              {ar
+                ? 'أي ملف ترفعه هنا بيتم استيراده فوراً، وبيتحفظ منه نسخة على السيرفر. لما تفعّل الاستيراد التلقائي، السيرفر هيعيد استيراد آخر نسخة كل يوم (حوالي 1 صباحاً) من غير أي خطوة منك — حدّث الملف عندك وارفعه مرة واحدة، والموقع هيفضل متزامن.'
+                : 'Every file you upload here is imported immediately and a copy is saved on the server. With auto-import on, the server re-applies the latest copy every day (around 1 AM) with no further steps — update the file locally, upload it once, and the site stays in sync.'}
+            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              {config.hasStoredFile ? (
+                <span className="inline-flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-bold dark:border-slate-700 dark:bg-slate-900" dir="ltr">
+                  <FileSpreadsheet className="h-3.5 w-3.5 text-violet-600 dark:text-violet-300" />
+                  {config.storedFileName ?? 'dashboard.xlsx'}
+                  {config.storedFileSize ? <span className="text-slate-400">{Math.round(config.storedFileSize / 1024)} KB</span> : null}
+                  {config.storedFileUploadedAt && <span className="text-slate-400">· {formatDateTime(config.storedFileUploadedAt, lang)}</span>}
+                </span>
+              ) : (
+                <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">{ar ? 'لا يوجد ملف محفوظ بعد — ارفع ملف في القسم ١.' : 'No stored file yet — upload one in section 1.'}</span>
+              )}
+              <button
+                type="button" disabled={busy !== '' || !config.hasStoredFile} onClick={reApplyStored}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-violet-300 bg-white px-3 py-2 text-xs font-black text-violet-700 hover:bg-violet-50 disabled:opacity-50 dark:border-violet-500/40 dark:bg-slate-900 dark:text-violet-300 dark:hover:bg-violet-500/10"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${busy === 'reapply' ? 'animate-spin' : ''}`} />
+                {busy === 'reapply' ? (ar ? 'جاري الاستيراد...' : 'Importing...') : (ar ? 'استيراد الملف المحفوظ الآن' : 'Import stored file now')}
+              </button>
+              {isAdmin && (
+                <button
+                  type="button" disabled={busy !== '' || !config.hasStoredFile} onClick={() => void removeStoredFile()}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600 hover:bg-red-50 hover:text-red-700 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+                >
+                  {ar ? 'حذف النسخة المحفوظة' : 'Remove stored copy'}
+                </button>
+              )}
+            </div>
+            {!isAdmin && config.lastSyncAt && (
+              <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                {ar ? 'آخر استيراد تلقائي: ' : 'Last auto-import: '}{formatDateTime(config.lastSyncAt, lang)}
+                {config.lastSyncStatus === 'error' && <span className="ms-2 font-bold text-red-600 dark:text-red-400">({ar ? 'فشل' : 'failed'})</span>}
+              </div>
+            )}
+            {storedNote && <div className="mt-2 rounded-lg bg-violet-50 p-2.5 text-xs font-semibold text-violet-700 dark:bg-violet-500/10 dark:text-violet-300">{storedNote}</div>}
+          </div>
+
           {/* ---- Section 2: URL auto-sync (admins) ---- */}
           {isAdmin && (
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-800/60">
@@ -339,8 +523,8 @@ export function DashboardImportPanel({ lang, currentUser, onClose, onImported }:
 
           <p className="text-[11px] leading-5 text-slate-400 dark:text-slate-500">
             {ar
-              ? 'ملاحظات: الأعمدة بتتعرف بمرونة (الاسم / اسم الموظف / Name، الكود / Code، الشيفت / الوردية / Shift، التاريخ / Date، تواريخ 25/10 أو 2026-10-25 أو أسماء الأيام). بيانات الحضور والبريكات مش بتستورد من هنا. كل عملية بتسجل في سجل النشاط.'
-              : 'Notes: columns are matched flexibly (Name / اسم الموظف, Code / الكود, Shift / الوردية, Date / التاريخ, dates like 25/10 or 2026-10-25 or weekday names). Attendance and breaks are not imported here. Every run is recorded in the activity log.'}
+              ? 'ملاحظات: الأعمدة بتتعرف بمرونة (الاسم / اسم الموظف / Name، الكود / Code، الشيفت / الوردية / Shift، التاريخ / Date، تواريخ 25/10 أو 2026-10-25 أو أسماء الأيام). بيانات الحضور والبريكات مش بتستورد من هنا. الاستيراد التلقائي بيعيد تطبيق آخر ملف مرفوع — يعني تعديلات الجدول اليدوية على الموقع هتترجع لبيانات الملف. كل عملية بتسجل في سجل النشاط.'
+              : 'Notes: columns are matched flexibly (Name / اسم الموظف, Code / الكود, Shift / الوردية, Date / التاريخ, dates like 25/10 or 2026-10-25 or weekday names). Attendance and breaks are not imported here. Auto-import re-applies the latest uploaded file — manual schedule edits made in the app are replaced by the file data. Every run is recorded in the activity log.'}
           </p>
         </>}
       </div>

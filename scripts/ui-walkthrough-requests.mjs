@@ -34,7 +34,7 @@ const openExcelSection = async () => {
   await exportBtn.waitFor({ state: 'visible', timeout: 25000 });
 };
 const closeExcelSection = async () => {
-  if (await exportBtn.isVisible().catch(() => false)) await settingsToggle.click().catch(() => {});
+  if (await exportBtn.isVisible().catch(() => false)) await settingsToggle.click(); // loud: surface interceptors
   await exportBtn.waitFor({ state: 'hidden', timeout: 10000 }).catch(() => {});
 };
 
@@ -45,7 +45,9 @@ const login = async (code, pin, { leader = true } = {}) => {
   await page.locator('input[type="password"]').fill(pin);
   await page.keyboard.press('Enter');
   if (leader) await openExcelSection();
-  else await requestsToggle.waitFor({ state: 'visible', timeout: 25000 });
+  // Employees no longer see the schedule-requests boxes — wait for the
+  // schedule toolbar instead (their login-complete signal).
+  else await page.locator('[data-range-label]').first().waitFor({ state: 'visible', timeout: 25000 });
 };
 
 // ---- Login as admin ----
@@ -136,15 +138,19 @@ await closeExcelSection();
 check('month export downloads', /TechSource-Schedule-Month-\d{4}-\d{2}\.xlsx/.test(monthDownload.suggestedFilename()), monthDownload.suggestedFilename());
 await page.screenshot({ path: `${SHOTS}/month-view-export.png`, fullPage: false });
 
-// ---- Employee flow: EMP101 sees the request form ----
+// ---- Employee flow: EMP101 — requests boxes are HIDDEN from employees ----
+// (user request: "مش عايز الخانات دي تظهر غير لليدر و الادمن بس" — the
+// schedule-requests card renders for leaders/admins only; employees get a
+// clean read-only schedule view)
 await page.getByRole('button', { name: /التفضيلات|Preferences/ }).click();
 await page.getByRole('menuitem', { name: /تسجيل الخروج|Log out/ }).click();
 await page.waitForSelector('input', { timeout: 15000 });
 await login('EMP101', '1234', { leader: false });
 check('employee login works', true);
-await breakTab.click();
 await page.waitForTimeout(700);
-check('employee sees break request form', await page.getByRole('button', { name: /إرسال الطلب للأدمن|Send to admin/ }).isVisible());
+check('employee does NOT see the requests card', await page.locator('[data-requests-card]').count() === 0, `count=${await page.locator('[data-requests-card]').count()}`);
+check('employee does NOT see swap/break tabs', !(await page.getByRole('button', { name: /تبديل الشيفت|Shift swap/ }).first().isVisible().catch(() => false)) && !(await page.getByRole('button', { name: /تغيير البريك|Break change/ }).first().isVisible().catch(() => false)));
+check('employee still sees their schedule', await page.locator('[data-range-label]').first().isVisible());
 await page.screenshot({ path: `${SHOTS}/requests-panel-employee.png`, fullPage: false });
 
 // ---- Notification bell mounted in header ----
@@ -270,6 +276,9 @@ check('dashboard import panel opens from preferences menu', true);
 check('dashboard import upload section visible', await page.getByText(/ارفع ملف الداش بورد|Upload your dashboard file/).first().isVisible().catch(() => false));
 check('dashboard import url auto-sync section visible (admin)', await page.getByText(/مزامنة تلقائية من رابط الملف|Auto-sync from a file URL/).first().isVisible().catch(() => false));
 check('dashboard import url input present', await page.locator('[role="dialog"][aria-label*="استيراد الداش بورد"] input[type="url"]').isVisible());
+check('dashboard import: auto-import box visible', await page.getByText(/الاستيراد التلقائي للملف المرفوع|Automatic re-import of the uploaded file/).first().isVisible().catch(() => false));
+check('dashboard import: import-stored-file button present', await page.getByRole('button', { name: /استيراد الملف المحفوظ الآن|Import stored file now/ }).first().isVisible().catch(() => false));
+check('dashboard import: daily re-import toggle present (admin)', await page.getByText(/استيراد تلقائي كل يوم|Re-import daily/).first().isVisible().catch(() => false));
 
 // Real end-to-end upload: Arabic dashboard grid → preview → apply → server state.
 const dashWb = XLSX.utils.book_new();
@@ -305,6 +314,17 @@ const stateAfterImport = await page.evaluate(async () => {
 });
 check('dashboard import: IMP901 created server-side', stateAfterImport.found, JSON.stringify(stateAfterImport));
 check('dashboard import: 3 schedule rows applied (1 OFF)', stateAfterImport.assignments.length === 3 && stateAfterImport.assignments.filter((a) => a.endsWith(':OFF')).length === 1, JSON.stringify(stateAfterImport.assignments));
+
+// The uploaded workbook is also kept on the server for the daily auto re-import.
+const storedCheck = await page.evaluate(async () => {
+  const saved = JSON.parse(localStorage.getItem('logged_in_user') || 'null');
+  const headers = { Accept: 'application/json' };
+  if (saved?.id) headers['x-auth-employee-id'] = String(saved.id);
+  if (saved?.pin) headers['x-auth-pin'] = String(saved.pin);
+  const data = await (await fetch('/api/dashboard-import', { headers })).json();
+  return { hasStoredFile: Boolean(data?.config?.hasStoredFile), name: data?.config?.storedFileName ?? null, autoImport: Boolean(data?.config?.autoImport) };
+});
+check('dashboard import: uploaded file stored server-side for auto-import', storedCheck.hasStoredFile, JSON.stringify(storedCheck));
 await panelDialog.getByRole('button', { name: /إغلاق الاستيراد|Close dashboard import/ }).click().catch(() => {});
 check('dashboard import panel closes', true);
 
