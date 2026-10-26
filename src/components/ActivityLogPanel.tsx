@@ -38,6 +38,7 @@ const CATEGORY_STYLES: Record<string, string> = {
   break_request: 'bg-pink-50 text-pink-700 dark:bg-pink-500/15 dark:text-pink-300',
   swap: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300',
   sheet: 'bg-cyan-50 text-cyan-700 dark:bg-cyan-500/15 dark:text-cyan-300',
+  dashboard: 'bg-orange-50 text-orange-700 dark:bg-orange-500/15 dark:text-orange-300',
   auth: 'bg-slate-100 text-slate-600 dark:bg-slate-500/15 dark:text-slate-300',
 };
 
@@ -60,6 +61,9 @@ const ACTION_LABELS: Record<string, { ar: string; en: string }> = {
   'sheet.config': { ar: 'تحديث رابط Google Sheets', en: 'Google Sheets link updated' },
   'sheet.sync': { ar: 'مزامنة Google Sheets', en: 'Google Sheets sync' },
   'sheet.sync_failed': { ar: 'فشل مزامنة Google Sheets', en: 'Google Sheets sync failed' },
+  'dashboard.import': { ar: 'استيراد الداش بورد', en: 'Dashboard import' },
+  'dashboard.import_failed': { ar: 'فشل استيراد الداش بورد', en: 'Dashboard import failed' },
+  'dashboard.config': { ar: 'تحديث إعدادات استيراد الداش بورد', en: 'Dashboard import settings updated' },
 };
 
 const CATEGORIES: Array<{ value: string; ar: string; en: string }> = [
@@ -70,6 +74,7 @@ const CATEGORIES: Array<{ value: string; ar: string; en: string }> = [
   { value: 'break_request', ar: 'طلبات البريك', en: 'Break requests' },
   { value: 'swap', ar: 'تبديل الشيفت', en: 'Shift swap' },
   { value: 'sheet', ar: 'مزامنة الشيت', en: 'Sheet sync' },
+  { value: 'dashboard', ar: 'استيراد الداش بورد', en: 'Dashboard import' },
   { value: 'auth', ar: 'تسجيل الدخول', en: 'Sign-ins' },
 ];
 
