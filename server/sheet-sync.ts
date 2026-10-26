@@ -308,7 +308,7 @@ export function registerSheetSync(app: any) {
   });
 
   // POST /api/sheet-sync/test — probe a (possibly unsaved) webhook URL.
-  app.post('/api/sheet-sync/test', async (req: any, res: any) => {
+  const testHandler = async (req: any, res: any) => {
     try {
       const manager = await requireManager(req, (status: number, body: unknown) => res.status(status).json(body));
       if (!manager) return;
@@ -329,10 +329,12 @@ export function registerSheetSync(app: any) {
     } catch (error: any) {
       return res.status(502).json({ success: false, error: String(error?.message || error).slice(0, 300) });
     }
-  });
+  };
+  app.post('/api/sheet-sync/test', testHandler);
+  app.post('/api/sheet-sync-test', testHandler); // single-segment alias (Vercel multi-segment routing quirk)
 
   // POST /api/sheet-sync/run — build the payload and push it to the sheet.
-  app.post('/api/sheet-sync/run', async (req: any, res: any) => {
+  const runHandler = async (req: any, res: any) => {
     const manager = await requireManager(req, (status: number, body: unknown) => res.status(status).json(body));
     if (!manager) return;
     const cfg = await readConfig();
@@ -407,5 +409,7 @@ export function registerSheetSync(app: any) {
     } finally {
       runningSync = null;
     }
-  });
+  };
+  app.post('/api/sheet-sync/run', runHandler);
+  app.post('/api/sheet-sync-run', runHandler); // single-segment alias
 }

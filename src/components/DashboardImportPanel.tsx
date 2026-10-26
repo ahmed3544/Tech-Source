@@ -130,7 +130,7 @@ export function DashboardImportPanel({ lang, currentUser, onClose, onImported }:
     if (!rawSheets || busy) return;
     setBusy('apply'); setError(''); setNotice('');
     try {
-      const response = await fetch('/api/dashboard-import/apply', {
+      const response = await fetch('/api/dashboard-import-apply', {
         method: 'POST', credentials: 'include', cache: 'no-store',
         headers: authHeaders({ 'Content-Type': 'application/json', Accept: 'application/json' }),
         body: JSON.stringify({ sheets: rawSheets, options }),
@@ -174,7 +174,7 @@ export function DashboardImportPanel({ lang, currentUser, onClose, onImported }:
     if (busy) return;
     setBusy('sync'); setError(''); setNotice(''); setSummary(null);
     try {
-      const response = await fetch('/api/dashboard-import/url', {
+      const response = await fetch('/api/dashboard-import-url', {
         method: 'POST', credentials: 'include', cache: 'no-store',
         headers: authHeaders({ 'Content-Type': 'application/json', Accept: 'application/json' }),
         body: JSON.stringify({ url: urlDraft.sourceUrl.trim() || undefined }),

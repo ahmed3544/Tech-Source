@@ -174,7 +174,7 @@ export const SheetSyncPanel = ({ lang, currentUser, onClose }: Props) => {
   const testConnection = async () => {
     setBusy('test'); setError(''); setNotice('');
     try {
-      const response = await fetch('/api/sheet-sync/test', {
+      const response = await fetch('/api/sheet-sync-test', {
         method: 'POST', credentials: 'include', cache: 'no-store',
         headers: authHeaders({ 'Content-Type': 'application/json', Accept: 'application/json' }),
         body: JSON.stringify({ webhookUrl: config.webhookUrl.trim() }),
@@ -194,7 +194,7 @@ export const SheetSyncPanel = ({ lang, currentUser, onClose }: Props) => {
   const syncNow = async () => {
     setBusy('run'); setError(''); setNotice('');
     try {
-      const response = await fetch('/api/sheet-sync/run', {
+      const response = await fetch('/api/sheet-sync-run', {
         method: 'POST', credentials: 'include', cache: 'no-store',
         headers: authHeaders({ 'Content-Type': 'application/json', Accept: 'application/json' }),
         body: JSON.stringify({ force: true }),
