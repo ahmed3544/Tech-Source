@@ -15,6 +15,12 @@ function findEmployee(employees: any[], input: string) {
   const numericOnly = cleanInput.replace(/\D/g, "");
   const numericValue = numericOnly ? Number(numericOnly) : null;
 
+  // Ahmed's admin login code is 5002 even if the database still has legacy EMP002.
+  if (cleanInput === "5002") {
+    const admin = employees.find((e) => String(e?.id || "") === "emp-002" || normalize(e?.email) === "ahmed.mahmoud@techsource-gds.com");
+    if (admin) return admin;
+  }
+
   if (cleanInput === "leader") {
     return employees.find((e) => e?.role === "leader" || e?.code === "EMP011") || employees[0];
   }
@@ -99,7 +105,11 @@ export default async function handler(req: any, res: any) {
       return res.status(401).json({ success: false, error: "INVALID_CREDENTIALS" });
     }
 
-    const safeEmployee = { ...employee };
+    const isAhmedAdmin = String(employee?.id || "") === "emp-002" || normalize(employee?.email) === "ahmed.mahmoud@techsource-gds.com";
+    const safeEmployee = {
+      ...employee,
+      ...(isAhmedAdmin ? { code: "5002", nameAr: "Ahmed Mahmoud", nameEn: "Ahmed Mahmoud" } : {}),
+    };
     delete safeEmployee.pin;
     await auditLogin({ employeeId: employee.id, loginIdentifier: loginCode, success: true, req });
 
