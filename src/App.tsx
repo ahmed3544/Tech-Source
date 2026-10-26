@@ -20,12 +20,15 @@ const normalizeRole = (value: unknown): Employee['role'] => {
   return 'employee';
 };
 
-const normalizeEmployee = (raw: any): Employee => ({
+const normalizeEmployee = (raw: any): Employee => {
+  const isAhmedAdmin = String(raw?.id || '') === ADMIN_ID ||
+    String(raw?.email || '').trim().toLowerCase() === ADMIN_EMAIL;
+  return ({
   id: String(raw?.id || ''),
   companyId: raw?.companyId ?? raw?.company_id ?? 'tech-source',
-  code: String(raw?.code || ''),
-  nameAr: String(raw?.nameAr ?? raw?.name_ar ?? ''),
-  nameEn: String(raw?.nameEn ?? raw?.name_en ?? ''),
+  code: isAhmedAdmin ? '5002' : String(raw?.code || ''),
+  nameAr: isAhmedAdmin ? 'Ahmed Mahmoud - 5002' : String(raw?.nameAr ?? raw?.name_ar ?? ''),
+  nameEn: isAhmedAdmin ? 'Ahmed Mahmoud - 5002' : String(raw?.nameEn ?? raw?.name_en ?? ''),
   avatar: String(raw?.avatar || ''),
   email: String(raw?.email || ''),
   phone: String(raw?.phone || ''),
@@ -39,7 +42,8 @@ const normalizeEmployee = (raw: any): Employee => ({
   status: raw?.status === 'inactive' ? 'inactive' : 'active',
   teamLeaderId: raw?.teamLeaderId ?? raw?.team_leader_id,
   teamId: raw?.teamId ?? raw?.team_id,
-});
+  });
+};
 
 const normalizeShift = (raw: any): Shift => ({
   ...raw,
