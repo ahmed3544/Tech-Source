@@ -262,6 +262,52 @@ await page.getByRole('button', { name: /إغلاق الربط|Close Google Sheet
 await page.waitForSelector('[role="dialog"][aria-label*="Google Sheets"]', { state: 'detached', timeout: 5000 }).catch(() => {});
 check('sheet sync panel closes', true);
 
+// ---- Excel dashboard import panel: opens, upload flow, URL auto-sync section ----
+await page.getByRole('button', { name: /التفضيلات|Preferences/ }).click();
+await page.getByRole('menuitem', { name: /استيراد الداش بورد|Excel dashboard import/ }).click();
+await page.waitForSelector('[role="dialog"][aria-label*="استيراد الداش بورد"]', { timeout: 15000 });
+check('dashboard import panel opens from preferences menu', true);
+check('dashboard import upload section visible', await page.getByText(/ارفع ملف الداش بورد|Upload your dashboard file/).first().isVisible().catch(() => false));
+check('dashboard import url auto-sync section visible (admin)', await page.getByText(/مزامنة تلقائية من رابط الملف|Auto-sync from a file URL/).first().isVisible().catch(() => false));
+check('dashboard import url input present', await page.locator('[role="dialog"][aria-label*="استيراد الداش بورد"] input[type="url"]').isVisible());
+
+// Real end-to-end upload: Arabic dashboard grid → preview → apply → server state.
+const dashWb = XLSX.utils.book_new();
+const dashRows = [
+  ['الكود', 'اسم الموظف', 'الوظيفة', '25/10/2026', '26/10/2026', '27/10/2026'],
+  ['IMP901', 'نهى محمود', 'موظف', 'صباحي 08:00-16:00', 'OFF', 'صباحي 08:00-16:00'],
+];
+XLSX.utils.book_append_sheet(dashWb, XLSX.utils.aoa_to_sheet(dashRows), 'الجدول الأسبوعي');
+const dashPath = '/tmp/dashboard-fixture.xlsx';
+fs.writeFileSync(dashPath, XLSX.write(dashWb, { type: 'buffer', bookType: 'xlsx' }));
+const panelDialog = page.locator('[role="dialog"][aria-label*="استيراد الداش بورد"]');
+await panelDialog.locator('input[type="file"]').setInputFiles(dashPath);
+await page.waitForSelector('text=/جدول شيوفات|Shift roster/', { timeout: 20000 });
+check('dashboard import detects the schedule sheet', await panelDialog.getByText('IMP901').isVisible().catch(() => false) || await panelDialog.getByText(/الجدول الأسبوعي/).first().isVisible().catch(() => false));
+check('dashboard import options appear after analysis', await page.getByText(/باسورد مؤقت للموظفين الجدد|Temporary password for new employees/).first().isVisible().catch(() => false));
+await page.screenshot({ path: `${SHOTS}/dashboard-import-panel.png`, fullPage: false });
+await panelDialog.getByRole('button', { name: /استيراد الآن|Import now/ }).click();
+await page.waitForSelector('text=/نتيجة الاستيراد|Import result/', { timeout: 30000 });
+check('dashboard import apply succeeds with summary', true);
+await page.waitForTimeout(2600); // the app auto-reloads ~1.8s after import
+
+// Server state: IMP901 exists with the default pin + got the schedule assignments.
+const stateAfterImport = await page.evaluate(async () => {
+  const saved = JSON.parse(localStorage.getItem('logged_in_user') || 'null');
+  const headers = { Accept: 'application/json' };
+  if (saved?.id) headers['x-auth-employee-id'] = String(saved.id);
+  if (saved?.pin) headers['x-auth-pin'] = String(saved.pin);
+  const employees = await (await fetch('/api/data', { headers })).json();
+  const schedule = await (await fetch('/api/schedule-sync', { headers })).json();
+  const imported = (employees.employees || []).find((e) => String(e.code).toUpperCase() === 'IMP901');
+  const rows = imported ? (schedule.dailyShiftAssignments || []).filter((a) => String(a.employeeId) === String(imported.id)) : [];
+  return { found: Boolean(imported), id: imported?.id, assignments: rows.map((r) => `${r.date}:${r.isOffDay ? 'OFF' : r.shiftId}`).sort() };
+});
+check('dashboard import: IMP901 created server-side', stateAfterImport.found, JSON.stringify(stateAfterImport));
+check('dashboard import: 3 schedule rows applied (1 OFF)', stateAfterImport.assignments.length === 3 && stateAfterImport.assignments.filter((a) => a.endsWith(':OFF')).length === 1, JSON.stringify(stateAfterImport.assignments));
+await panelDialog.getByRole('button', { name: /إغلاق الاستيراد|Close dashboard import/ }).click().catch(() => {});
+check('dashboard import panel closes', true);
+
 console.log(`\nConsole errors: ${errors.length}`);
 errors.slice(0, 5).forEach((e) => console.log('  !', e.slice(0, 200)));
 const failed = results.filter((r) => !r.ok);
