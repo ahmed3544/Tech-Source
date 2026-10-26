@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { CalendarDays, Users, Plus, LogOut, Languages, Moon, Sun, Pencil, Trash2, Save, X, Settings2, ChevronDown, ScrollText } from 'lucide-react';
+import { CalendarDays, Users, Plus, LogOut, Languages, Moon, Sun, Pencil, Trash2, Save, X, Settings2, ChevronDown, ScrollText, FileSpreadsheet } from 'lucide-react';
 import { LoginModal } from './components/LoginModal';
 import { WeeklyShiftSchedule } from './components/WeeklyShiftSchedule';
 import { NotificationCenter } from './components/NotificationCenter';
 import { ActivityLogPanel } from './components/ActivityLogPanel';
+import { SheetSyncPanel } from './components/SheetSyncPanel';
 import { Employee, Language, Shift, DailyShiftAssignment } from './types';
 import { INITIAL_EMPLOYEES, INITIAL_SHIFTS } from './mockData';
 import { authHeaders, errorToMessage, extractApiError, parseResponse } from './utils/errors';
@@ -100,6 +101,7 @@ export default function App() {
   const [showAddEmployee, setShowAddEmployee] = useState(false);
   const [showEmployeeSettings, setShowEmployeeSettings] = useState(false);
   const [showActivityLog, setShowActivityLog] = useState(false);
+  const [showSheetSync, setShowSheetSync] = useState(false);
   const [showPreferencesMenu, setShowPreferencesMenu] = useState(false);
   const [newName, setNewName] = useState('');
   const [newCode, setNewCode] = useState('');
@@ -193,6 +195,31 @@ export default function App() {
     void load();
     return () => { cancelled = true; };
   }, []);
+
+  // Background Google Sheets dashboard sync: when auto-sync is enabled, the
+  // first manager opening the app asks the server to push fresh data. The
+  // server rate-limits auto runs (at most one per hour, only when the last
+  // sync is older than 12h), so leaving tabs open can never hammer Google.
+  useEffect(() => {
+    if (!currentUser || !isLeader) return;
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void (async () => {
+        try {
+          const response = await fetch('/api/sheet-sync', { cache: 'no-store', credentials: 'include', headers: authHeaders({ Accept: 'application/json' }) });
+          if (!response.ok || cancelled) return;
+          const data = await parseResponse(response);
+          if (cancelled || !data?.config?.autoSync) return;
+          await fetch('/api/sheet-sync/run', {
+            method: 'POST', credentials: 'include',
+            headers: authHeaders({ 'Content-Type': 'application/json', Accept: 'application/json' }),
+            body: JSON.stringify({ auto: true }),
+          });
+        } catch { /* silent: background best-effort sync */ }
+      })();
+    }, 8000);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [currentUser?.id, isLeader]);
 
   const handleLogin = (raw: Employee, pin?: string) => {
     const user = normalizeEmployee(raw);
@@ -375,7 +402,7 @@ export default function App() {
     <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 backdrop-blur dark:border-slate-800 dark:bg-slate-900/95">
       <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
         <div className="flex items-center gap-3"><div className="rounded-xl bg-emerald-100 p-2 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"><CalendarDays className="h-6 w-6" /></div><div><h1 className="text-lg font-black">{lang === 'ar' ? 'نظام جداول الورديات' : 'Shift Scheduling System'}</h1><p className="text-xs text-slate-500 dark:text-slate-400">TECH SOURCE - GDS</p></div></div>
-        <div className="flex items-center gap-2"><span className="hidden text-sm font-bold sm:inline">{lang === 'ar' ? currentUser.nameAr : currentUser.nameEn}</span>{/* In-app notification center (self-polling) — break-change approvals, swap updates, leaves. */}<div className="rounded-lg bg-slate-900 dark:bg-slate-800"><NotificationCenter currentUserId={currentUser.id} lang={lang} /></div>{isLeader && <button onClick={() => { setShowEmployeeSettings(v => !v); setShowPreferencesMenu(false); }} aria-expanded={showEmployeeSettings} className="rounded-lg border px-3 py-2 text-sm dark:border-slate-700 dark:text-slate-100"><Settings2 className="mr-1 inline h-4 w-4" />{lang === 'ar' ? 'الإعدادات' : 'Settings'}</button>}<div className="relative"><button type="button" aria-haspopup="menu" aria-expanded={showPreferencesMenu} onClick={() => setShowPreferencesMenu(v => !v)} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-bold dark:border-slate-700 dark:text-slate-100"><Settings2 className="h-4 w-4" /><span>{lang === 'ar' ? 'التفضيلات' : 'Preferences'}</span><ChevronDown className={`h-4 w-4 transition-transform ${showPreferencesMenu ? 'rotate-180' : ''}`} /></button>{showPreferencesMenu && <><button aria-label={lang === 'ar' ? 'إغلاق القائمة' : 'Close menu'} className="fixed inset-0 z-30 cursor-default" onClick={() => setShowPreferencesMenu(false)} /><div role="menu" className="absolute end-0 top-full z-40 mt-2 w-56 rounded-xl border border-slate-200 bg-white p-2 shadow-xl dark:border-slate-700 dark:bg-slate-900"><button role="menuitem" onClick={() => { changeLanguage(); setShowPreferencesMenu(false); }} className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-start text-sm font-semibold hover:bg-slate-100 dark:hover:bg-slate-800"><Languages className="h-4 w-4" /><span className="flex-1">{lang === 'ar' ? 'اللغة' : 'Language'}</span><span className="text-xs text-slate-500">{lang === 'ar' ? 'العربية' : 'English'}</span></button>{isLeader && <button role="menuitem" onClick={() => { setShowActivityLog(true); setShowPreferencesMenu(false); }} className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-start text-sm font-semibold hover:bg-slate-100 dark:hover:bg-slate-800"><ScrollText className="h-4 w-4" /><span>{lang === 'ar' ? 'سجل النشاط' : 'Activity Log'}</span></button>}<button role="menuitem" onClick={() => { toggleTheme(); setShowPreferencesMenu(false); }} className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-start text-sm font-semibold hover:bg-slate-100 dark:hover:bg-slate-800">{theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}<span className="flex-1">{theme === 'dark' ? (lang === 'ar' ? 'الوضع الفاتح' : 'Light mode') : (lang === 'ar' ? 'الوضع الداكن' : 'Dark mode')}</span></button><div className="my-1 border-t border-slate-200 dark:border-slate-700" /><button role="menuitem" onClick={() => { setShowPreferencesMenu(false); setShowEmployeeSettings(false); localStorage.removeItem('logged_in_user'); try { sessionStorage.removeItem('auth_pin'); } catch {} setCurrentUser(null); setLoginNotice(''); setLoginOpen(true); }} className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-start text-sm font-semibold text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10"><LogOut className="h-4 w-4" /><span>{lang === 'ar' ? 'تسجيل الخروج' : 'Log out'}</span></button></div></>}</div></div>
+        <div className="flex items-center gap-2"><span className="hidden text-sm font-bold sm:inline">{lang === 'ar' ? currentUser.nameAr : currentUser.nameEn}</span>{/* In-app notification center (self-polling) — break-change approvals, swap updates, leaves. */}<div className="rounded-lg bg-slate-900 dark:bg-slate-800"><NotificationCenter currentUserId={currentUser.id} lang={lang} /></div>{isLeader && <button onClick={() => { setShowEmployeeSettings(v => !v); setShowPreferencesMenu(false); }} aria-expanded={showEmployeeSettings} className="rounded-lg border px-3 py-2 text-sm dark:border-slate-700 dark:text-slate-100"><Settings2 className="mr-1 inline h-4 w-4" />{lang === 'ar' ? 'الإعدادات' : 'Settings'}</button>}<div className="relative"><button type="button" aria-haspopup="menu" aria-expanded={showPreferencesMenu} onClick={() => setShowPreferencesMenu(v => !v)} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-bold dark:border-slate-700 dark:text-slate-100"><Settings2 className="h-4 w-4" /><span>{lang === 'ar' ? 'التفضيلات' : 'Preferences'}</span><ChevronDown className={`h-4 w-4 transition-transform ${showPreferencesMenu ? 'rotate-180' : ''}`} /></button>{showPreferencesMenu && <><button aria-label={lang === 'ar' ? 'إغلاق القائمة' : 'Close menu'} className="fixed inset-0 z-30 cursor-default" onClick={() => setShowPreferencesMenu(false)} /><div role="menu" className="absolute end-0 top-full z-40 mt-2 w-56 rounded-xl border border-slate-200 bg-white p-2 shadow-xl dark:border-slate-700 dark:bg-slate-900"><button role="menuitem" onClick={() => { changeLanguage(); setShowPreferencesMenu(false); }} className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-start text-sm font-semibold hover:bg-slate-100 dark:hover:bg-slate-800"><Languages className="h-4 w-4" /><span className="flex-1">{lang === 'ar' ? 'اللغة' : 'Language'}</span><span className="text-xs text-slate-500">{lang === 'ar' ? 'العربية' : 'English'}</span></button>{isLeader && <button role="menuitem" onClick={() => { setShowActivityLog(true); setShowPreferencesMenu(false); }} className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-start text-sm font-semibold hover:bg-slate-100 dark:hover:bg-slate-800"><ScrollText className="h-4 w-4" /><span>{lang === 'ar' ? 'سجل النشاط' : 'Activity Log'}</span></button>}{isLeader && <button role="menuitem" onClick={() => { setShowSheetSync(true); setShowPreferencesMenu(false); }} className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-start text-sm font-semibold hover:bg-slate-100 dark:hover:bg-slate-800"><FileSpreadsheet className="h-4 w-4" /><span>{lang === 'ar' ? 'ربط Google Sheets' : 'Google Sheets sync'}</span></button>}<button role="menuitem" onClick={() => { toggleTheme(); setShowPreferencesMenu(false); }} className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-start text-sm font-semibold hover:bg-slate-100 dark:hover:bg-slate-800">{theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}<span className="flex-1">{theme === 'dark' ? (lang === 'ar' ? 'الوضع الفاتح' : 'Light mode') : (lang === 'ar' ? 'الوضع الداكن' : 'Dark mode')}</span></button><div className="my-1 border-t border-slate-200 dark:border-slate-700" /><button role="menuitem" onClick={() => { setShowPreferencesMenu(false); setShowEmployeeSettings(false); localStorage.removeItem('logged_in_user'); try { sessionStorage.removeItem('auth_pin'); } catch {} setCurrentUser(null); setLoginNotice(''); setLoginOpen(true); }} className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-start text-sm font-semibold text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10"><LogOut className="h-4 w-4" /><span>{lang === 'ar' ? 'تسجيل الخروج' : 'Log out'}</span></button></div></>}</div></div>
       </div>
     </header>
     <div className="mx-auto grid w-full max-w-none grid-cols-1 gap-2 p-1 sm:p-2">
@@ -417,6 +444,7 @@ export default function App() {
         </div>)}</div>
       </aside>}
       {showActivityLog && <ActivityLogPanel lang={lang} currentUser={currentUser} onClose={() => setShowActivityLog(false)} />}
+      {showSheetSync && <SheetSyncPanel lang={lang} currentUser={currentUser} onClose={() => setShowSheetSync(false)} />}
     </div>
   </main>;
 }
