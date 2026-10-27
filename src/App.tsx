@@ -242,7 +242,7 @@ export default function App() {
 
   const addEmployee = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!isAdmin || busy) return;
+    if (!isLeader || busy) return;
     if (!newName.trim() || !newCode.trim() || !newPin.trim()) return;
     setBusy(true); setError(''); setSuccessMessage('');
     const code = newCode.trim().toUpperCase();
@@ -279,7 +279,7 @@ export default function App() {
 
   const saveEmployeeEdits = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!isAdmin || busy || !editingEmployeeId) return;
+    if (!isLeader || busy || !editingEmployeeId) return;
     if (!editName.trim() || !editCode.trim()) return;
     const normalizedCode = editCode.trim().toLowerCase();
     if (employees.some(e => e.id !== editingEmployeeId && String(e.code || '').trim().toLowerCase() === normalizedCode)) {
@@ -345,7 +345,7 @@ export default function App() {
   };
 
   const deleteEmployee = async (employee: Employee) => {
-    if (!isAdmin || busy || employee.id === ADMIN_ID || employee.id === currentUser?.id) return;
+    if (!isLeader || busy || employee.id === ADMIN_ID || employee.id === currentUser?.id) return;
     const confirmed = window.confirm(lang === 'ar'
       ? `هل أنت متأكد من حذف حساب ${employee.nameAr || employee.nameEn}؟ لا يمكن التراجع عن الحذف.`
       : `Delete account for ${employee.nameEn || employee.nameAr}? This cannot be undone.`);
@@ -409,7 +409,7 @@ export default function App() {
     </header>
     <div className="mx-auto grid w-full max-w-none grid-cols-1 gap-2 p-1 sm:p-2">
       <section className="min-w-0"><WeeklyShiftSchedule employees={visibleEmployees} shifts={shifts} dailyShiftAssignments={assignments} leaveRequests={leaveRequests} holidays={holidays} currentUser={currentUser} lang={lang} onAddShift={handleAddShift} onUpdateShift={handleUpdateShift} onDeleteShift={handleDeleteShift} onAuthFailure={forceReLogin} settingsOpen={showEmployeeSettings} /></section>
-      {isAdmin && showEmployeeSettings && <aside role="dialog" aria-label={lang === "ar" ? "إعدادات الموظفين" : "Employee settings"} className="fixed end-3 top-[76px] z-40 max-h-[calc(100dvh-88px)] w-[min(92vw,340px)] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl dark:border-slate-800 dark:bg-slate-900">
+      {isLeader && showEmployeeSettings && <aside role="dialog" aria-label={lang === "ar" ? "إعدادات الموظفين" : "Employee settings"} className="fixed end-3 top-[76px] z-40 max-h-[calc(100dvh-88px)] w-[min(92vw,340px)] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl dark:border-slate-800 dark:bg-slate-900">
         <div className="mb-3 flex items-center justify-between gap-3"><h2 className="font-black">{lang === 'ar' ? 'إدارة الموظفين' : 'Employee Management'}</h2><button type="button" onClick={() => { setShowEmployeeSettings(false); setShowAddEmployee(false); setEditingEmployeeId(null); setError(''); setSuccessMessage(''); }} aria-label={lang === 'ar' ? 'إغلاق إدارة الموظفين والرجوع' : 'Close employee management and go back'} title={lang === 'ar' ? 'رجوع' : 'Back'} className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-slate-100 text-slate-700 transition hover:bg-red-100 hover:text-red-700 focus:outline-none focus:ring-2 focus:ring-red-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-red-500/20 dark:hover:text-red-300"><X className="h-5 w-5" /></button></div>
         <p className="mb-4 text-xs leading-5 text-slate-500 dark:text-slate-400">{lang === 'ar' ? 'أضف الموظفين الجدد ليظهروا في جدول الورديات. لا توجد بيانات حضور أو إجازات في هذا النظام.' : 'Add employees to make them available in the roster. Attendance and leave data are not part of this system.'}</p>
         <button onClick={() => setShowAddEmployee(!showAddEmployee)} className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white"><Plus className="h-4 w-4" />{lang === 'ar' ? 'إضافة موظف' : 'Add employee'}</button>
