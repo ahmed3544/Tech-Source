@@ -1031,7 +1031,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
               <div className="grid" style={{ gridTemplateColumns: '56px repeat(7, minmax(0, 1fr))' }}>
                 <div className="relative border-e border-slate-200 dark:border-slate-700" style={{ height: gridHeightDesktop }}>
                   {axisHours.map(minutes => (
-                    <span key={minutes} className="absolute -translate-y-1/2 pe-1.5 text-end font-mono text-[9px] font-bold text-slate-400 dark:text-slate-500" style={{ top: `${pctTop(minutes)}%`, right: 0, width: '100%' }}>{fmt24(minutes)}</span>
+                    <span key={minutes} className="absolute -translate-y-1/2 pe-1.5 text-end font-mono text-[9px] font-bold text-slate-400 dark:text-slate-500" style={{ top: `${pctTop(minutes)}%`, right: 0, width: '100%' }}>{fmt24(minutes, lang)}</span>
                   ))}
                 </div>
                 {weekResults.map(({ day, resolved }) => (
