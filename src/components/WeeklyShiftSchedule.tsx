@@ -178,6 +178,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
   const settingsOpen = externalSettingsOpen && !settingsHiddenLocally;
 
   const isLeader = ['leader', 'admin', 'company_admin', 'platform_admin'].includes(String(currentUser?.role || ''));
+  const isAdmin = ['admin', 'company_admin', 'platform_admin'].includes(String(currentUser?.role || '').toLowerCase());
 
   useEffect(() => {
     setEmployees(suppliedEmployees || []);
@@ -228,15 +229,8 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
 
   const visibleEmployees = useMemo(() => {
     if (!isLeader) return rosterEmployees.filter(e => sameId(e.id, currentUser?.id));
-    if (['admin', 'company_admin', 'platform_admin'].includes(String(currentUser?.role || '').toLowerCase())) return rosterEmployees;
-    const team = rosterEmployees.filter(e => sameId(e.teamLeaderId, currentUser?.id));
-    if (team.length) return team;
-    if (currentUser?.teamId) {
-      const sameTeam = rosterEmployees.filter(e => e.teamId === currentUser.teamId);
-      if (sameTeam.length) return sameTeam;
-    }
-    // Never expose the whole roster to a team leader when no team mapping exists.
-    return rosterEmployees.filter(e => sameId(e.id, currentUser?.id));
+    // Team leaders have the same roster visibility as admins; only shift assignment is admin-only.
+    return rosterEmployees;
   }, [rosterEmployees, isLeader, currentUser]);
 
   const employee = visibleEmployees.find(e => sameId(e.id, selectedEmployeeId)) || visibleEmployees[0] || null;
@@ -362,7 +356,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
   const weekResults = useMemo(() => days.map(day => ({ day, resolved: resolveFor(day.key) })), [days, employee, shifts, assignments, breaksByDate, suppliedLeaves, suppliedHolidays, draft]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const saveWeek = async () => {
-    if (!employee) return;
+    if (!employee || !isAdmin) return;
     setSaving(true); setError(null); setMessage(null);
     try {
       const now = new Date().toISOString();
@@ -889,7 +883,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-2">
             <button type="button" onClick={() => { goToDate(new Date()); setViewMode('day'); }} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800/70">📅 {lang === 'ar' ? 'اليوم' : 'Today'}</button>
-            {isLeader && Object.keys(draft).length > 0 && (
+            {isAdmin && Object.keys(draft).length > 0 && (
               <button type="button" onClick={saveWeek} disabled={saving} className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs font-black text-white hover:bg-blue-700 disabled:opacity-50"><Save className="h-3.5 w-3.5" />{saving ? (lang === 'ar' ? 'جاري الحفظ...' : 'Saving...') : (lang === 'ar' ? `حفظ التعديلات (${Object.keys(draft).length})` : `Save changes (${Object.keys(draft).length})`)}</button>
             )}
           </div>
@@ -901,7 +895,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
         </div>
       </div>
 
-      {isLeader && settingsOpen && (
+      {isAdmin && settingsOpen && (
         <div className="space-y-3 rounded-2xl border border-blue-200 bg-slate-50 p-3 shadow-sm dark:border-blue-500/30 dark:bg-slate-900/80">
           <div className="flex items-center justify-between gap-3"><h2 className="text-sm font-black text-slate-800 dark:text-slate-100">{lang === 'ar' ? 'إعدادات الجدول' : 'Schedule settings'}</h2><button type="button" onClick={() => setSettingsHiddenLocally(true)} className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-bold dark:border-slate-600">{lang === 'ar' ? 'إخفاء الإعدادات' : 'Hide settings'}</button></div>
           <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-950">
@@ -1087,7 +1081,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
         </>
       )}
 
-      {isLeader && employee && (
+      {isAdmin && employee && (
         <div id="employee-shift-assignment" className="rounded-xl border-2 border-blue-200 bg-white shadow-sm dark:border-blue-500/30 dark:bg-slate-950">
           <button type="button" onClick={() => setEditPanelOpen(v => !v)} className="flex w-full items-center justify-between px-4 py-2.5 text-xs font-black text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800/60">
             <span className="flex items-center gap-2"><Pencil className="h-4 w-4" />{lang === 'ar' ? 'تعيين الشيفت لكل موظف ولكل يوم' : 'Assign shifts per employee and day'}</span>
