@@ -3,6 +3,12 @@ import { db } from '../src/db/index.js';
 import * as schema from '../src/db/schema.js';
 import { requireManager, isPlatformAdmin, canManageEmployee, authenticateRequest, type AuthedEmployee } from './auth.js';
 import { logActivity } from './activity-logs.js';
+import { timingSafeEqual } from 'node:crypto';
+
+function cryptoSafeEqual(a: string, b: string): boolean {
+  try { return timingSafeEqual(Buffer.from(a, 'utf8'), Buffer.from(b, 'utf8')); }
+  catch { return false; }
+}
 import { analyzeDashboardSheets, type DashboardSheetInput, type DashboardAnalysis } from '../src/utils/dashboardImport.js';
 
 /**
@@ -752,6 +758,69 @@ export function registerDashboardImport(app: any) {
   };
   app.post('/api/dashboard-import/file', fileHandler);
   app.post('/api/dashboard-import-file', fileHandler); // single-segment alias
+
+  // POST /api/dashboard-import/power-automate — secure inbound Excel Online webhook.
+  // Power Automate sends the workbook bytes as base64. The shared secret is
+  // stored only in Vercel environment variables, never in the workbook or UI.
+  app.post('/api/dashboard-import/power-automate', async (req: any, res: any) => {
+    try {
+      const expected = String(process.env.EXCEL_ONLINE_SYNC_SECRET ?? '');
+      const authHeader = String(req.headers?.authorization ?? '');
+      const supplied = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+      if (!expected || !supplied || supplied.length !== expected.length ||
+          !cryptoSafeEqual(supplied, expected)) {
+        return res.status(401).json({ success: false, error: 'UNAUTHORIZED' });
+      }
+
+      const encoded = String(req.body?.workbookBase64 ?? '');
+      if (!encoded || encoded.length > Math.ceil(MAX_FILE_BYTES * 4 / 3) + 16) {
+        return res.status(400).json({ success: false, error: 'INVALID_OR_OVERSIZED_WORKBOOK' });
+      }
+      const buffer = Buffer.from(encoded, 'base64');
+      if (buffer.byteLength < 4 || buffer.byteLength > MAX_FILE_BYTES) {
+        return res.status(400).json({ success: false, error: 'INVALID_OR_OVERSIZED_WORKBOOK' });
+      }
+
+      const XLSX: any = await import('xlsx');
+      const workbook = XLSX.read(buffer, { type: 'buffer' });
+      const sheets: DashboardSheetInput[] = workbook.SheetNames.slice(0, MAX_SHEETS).map((name: string) => ({
+        name,
+        rows: XLSX.utils.sheet_to_json(workbook.Sheets[name], { header: 1, defval: '' }) as unknown[][],
+      }));
+      if (!validateSheetsPayload(sheets)) {
+        return res.status(400).json({ success: false, error: 'INVALID_WORKBOOK_SHEETS' });
+      }
+
+      // Safe defaults: never create accounts, never change PINs/roles, preserve
+      // existing assignments outside dates represented by the workbook.
+      const summary = await applyDashboardImport(sheets, {
+        defaultPin: '',
+        createMissingEmployees: false,
+        autoCreateShifts: true,
+        overwriteAssignments: true,
+      }, null);
+
+      const cfg = await readConfig();
+      await writeConfig({
+        ...cfg,
+        lastSyncAt: new Date().toISOString(),
+        lastSyncStatus: 'ok',
+        lastSyncError: null,
+        lastSyncSummary: `Power Automate: ${summary.assignmentsApplied} schedule assignments; ${summary.skippedAssignments} skipped`,
+      });
+      logActivity({
+        actorId: 'excel-online-sync', actorRole: 'system', action: 'dashboard.import',
+        entityType: 'dashboard', entityId: 'excel-online-power-automate',
+        entityLabel: `Excel Online import: ${summary.assignmentsApplied} schedule assignments`,
+        details: { source: 'power-automate', assignmentsApplied: summary.assignmentsApplied, skipped: summary.skippedAssignments, dateRange: summary.dateRange },
+        companyId: 'tech-source',
+      });
+      return res.json({ success: true, summary });
+    } catch (error: any) {
+      console.error('[dashboard-import] Power Automate webhook failed:', error?.message || error);
+      return res.status(500).json({ success: false, error: 'EXCEL_ONLINE_IMPORT_FAILED' });
+    }
+  });
 
   // GET /api/dashboard-import/cron — Vercel Cron entry point (daily).
   // Authorized via CRON_SECRET bearer token, Vercel's x-vercel-cron header,
