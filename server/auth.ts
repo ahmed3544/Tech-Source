@@ -109,21 +109,20 @@ export async function requireManager(
 }
 
 /**
- * Team scoping: admins may manage anyone; leaders only members of their own
- * team (direct reports via teamLeaderId, or same teamId when the leader has
- * one). Mirrors the visibility rules used by the schedule UI.
+ * Admins may manage anyone. Team leaders can manage regular employee accounts
+ * across the roster, but cannot manage administrator accounts. Shift assignment
+ * remains a separate admin-only UI permission.
  */
 export function canManageEmployee(manager: AuthedEmployee, targetEmployee: any): boolean {
   if (isPlatformAdmin(manager.role)) return true;
   if (manager.role !== 'leader') return false;
-  // Unknown/nonexistent employees are always denied for leaders.
   if (!targetEmployee) return false;
   const targetId = String(targetEmployee?.id ?? '').trim();
   if (!targetId) return false;
-  if (targetId === manager.id) return true; // leaders may manage their own record
-  if (String(targetEmployee?.teamLeaderId ?? '').trim() === manager.id) return true;
-  if (manager.teamId && String(targetEmployee?.teamId ?? '').trim() === String(manager.teamId)) return true;
-  return false;
+  if (targetId === manager.id) return true;
+  // Keep administrator accounts protected from team-leader CRUD actions.
+  if (isPlatformAdmin(targetEmployee?.role)) return false;
+  return true;
 }
 
 /**
