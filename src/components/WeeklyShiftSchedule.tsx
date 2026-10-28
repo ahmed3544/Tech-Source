@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeftRight, ChevronLeft, ChevronRight, Coffee, FileSpreadsheet, Loader2, Save, Upload, Users, Pencil, Trash2, Plus } from 'lucide-react';
-import { Employee, Language, Shift, DailyShiftAssignment } from '../types';
+import { Employee, Language, ShadowingInfo, Shift, DailyShiftAssignment } from '../types';
 import { ShiftManager } from './ShiftManager';
 import { ShiftSwapPanel } from './ShiftSwapPanel';
 import { BreakRequestPanel } from './BreakRequestPanel';
@@ -114,6 +114,15 @@ const validateBreakRows = (rows: ScheduleBreak[]): string | null => {
   return null;
 };
 
+/** A stored shadowing window is rendered only when both times are valid and
+ *  end is strictly after start (same-day window, e.g. 1→5 = 13:00→17:00). */
+const validShadowing = (raw: any): raw is ShadowingInfo =>
+  Boolean(raw && typeof raw === 'object' &&
+    /^\d{1,2}:\d{2}$/.test(String(raw.startTime ?? '')) &&
+    /^\d{1,2}:\d{2}$/.test(String(raw.endTime ?? '')) &&
+    timeToMinutes(String(raw.endTime)) > timeToMinutes(String(raw.startTime)));
+const normShadowing = (raw: any): ShadowingInfo | null => (validShadowing(raw) ? { traineeId: raw.traineeId || undefined, startTime: String(raw.startTime).slice(0, 5), endTime: String(raw.endTime).slice(0, 5) } : null);
+
 /* ------------------------------------------------------------------ */
 /* Teleopti WFM palette — matches the reference design exactly.        */
 /* ------------------------------------------------------------------ */
@@ -121,6 +130,8 @@ const TEO = {
   shift: 'bg-green-500 hover:bg-green-600 text-white dark:bg-green-600 dark:hover:bg-green-500',
   shiftPending: 'bg-green-400 text-white ring-2 ring-blue-400 dark:bg-green-600',
   breakBar: 'bg-red-500 hover:bg-red-600 dark:bg-red-600 dark:hover:bg-red-500',
+  /** Sky blue (سماوي) — the fixed color for shadowing (training) windows. */
+  shadowing: 'bg-sky-400 hover:bg-sky-500 text-white dark:bg-sky-500 dark:hover:bg-sky-400',
   holiday: 'bg-red-100 text-red-800 border border-red-300 dark:bg-red-500/15 dark:text-red-300 dark:border-red-500/40',
   annual: 'bg-yellow-300 text-yellow-900 dark:bg-yellow-500/25 dark:text-yellow-300',
   offLabel: 'text-slate-600 dark:text-slate-400',
@@ -170,6 +181,12 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
   const [breakDraft, setBreakDraft] = useState<ScheduleBreak[]>([]);
   const [breakSaving, setBreakSaving] = useState(false);
   const [breakError, setBreakError] = useState<string | null>(null);
+  // Shadowing (training) drafts per day: undefined = untouched (keep stored),
+  // null = removed, object = set. Applied to the payload by saveWeek.
+  const [shadowDraft, setShadowDraft] = useState<Record<string, ShadowingInfo | null | undefined>>({});
+  const [shadowEditor, setShadowEditor] = useState<{ dateKey: string; dayName: string } | null>(null);
+  const [shadowForm, setShadowForm] = useState<{ enabled: boolean; traineeId: string; startTime: string; endTime: string }>({ enabled: false, traineeId: '', startTime: '13:00', endTime: '17:00' });
+  const [shadowError, setShadowError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'week' | 'month' | 'day'>('week');
   const [dayDate, setDayDate] = useState(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; });
   const [importing, setImporting] = useState(false);
@@ -334,6 +351,64 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
   const shiftById = (id: string) => shifts.find(s => sameId(s.id, id));
   const updateDay = (key: string, value: string) => { setDraft(prev => ({ ...prev, [key]: value })); setError(null); setMessage(null); };
 
+  /* ---- Shadowing (training) window helpers ---- */
+  const savedShadowingFor = (key: string): ShadowingInfo | null => normShadowing((assignmentFor(employee?.id || '', key) as any)?.shadowing);
+  /** Effective shadowing for the selected employee on one day (draft wins). */
+  const shadowingFor = (key: string): ShadowingInfo | null => (shadowDraft[key] !== undefined ? normShadowing(shadowDraft[key]) : savedShadowingFor(key));
+  /** Days where the selected employee is the TRAINEE in someone else's session. */
+  const traineeShadowingFor = (key: string): (ShadowingInfo & { trainerId: string }) | null => {
+    const meId = String(employee?.id || '');
+    if (!meId) return null;
+    for (const a of assignments as any[]) {
+      if (sameId(a.employeeId, meId) || String(a.date ?? '').slice(0, 10) !== key) continue;
+      const info = normShadowing(a.shadowing);
+      if (info?.traineeId && sameId(info.traineeId, meId)) return { ...info, trainerId: String(a.employeeId) };
+    }
+    return null;
+  };
+  const employeeName = (id: string) => {
+    const person = employees.find(e => sameId(e.id, id));
+    return person ? (lang === 'ar' ? person.nameAr : person.nameEn) : '';
+  };
+  const isDayDirty = (key: string) => draft[key] !== undefined || shadowDraft[key] !== undefined;
+  const dirtyCount = useMemo(
+    () => new Set([...Object.keys(draft), ...Object.keys(shadowDraft).filter(k => shadowDraft[k] !== undefined)]).size,
+    [draft, shadowDraft],
+  );
+
+  const openShadowEditor = (day: { key: string; en: string; ar: string }) => {
+    if (!employee || !isAdmin) return;
+    const existing = shadowingFor(day.key);
+    setShadowForm({
+      enabled: Boolean(existing),
+      traineeId: existing?.traineeId || '',
+      startTime: existing?.startTime || '13:00',
+      endTime: existing?.endTime || '17:00',
+    });
+    setShadowError(null);
+    setShadowEditor({ dateKey: day.key, dayName: lang === 'ar' ? day.ar : day.en });
+  };
+
+  /** Applies the modal form to the pending draft (saved with the week). */
+  const applyShadowDraft = () => {
+    if (!shadowEditor) return;
+    if (!shadowForm.enabled) {
+      setShadowDraft(prev => ({ ...prev, [shadowEditor.dateKey]: null }));
+      setShadowEditor(null);
+      return;
+    }
+    if (!shadowForm.startTime || !shadowForm.endTime) {
+      setShadowError(lang === 'ar' ? 'حدد وقت البداية والنهاية' : 'Set both start and end times');
+      return;
+    }
+    if (timeToMinutes(shadowForm.endTime) <= timeToMinutes(shadowForm.startTime)) {
+      setShadowError(lang === 'ar' ? 'وقت النهاية لازم يكون بعد وقت البداية (مثال: من 1 ل 5 = من 13:00 ل 17:00)' : 'End time must be after start time (e.g. 1 to 5 = 13:00 to 17:00)');
+      return;
+    }
+    setShadowDraft(prev => ({ ...prev, [shadowEditor.dateKey]: { ...(shadowForm.traineeId ? { traineeId: shadowForm.traineeId } : {}), startTime: shadowForm.startTime, endTime: shadowForm.endTime } }));
+    setShadowEditor(null);
+  };
+
   /** Saved assignment merged with pending leader drafts (for live grid preview). */
   const effectiveAssignment = (key: string): any => {
     const saved: any = assignmentFor(employee?.id || '', key) ?? {};
@@ -369,6 +444,10 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
       const now = new Date().toISOString();
       const rows = days.map(day => {
         const value = valueFor(day.key);
+        const isWorkingDay = ![OFF, HOLIDAY, ANNUAL, EMPTY].includes(value);
+        // Shadowing: draft (set/null) wins, otherwise carry the stored window.
+        // Non-working days always drop it — training only happens on shift days.
+        const shadowValue = shadowDraft[day.key] !== undefined ? normShadowing(shadowDraft[day.key]) : savedShadowingFor(day.key);
         return {
           employeeId: employee.id,
           date: day.key,
@@ -376,6 +455,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
           isOffDay: value === OFF,
           status: value === HOLIDAY ? 'HOLIDAY' : value === ANNUAL ? 'ANNUAL' : value === OFF ? 'OFF' : value === EMPTY ? '' : 'WORKING',
           clear: value === EMPTY,
+          shadowing: isWorkingDay ? (shadowValue ?? null) : null,
           assignedBy: currentUser?.id,
           updatedAt: now,
         } as any;
@@ -393,6 +473,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
       if (!response.ok || data?.success === false) throw new Error(extractApiError(data, lang === 'ar' ? 'تعذر حفظ الجدول على السيرفر' : 'Server rejected the weekly schedule'));
       setAssignments(Array.isArray(data?.dailyShiftAssignments) ? data.dailyShiftAssignments : []);
       setDraft({});
+      setShadowDraft({});
       setMessage(lang === 'ar' ? 'تم حفظ جدول الأسبوع على السيرفر بنجاح' : 'Weekly schedule saved successfully');
     } catch (err: unknown) {
       setError(errorToMessage(err, lang === 'ar' ? 'تعذر حفظ الجدول' : 'Could not save schedule'));
@@ -758,6 +839,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
 
   const legendItems: Array<{ id: string; en: string; ar: string; swatch: React.ReactNode }> = [
     { id: 'shift', en: 'Shift', ar: 'وردية', swatch: <span className="inline-block h-3.5 w-6 rounded bg-orange-400" /> },
+    { id: 'shadowing', en: 'Shadowing (training)', ar: 'شادوينج — تدريب نيو ايجنت', swatch: <span className="inline-block h-3.5 w-6 rounded bg-sky-400" /> },
     { id: 'break', en: 'Break', ar: 'استراحة', swatch: <span className="inline-block h-2 w-6 rounded bg-red-500" /> },
     { id: 'off', en: 'Day Off', ar: 'راحة أسبوعية', swatch: <span className="tech-source-hatch inline-block h-3.5 w-6 rounded border border-slate-300 dark:border-slate-600" style={HATCH_STYLE} /> },
     { id: 'holiday', en: 'Holiday', ar: 'عطلة رسمية', swatch: <span className="inline-block h-3.5 w-6 rounded border border-red-300 bg-red-100 dark:border-red-500/50 dark:bg-red-500/20" /> },
@@ -768,7 +850,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
      day timeline so colors/positions stay identical. */
   const renderTimelineBlocks = (
     resolved: ReturnType<typeof resolveFor>,
-    opts: { mobile?: boolean; dayKey: string; dayLabel: string }
+    opts: { mobile?: boolean; dayKey: string; dayLabel: string; shadowing?: ShadowingInfo | null; traineeShadowing?: (ShadowingInfo & { trainerId: string }) | null }
   ) => {
     const { resolved: r } = { resolved };
     const mobile = Boolean(opts.mobile);
@@ -846,6 +928,36 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
           );
         });
       });
+      // Sky-blue Shadowing (training) window — drawn above the shift bar so the
+      // trained hours stand out in سماوي. Shows who is training whom.
+      const shadowWindow = validShadowing(opts.shadowing) ? opts.shadowing : null;
+      const traineeWindow = validShadowing(opts.traineeShadowing) ? opts.traineeShadowing : null;
+      if (shadowWindow || traineeWindow) {
+        const info = shadowWindow ?? (traineeWindow as ShadowingInfo);
+        const isTraineeSide = Boolean(traineeWindow && !shadowWindow);
+        const partnerName = isTraineeSide ? employeeName((traineeWindow as any).trainerId) : (shadowWindow?.traineeId ? employeeName(shadowWindow.traineeId) : '');
+        const shadowTitle = isTraineeSide
+          ? (lang === 'ar' ? `شادوينج مع ${partnerName}` : `Shadowing with ${partnerName}`)
+          : (partnerName ? (lang === 'ar' ? `شادوينج — تدريب ${partnerName}` : `Shadowing — training ${partnerName}`) : (lang === 'ar' ? 'شادوينج — تدريب نيو ايجنت' : 'Shadowing — new-agent training'));
+        blocksFor(info.startTime, info.endTime).forEach((seg, idx) => {
+          const timeRange = mobile
+            ? `${fmt12(timeToMinutes(info.startTime), lang)} - ${fmt12(timeToMinutes(info.endTime), lang)}`
+            : `${info.startTime}–${info.endTime}`;
+          blocks.push(
+            <div
+              key={`shadow-${idx}-${isTraineeSide ? 't' : 'm'}`}
+              data-shadowing-block={isTraineeSide ? 'trainee' : 'trainer'}
+              className={`absolute inset-x-0.5 z-[5] flex flex-col items-center justify-center gap-0.5 overflow-hidden rounded-md px-1 pt-1 text-center shadow-sm ring-1 ring-sky-300/80 ${TEO.shadowing}`}
+              style={{ top: `${seg.top}%`, height: `${seg.height}%` }}
+              title={shadowTitle}
+            >
+              <span className="truncate text-[10px] font-black leading-tight">{lang === 'ar' ? 'شادوينج' : 'Shadowing'}</span>
+              {seg.height > 10 && <span dir="ltr" className="truncate font-mono text-[9px] font-black leading-tight">{timeRange}</span>}
+              {seg.height > 20 && partnerName && <span className="truncate text-[9px] font-bold leading-tight">{isTraineeSide ? (lang === 'ar' ? `مع ${partnerName}` : `with ${partnerName}`) : (lang === 'ar' ? `تدريب ${partnerName}` : `training ${partnerName}`)}</span>}
+            </div>
+          );
+        });
+      }
     }
     return blocks;
   };
@@ -866,7 +978,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
                 <select
                   aria-label={lang === 'ar' ? 'اختيار الموظف لتعديل الجدول والبريكات' : 'Select employee to edit schedule and breaks'}
                   value={employee?.id || ''}
-                  onChange={event => { setSelectedEmployeeId(event.target.value); setDraft({}); setBreakEditor(null); setMessage(null); setError(null); }}
+                  onChange={event => { setSelectedEmployeeId(event.target.value); setDraft({}); setShadowDraft({}); setBreakEditor(null); setMessage(null); setError(null); }}
                   className="mt-1 w-full min-w-[180px] rounded-lg border border-blue-200 bg-white px-2 py-1.5 text-xs font-bold text-slate-800 outline-none focus:border-blue-500 dark:border-blue-500/40 dark:bg-slate-900 dark:text-slate-100"
                 >
                   {visibleEmployees.map(person => (
@@ -890,8 +1002,8 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-2">
             <button type="button" onClick={() => { goToDate(new Date()); setViewMode('day'); }} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800/70">📅 {lang === 'ar' ? 'اليوم' : 'Today'}</button>
-            {isAdmin && Object.keys(draft).length > 0 && (
-              <button type="button" onClick={saveWeek} disabled={saving} className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs font-black text-white hover:bg-blue-700 disabled:opacity-50"><Save className="h-3.5 w-3.5" />{saving ? (lang === 'ar' ? 'جاري الحفظ...' : 'Saving...') : (lang === 'ar' ? `حفظ التعديلات (${Object.keys(draft).length})` : `Save changes (${Object.keys(draft).length})`)}</button>
+            {isAdmin && dirtyCount > 0 && (
+              <button type="button" onClick={saveWeek} disabled={saving} className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs font-black text-white hover:bg-blue-700 disabled:opacity-50"><Save className="h-3.5 w-3.5" />{saving ? (lang === 'ar' ? 'جاري الحفظ...' : 'Saving...') : (lang === 'ar' ? `حفظ التعديلات (${dirtyCount})` : `Save changes (${dirtyCount})`)}</button>
             )}
           </div>
           <div className="flex overflow-hidden rounded-lg border border-slate-300 dark:border-slate-600">
@@ -961,6 +1073,13 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
                   {resolved.status === 'working' && resolved.shift && (
                     <div className="mt-0.5 rounded bg-orange-400 px-1 py-0.5 text-[8px] font-black leading-tight text-white">{lang === 'ar' ? (resolved.shift.nameAr || resolved.shift.name) : (resolved.shift.nameEn || resolved.shift.name)}<br />{fmt24(timeToMinutes(resolved.shift.startTime), lang)}–{fmt24(timeToMinutes(resolved.shift.endTime), lang)}</div>
                   )}
+                  {(() => {
+                    const sw = validShadowing(shadowingFor(cell.key)) ? shadowingFor(cell.key) : null;
+                    const tw = sw ? null : traineeShadowingFor(cell.key);
+                    const win = sw ?? tw;
+                    if (!win) return null;
+                    return <div className="mt-0.5 rounded bg-sky-400 px-1 py-0.5 text-[8px] font-black leading-tight text-white" title={lang === 'ar' ? 'شادوينج — تدريب نيو ايجنت' : 'Shadowing — new-agent training'}>{lang === 'ar' ? 'شادوينج' : 'Shadowing'}<br />{win.startTime}–{win.endTime}</div>;
+                  })()}
                   {resolved.status === 'off' && <div className="tech-source-hatch mt-0.5 rounded border border-slate-300 px-1 py-0.5 text-[8px] font-black text-slate-500 dark:border-slate-600 dark:text-slate-400" style={HATCH_STYLE}>{lang === 'ar' ? 'راحة' : 'Off'}</div>}
                   {resolved.status === 'holiday' && <div className="mt-0.5 rounded bg-red-100 px-1 py-0.5 text-[8px] font-black text-red-800 dark:bg-red-500/20 dark:text-red-300">{lang === 'ar' ? 'عطلة' : 'Holiday'}</div>}
                   {resolved.status === 'annual' && <div className="mt-0.5 rounded bg-yellow-300 px-1 py-0.5 text-[8px] font-black text-yellow-900 dark:bg-yellow-500/25 dark:text-yellow-200">{lang === 'ar' ? 'سنوية' : 'Annual'}</div>}
@@ -989,6 +1108,18 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
             <div className="mb-2 rounded-lg bg-blue-600 px-3 py-2 text-center text-white">
               <div className="text-sm font-black tracking-wide">{(lang === 'ar' ? day.ar : day.en).toUpperCase()} {dayDate.getDate()}</div>
               <div className="text-[11px] font-bold opacity-95">{resolved.status === 'working' && shift ? <span dir="ltr">{fmt12(timeToMinutes(shift.startTime), lang)} - {fmt12(timeToMinutes(shift.endTime), lang)}</span> : bannerSub}</div>
+              {(() => {
+                const sw = validShadowing(shadowingFor(day.key)) ? shadowingFor(day.key) : null;
+                const tw = sw ? null : traineeShadowingFor(day.key);
+                const win = sw ?? tw;
+                if (!win) return null;
+                const partner = sw ? (sw.traineeId ? employeeName(sw.traineeId) : '') : employeeName((tw as any).trainerId);
+                return (
+                  <div className="mt-0.5 inline-block rounded bg-sky-400 px-2 py-0.5 text-[10px] font-black text-white shadow" dir="ltr">
+                    {lang === 'ar' ? 'شادوينج' : 'Shadowing'} {fmt12(timeToMinutes(win.startTime), lang)} - {fmt12(timeToMinutes(win.endTime), lang)}{partner ? (lang === 'ar' ? ` · ${sw ? 'تدريب' : 'مع'} ${partner}` : ` · ${sw ? 'training' : 'with'} ${partner}`) : ''}
+                  </div>
+                );
+              })()}
             </div>
             <div className="relative flex" dir="ltr">
               <div className="relative w-12 shrink-0" style={{ height: gridHeightDay }}>
@@ -996,8 +1127,8 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
                   <span key={minutes} className="absolute -translate-y-1/2 text-end font-mono text-[9px] font-bold text-slate-400 dark:text-slate-500" style={{ top: `${pctTop(minutes)}%`, right: 4, width: '100%' }}>{fmt12(minutes, lang)}</span>
                 ))}
               </div>
-              <div className={`relative flex-1 rounded-md border border-slate-200 bg-slate-50/60 dark:border-slate-800 dark:bg-slate-900/60 ${draft[day.key] !== undefined ? 'ring-2 ring-inset ring-blue-400' : ''}`} style={{ height: gridHeightDay }}>
-                {renderTimelineBlocks(resolved, { mobile: true, dayKey: day.key, dayLabel: lang === 'ar' ? day.ar : day.en })}
+              <div className={`relative flex-1 rounded-md border border-slate-200 bg-slate-50/60 dark:border-slate-800 dark:bg-slate-900/60 ${isDayDirty(day.key) ? 'ring-2 ring-inset ring-blue-400' : ''}`} style={{ height: gridHeightDay }}>
+                {renderTimelineBlocks(resolved, { mobile: true, dayKey: day.key, dayLabel: lang === 'ar' ? day.ar : day.en, shadowing: shadowingFor(day.key), traineeShadowing: traineeShadowingFor(day.key) })}
               </div>
             </div>
             {isLeader && resolved.status === 'working' && (
@@ -1022,7 +1153,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
                       <div className={`mt-0.5 inline-block rounded px-1 text-[8px] font-black ${resolved.status === 'working' ? 'bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-300' : resolved.status === 'off' ? 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300' : resolved.status === 'holiday' ? 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300' : resolved.status === 'annual' ? 'bg-yellow-200 text-yellow-800 dark:bg-yellow-500/25 dark:text-yellow-300' : 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500'}`}>
                         {lang === 'ar' ? (STATUS_LABELS[resolved.label] ?? STATUS_LABELS.unassigned).ar : (STATUS_LABELS[resolved.label] ?? STATUS_LABELS.unassigned).en}
                       </div>
-                      {draft[day.key] !== undefined && <div className="mt-0.5 text-[8px] font-black text-blue-600 dark:text-blue-400">● {lang === 'ar' ? 'غير محفوظ' : 'unsaved'}</div>}
+                      {draft[day.key] !== undefined || shadowDraft[day.key] !== undefined ? <div className="mt-0.5 text-[8px] font-black text-blue-600 dark:text-blue-400">● {lang === 'ar' ? 'غير محفوظ' : 'unsaved'}</div> : null}
                     </div>
                   );
                 })}
@@ -1035,8 +1166,8 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
                   ))}
                 </div>
                 {weekResults.map(({ day, resolved }) => (
-                  <div key={day.key} className={`relative border-e border-slate-200 last:border-e-0 dark:border-slate-800 ${day.key === todayKey ? 'bg-blue-50/40 dark:bg-blue-500/10' : 'bg-white dark:bg-slate-900'} ${draft[day.key] !== undefined ? 'ring-2 ring-inset ring-blue-400' : ''}`} style={{ height: gridHeightDesktop }}>
-                    {renderTimelineBlocks(resolved, { dayKey: day.key, dayLabel: lang === 'ar' ? day.ar : day.en })}
+                  <div key={day.key} className={`relative border-e border-slate-200 last:border-e-0 dark:border-slate-800 ${day.key === todayKey ? 'bg-blue-50/40 dark:bg-blue-500/10' : 'bg-white dark:bg-slate-900'} ${isDayDirty(day.key) ? 'ring-2 ring-inset ring-blue-400' : ''}`} style={{ height: gridHeightDesktop }}>
+                    {renderTimelineBlocks(resolved, { dayKey: day.key, dayLabel: lang === 'ar' ? day.ar : day.en, shadowing: shadowingFor(day.key), traineeShadowing: traineeShadowingFor(day.key) })}
                   </div>
                 ))}
               </div>
@@ -1067,6 +1198,18 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
                   <div className="mb-2 rounded-lg bg-blue-600 px-3 py-2 text-center text-white">
                     <div className="text-sm font-black tracking-wide">{(lang === 'ar' ? day.ar : day.en).toUpperCase()} {day.date.getDate()}</div>
                     <div className="text-[11px] font-bold opacity-95">{resolved.status === 'working' && shift ? `${lang === 'ar' ? 'وردية' : 'Shift'} ` : ''}{resolved.status === 'working' && shift ? <span dir="ltr">{fmt12(timeToMinutes(shift.startTime), lang)} - {fmt12(timeToMinutes(shift.endTime), lang)}</span> : bannerSub}</div>
+                    {(() => {
+                      const sw = validShadowing(shadowingFor(day.key)) ? shadowingFor(day.key) : null;
+                      const tw = sw ? null : traineeShadowingFor(day.key);
+                      const win = sw ?? tw;
+                      if (!win) return null;
+                      const partner = sw ? (sw.traineeId ? employeeName(sw.traineeId) : '') : employeeName((tw as any).trainerId);
+                      return (
+                        <div className="mt-0.5 inline-block rounded bg-sky-400 px-2 py-0.5 text-[10px] font-black text-white shadow" dir="ltr">
+                          {lang === 'ar' ? 'شادوينج' : 'Shadowing'} {fmt12(timeToMinutes(win.startTime), lang)} - {fmt12(timeToMinutes(win.endTime), lang)}{partner ? (lang === 'ar' ? ` · ${sw ? 'تدريب' : 'مع'} ${partner}` : ` · ${sw ? 'training' : 'with'} ${partner}`) : ''}
+                        </div>
+                      );
+                    })()}
                   </div>
                   <div className="relative flex" dir="ltr">
                     <div className="relative w-12 shrink-0" style={{ height: gridHeightMobile }}>
@@ -1074,8 +1217,8 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
                         <span key={minutes} className="absolute -translate-y-1/2 text-end font-mono text-[9px] font-bold text-slate-400 dark:text-slate-500" style={{ top: `${pctTop(minutes)}%`, right: 4, width: '100%' }}>{fmt12(minutes, lang)}</span>
                       ))}
                     </div>
-                    <div className={`relative flex-1 rounded-md border border-slate-200 bg-slate-50/60 dark:border-slate-800 dark:bg-slate-900/60 ${draft[day.key] !== undefined ? 'ring-2 ring-inset ring-blue-400' : ''}`} style={{ height: gridHeightMobile }}>
-                      {renderTimelineBlocks(resolved, { mobile: true, dayKey: day.key, dayLabel: lang === 'ar' ? day.ar : day.en })}
+                    <div className={`relative flex-1 rounded-md border border-slate-200 bg-slate-50/60 dark:border-slate-800 dark:bg-slate-900/60 ${isDayDirty(day.key) ? 'ring-2 ring-inset ring-blue-400' : ''}`} style={{ height: gridHeightMobile }}>
+                      {renderTimelineBlocks(resolved, { mobile: true, dayKey: day.key, dayLabel: lang === 'ar' ? day.ar : day.en, shadowing: shadowingFor(day.key), traineeShadowing: traineeShadowingFor(day.key) })}
                     </div>
                   </div>
                   {isLeader && resolved.status === 'working' && (
@@ -1113,6 +1256,23 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
                       <button type="button" onClick={() => openBreakEditor(day)} disabled={!isWorking} className={`inline-flex h-7 w-full items-center justify-center gap-1 rounded-lg text-[9px] font-black transition ${isWorking ? 'bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-500/15 dark:text-red-300 dark:hover:bg-red-500/25' : 'cursor-not-allowed bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500'}`} title={isWorking ? (lang === 'ar' ? 'تعديل استراحات هذا اليوم' : "Edit this day's breaks") : (lang === 'ar' ? 'الاستراحات لأيام الدوام فقط' : 'Breaks only on working days')}>
                         <Coffee className="h-3 w-3" />{lang === 'ar' ? 'الاستراحات' : 'Breaks'}
                       </button>
+                      {(() => {
+                        const sw = shadowingFor(day.key);
+                        const active = Boolean(sw);
+                        return (
+                          <button
+                            type="button"
+                            data-shadowing-button={day.key}
+                            onClick={() => openShadowEditor(day)}
+                            disabled={!isWorking}
+                            className={`inline-flex h-7 w-full items-center justify-center gap-1 rounded-lg text-[9px] font-black transition ${!isWorking ? 'cursor-not-allowed bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500' : active ? 'bg-sky-400 text-white shadow hover:bg-sky-500 dark:bg-sky-500 dark:hover:bg-sky-400' : 'bg-sky-50 text-sky-700 hover:bg-sky-100 dark:bg-sky-500/15 dark:text-sky-300 dark:hover:bg-sky-500/25'}`}
+                            title={isWorking ? (lang === 'ar' ? 'شادوينج — تدريب نيو ايجنت لفترة محددة' : 'Shadowing — train a new agent for a time window') : (lang === 'ar' ? 'الشادوينج لأيام الدوام فقط' : 'Shadowing only on working days')}
+                          >
+                            <Users className="h-3 w-3" />
+                            {active ? `${lang === 'ar' ? 'شادوينج' : 'Shadowing'} ${sw!.startTime}–${sw!.endTime}` : (lang === 'ar' ? 'شادوينج' : 'Shadowing')}
+                          </button>
+                        );
+                      })()}
                     </div>
                   );
                 })}
@@ -1183,6 +1343,66 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Shadowing (training) editor — leaders only. Sets a sky-blue time
+          window on this day where the agent trains a new agent. */}
+      {shadowEditor && employee && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/50 p-4" role="presentation" onClick={() => setShadowEditor(null)}>
+          <div className="max-h-[88vh] w-full max-w-md overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-700 dark:bg-slate-900" dir={lang === 'ar' ? 'rtl' : 'ltr'} role="dialog" aria-modal="true" onClick={event => event.stopPropagation()}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-[11px] font-black uppercase tracking-wide text-sky-600 dark:text-sky-400">{lang === 'ar' ? 'شادوينج — تدريب نيو ايجنت' : 'Shadowing — new-agent training'}</div>
+                <h3 className="mt-0.5 text-lg font-black text-slate-900 dark:text-white dark:text-slate-100">{shadowEditor.dayName} <span className="font-mono text-xs text-slate-400 dark:text-slate-500">{shadowEditor.dateKey}</span></h3>
+                <p className="mt-1 text-xs font-bold text-slate-500 dark:text-slate-400">{employee?.code ? `${employee.code} - ` : ''}{lang === 'ar' ? employee?.nameAr : employee?.nameEn}</p>
+              </div>
+              <button type="button" onClick={() => setShadowEditor(null)} className="rounded-lg px-2 py-1 text-xl font-bold text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:text-slate-500 dark:hover:text-slate-200" aria-label={lang === 'ar' ? 'إغلاق' : 'Close'}>×</button>
+            </div>
+
+            <label className="mt-4 flex cursor-pointer items-center gap-3 rounded-xl border border-sky-200 bg-sky-50 px-3 py-3 dark:border-sky-500/40 dark:bg-sky-500/10">
+              <input type="checkbox" checked={shadowForm.enabled} onChange={e => { setShadowForm(prev => ({ ...prev, enabled: e.target.checked })); setShadowError(null); }} className="h-4 w-4 accent-sky-600" data-shadowing-toggle />
+              <span className="text-xs font-black text-sky-800 dark:text-sky-300">{lang === 'ar' ? 'تشغيل الشادوينج في هذا اليوم' : 'Enable Shadowing on this day'}</span>
+            </label>
+
+            {shadowForm.enabled && (
+              <>
+                <p className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-[11px] font-bold text-slate-600 dark:bg-slate-900/60 dark:text-slate-300">{lang === 'ar' ? 'الايجنت هيتدرب معاه نيو ايجنت على الشغل في الفترة دي — هتظهر باللون السماوي في الجدول.' : 'The agent will train a new agent during this window — it appears in sky blue on the schedule.'}</p>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <label className="flex flex-col gap-1 text-[10px] font-black text-slate-500 dark:text-slate-400">{lang === 'ar' ? 'من (ساعة)' : 'From (hour)'}
+                    <input type="time" value={shadowForm.startTime} onChange={e => { setShadowForm(prev => ({ ...prev, startTime: e.target.value })); setShadowError(null); }} data-shadowing-start className="rounded-lg border border-slate-200 bg-white px-2 py-2 font-mono text-sm text-slate-800 outline-none focus:border-sky-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100" required />
+                  </label>
+                  <label className="flex flex-col gap-1 text-[10px] font-black text-slate-500 dark:text-slate-400">{lang === 'ar' ? 'إلى (ساعة)' : 'To (hour)'}
+                    <input type="time" value={shadowForm.endTime} onChange={e => { setShadowForm(prev => ({ ...prev, endTime: e.target.value })); setShadowError(null); }} data-shadowing-end className="rounded-lg border border-slate-200 bg-white px-2 py-2 font-mono text-sm text-slate-800 outline-none focus:border-sky-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100" required />
+                  </label>
+                </div>
+                <div className="mt-2 flex items-center justify-between gap-2">
+                  <span className="rounded-lg bg-sky-50 px-2 py-1 font-mono text-[10px] font-black text-sky-700 dark:bg-sky-500/15 dark:text-sky-300">
+                    {shadowForm.startTime && shadowForm.endTime && timeToMinutes(shadowForm.endTime) > timeToMinutes(shadowForm.startTime) ? formatDuration(Math.max(0, timeToMinutes(shadowForm.endTime) - timeToMinutes(shadowForm.startTime)), lang) : '--'}
+                  </span>
+                  <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500">{lang === 'ar' ? 'مثال: من 1 ل 5 = 13:00 → 17:00' : 'e.g. 1 to 5 = 13:00 → 17:00'}</span>
+                </div>
+                <label className="mt-3 flex flex-col gap-1 text-[10px] font-black text-slate-500 dark:text-slate-400">{lang === 'ar' ? 'النيو ايجنت (اختياري — يظهر عنداه الشادوينج بالسماوي)' : 'New agent / trainee (optional — they see the same sky-blue window)'}
+                  <select value={shadowForm.traineeId} onChange={e => setShadowForm(prev => ({ ...prev, traineeId: e.target.value }))} data-shadowing-trainee className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs font-bold text-slate-800 outline-none focus:border-sky-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
+                    <option value="">{lang === 'ar' ? '— بدون تحديد —' : '— none —'}</option>
+                    {visibleEmployees.filter(p => !sameId(p.id, employee.id)).map(person => (
+                      <option key={person.id} value={person.id}>{person.code ? person.code + ' - ' : ''}{lang === 'ar' ? person.nameAr : person.nameEn}</option>
+                    ))}
+                  </select>
+                </label>
+              </>
+            )}
+
+            {shadowError && <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-black text-red-700 dark:border-red-500/40 dark:bg-red-500/15 dark:text-red-300">{shadowError}</div>}
+            <div className="mt-4 flex justify-end gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
+              <button type="button" onClick={() => setShadowEditor(null)} className="rounded-xl bg-slate-100 px-4 py-2 text-xs font-black text-slate-700 dark:bg-slate-800/70 dark:text-slate-200">{lang === 'ar' ? 'إلغاء' : 'Cancel'}</button>
+              <button type="button" onClick={applyShadowDraft} data-shadowing-apply className={`inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-black text-white shadow-sm ${shadowForm.enabled ? 'bg-sky-500 hover:bg-sky-600' : 'bg-red-500 hover:bg-red-600'}`}>
+                <Save className="h-3.5 w-3.5" />
+                {shadowForm.enabled ? (lang === 'ar' ? 'حفظ الشادوينج' : 'Save shadowing') : (lang === 'ar' ? 'إزالة الشادوينج' : 'Remove shadowing')}
+              </button>
+            </div>
+            <p className="mt-2 text-center text-[10px] font-bold text-slate-400 dark:text-slate-500">{lang === 'ar' ? 'التعديل بيتسجل مع حفظ الأسبوع (حفظ الأسبوع / حفظ التعديلات)' : 'Applied when the week is saved (Save week / Save changes)'}</p>
           </div>
         </div>
       )}

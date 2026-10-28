@@ -11,6 +11,35 @@ const asBoolean = (value:any) => {
   return normalized === 'true' || normalized === '1' || normalized === 'yes' || normalized === 'off';
 };
 
+const HHMM = /^(\d{1,2}):(\d{2})$/;
+const minutesOf = (value:any): number => {
+  const m = HHMM.exec(String(value ?? '').trim());
+  if (!m) return NaN;
+  const h = Number(m[1]); const mins = Number(m[2]);
+  if (!Number.isFinite(h) || !Number.isFinite(mins) || h > 23 || mins > 59) return NaN;
+  return h * 60 + mins;
+};
+/** Parses + validates an optional shadowing (training) window. Invalid shapes
+ *  are dropped (null) instead of failing the whole schedule write. Same-day
+ *  window only: end must be strictly after start.
+ *  TRI-STATE: 'shadowing' key ABSENT → undefined (keep whatever is stored),
+ *  null/invalid → null (remove), object → set. Absent-key preservation stops
+ *  older clients and bulk importers from accidentally wiping sessions. */
+const normalizeShadowing = (raw:any): { traineeId?: string; startTime: string; endTime: string } | null | undefined => {
+  if (raw === undefined) return undefined;
+  if (!raw || typeof raw !== 'object') return null;
+  const start = minutesOf(raw.startTime ?? raw.start_time ?? raw.start);
+  const end = minutesOf(raw.endTime ?? raw.end_time ?? raw.end);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return null;
+  const traineeId = String(raw.traineeId ?? raw.trainee_id ?? '').trim();
+  return {
+    ...(traineeId ? { traineeId } : {}),
+    startTime: String(raw.startTime ?? raw.start_time ?? raw.start).trim().slice(0, 5).padStart(5, '0'),
+    endTime: String(raw.endTime ?? raw.end_time ?? raw.end).trim().slice(0, 5).padStart(5, '0'),
+  };
+};
+const sameShadowing = (a:any, b:any) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+
 const normalizeAssignment = (item:any) => {
   const employeeId = String(item?.employeeId ?? item?.employee_id ?? '').trim();
   const date = String(item?.date ?? item?.scheduleDate ?? item?.schedule_date ?? '').slice(0, 10);
@@ -19,7 +48,7 @@ const normalizeAssignment = (item:any) => {
   const clear = Boolean(item?.clear || item?.isClear || item?.is_clear || status === 'CLEAR');
   const isOffDay = !clear && !rawShiftId && (asBoolean(item?.isOffDay ?? item?.is_off_day) || status === 'OFF');
   const shiftId = clear || isOffDay ? '' : rawShiftId;
-  return { employeeId, date, shiftId, isOffDay, clear, assignedBy: item?.assignedBy ?? item?.assigned_by, updatedAt: item?.updatedAt ?? item?.updated_at };
+  return { employeeId, date, shiftId, isOffDay, clear, shadowing: item && typeof item === 'object' && 'shadowing' in item ? normalizeShadowing(item.shadowing) : undefined, assignedBy: item?.assignedBy ?? item?.assigned_by, updatedAt: item?.updatedAt ?? item?.updated_at };
 };
 
 const normalizePattern = (item:any) => ({
@@ -56,6 +85,7 @@ export function registerDirectScheduleSync(app:any) {
               date: x.date,
               shiftId: x.shiftId || '',
               isOffDay: Boolean(x.isOffDay),
+              shadowing: x.shadowing ?? null,
               assignedBy: x.assignedBy,
               updatedAt: x.updatedAt,
             }))
@@ -92,7 +122,8 @@ export function registerDirectScheduleSync(app:any) {
       const existingRows=await db.select().from(schema.settings).where(eq(schema.settings.key,'dailyShiftAssignments'));
       const existing=Array.isArray(existingRows[0]?.value)?existingRows[0].value.map(normalizeAssignment):[];
       const merged=new Map<string,any>();
-      for(const row of existing) if(row.employeeId&&row.date) merged.set(`${row.employeeId}|${row.date}`,row);
+      const previousShadowingByRow=new Map<string, any>();
+      for(const row of existing) if(row.employeeId&&row.date) { merged.set(`${row.employeeId}|${row.date}`,row); previousShadowingByRow.set(`${row.employeeId}|${row.date}`,row.shadowing??null); }
       for(const row of incoming){
         const key=`${row.employeeId}|${row.date}`; const previous=merged.get(key);
         const previousTime=Date.parse(String(previous?.updatedAt||'')); const incomingTime=Date.parse(String(row.updatedAt||stamp));
@@ -100,7 +131,8 @@ export function registerDirectScheduleSync(app:any) {
           if(row.clear) merged.delete(key); else merged.set(key,row);
         }
       }
-      const assignments=Array.from(merged.values()).map(row=>({employeeId:row.employeeId,date:row.date,shiftId:row.shiftId||'',isOffDay:Boolean(row.isOffDay),assignedBy:row.assignedBy,updatedAt:row.updatedAt||stamp}));
+      // Absent shadowing key → carry the previously stored window forward.
+      const assignments=Array.from(merged.values()).map(row=>({employeeId:row.employeeId,date:row.date,shiftId:row.shiftId||'',isOffDay:Boolean(row.isOffDay),shadowing:(row.shadowing===undefined?(previousShadowingByRow.get(`${row.employeeId}|${row.date}`)):row.shadowing)??null,assignedBy:row.assignedBy,updatedAt:row.updatedAt||stamp}));
       if(existingRows[0]) await db.update(schema.settings).set({value:assignments} as any).where(eq(schema.settings.key,'dailyShiftAssignments')); else await db.insert(schema.settings).values({key:'dailyShiftAssignments',value:assignments} as any);
       const stampKey='__sync_updated_at:dailyShiftAssignments'; const stampRow=await db.select().from(schema.settings).where(eq(schema.settings.key,stampKey));
       if(stampRow[0]) await db.update(schema.settings).set({value:stamp} as any).where(eq(schema.settings.key,stampKey)); else await db.insert(schema.settings).values({key:stampKey,value:stamp} as any);
@@ -116,9 +148,13 @@ export function registerDirectScheduleSync(app:any) {
           const prev = existingByKey.get(`${row.employeeId}|${row.date}`);
           const from = prev ? (prev.isOffDay ? 'OFF' : (prev.shiftId || 'WORKING')) : null;
           const to = row.clear ? null : (row.isOffDay ? 'OFF' : (row.shiftId || 'WORKING'));
-          if (row.clear) { if (prev) changedItems.push({ employeeId: row.employeeId, date: row.date, from, to }); continue; }
-          if (!prev || String(prev.shiftId || '') !== String(row.shiftId || '') || Boolean(prev.isOffDay) !== Boolean(row.isOffDay)) {
-            changedItems.push({ employeeId: row.employeeId, date: row.date, from, to });
+          // Shadowing window changes are audited alongside the shift/status change.
+          // undefined = payload left the key out (keep) → not a change by itself.
+          const shadowChanged = row.shadowing !== undefined && (!prev ? Boolean(row.shadowing) : !sameShadowing(prev.shadowing, row.shadowing));
+          const shadowLabel = (s: any) => (s ? `Shadowing ${s.startTime}-${s.endTime}${s.traineeId ? ` w/${s.traineeId}` : ''}` : null);
+          if (row.clear) { if (prev) changedItems.push({ employeeId: row.employeeId, date: row.date, from, to, ...(shadowChanged ? { shadowingFrom: shadowLabel(prev?.shadowing), shadowingTo: null } : {}) }); continue; }
+          if (!prev || String(prev.shiftId || '') !== String(row.shiftId || '') || Boolean(prev.isOffDay) !== Boolean(row.isOffDay) || shadowChanged) {
+            changedItems.push({ employeeId: row.employeeId, date: row.date, from, to, ...(shadowChanged ? { shadowingFrom: shadowLabel(prev?.shadowing), shadowingTo: shadowLabel(row.shadowing) } : {}) });
           }
         }
         if (changedItems.length || isImport) {
