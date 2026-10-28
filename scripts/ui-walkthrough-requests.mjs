@@ -138,6 +138,48 @@ await closeExcelSection();
 check('month export downloads', /TechSource-Schedule-Month-\d{4}-\d{2}\.xlsx/.test(monthDownload.suggestedFilename()), monthDownload.suggestedFilename());
 await page.screenshot({ path: `${SHOTS}/month-view-export.png`, fullPage: false });
 
+// ---- Feature: Shadowing (شادوينج) — sky-blue training window ----
+// The agent trains a NEW agent for a set window (user example: 1→5 =
+// 13:00→17:00). Rendered in sky blue for BOTH the trainer and the trainee.
+await page.locator('#employee-shift-assignment').scrollIntoViewIfNeeded();
+const shadowBtn = page.locator('[data-shadowing-button]').first();
+await shadowBtn.waitFor({ state: 'visible', timeout: 20000 });
+await shadowBtn.click();
+await page.locator('[data-shadowing-toggle]').waitFor({ state: 'visible', timeout: 10000 });
+await page.locator('[data-shadowing-toggle]').check();
+await page.locator('[data-shadowing-start]').fill('13:00');
+await page.locator('[data-shadowing-end]').fill('17:00');
+const traineeSelect = page.locator('[data-shadowing-trainee]');
+const traineeValue = await traineeSelect.locator('option').filter({ hasText: 'EMP102' }).first().getAttribute('value');
+await traineeSelect.selectOption(traineeValue);
+await page.screenshot({ path: `${SHOTS}/shadowing-modal.png`, fullPage: false });
+await page.locator('[data-shadowing-apply]').click();
+check('shadowing editor applies (day chip shows 13:00–17:00)', await page.getByText(/شادوينج 13:00–17:00/).first().isVisible().catch(() => false));
+await page.getByRole('button', { name: /حفظ الأسبوع|Save week/ }).first().click();
+await page.getByText(/تم حفظ جدول الأسبوع|Weekly schedule saved successfully/).first().waitFor({ state: 'visible', timeout: 15000 });
+check('week save succeeds with shadowing attached', true);
+// Return to the week view (the month-export step left the schedule in month
+// view — month cells use chips, the timeline block only exists in week/day).
+await page.getByRole('button', { name: /^(أسبوع|Week)$/ }).click();
+await page.waitForTimeout(600);
+const trainerBlock = page.locator('[data-shadowing-block="trainer"]').first();
+check('sky-blue shadowing block renders for the trainer', await trainerBlock.isVisible().catch(() => false));
+check('shadowing block uses the sky-400 (سماوي) palette', ((await trainerBlock.getAttribute('class').catch(() => '')) || '').includes('bg-sky-400'));
+await page.screenshot({ path: `${SHOTS}/shadowing-block-week.png`, fullPage: false });
+const shadowingSaved = await page.evaluate(async () => {
+  try {
+    const saved = JSON.parse(localStorage.getItem('logged_in_user') || 'null');
+    const headers = { Accept: 'application/json' };
+    if (saved?.id) headers['x-auth-employee-id'] = String(saved.id);
+    if (saved?.pin) headers['x-auth-pin'] = String(saved.pin);
+    const r = await fetch('/api/schedule-sync', { headers });
+    const body = await r.json();
+    const rows = (body?.dailyShiftAssignments || []).filter((x) => x.employeeId === 'emp-101' && x.shadowing);
+    return { status: r.status, count: rows.length, sample: rows[0]?.shadowing || null };
+  } catch (e) { return { status: 0, count: 0, sample: null, error: String(e) }; }
+});
+check('shadowing persisted server-side', shadowingSaved.status === 200 && shadowingSaved.count > 0 && shadowingSaved.sample.startTime === '13:00' && shadowingSaved.sample.endTime === '17:00' && shadowingSaved.sample.traineeId === 'emp-102', JSON.stringify(shadowingSaved));
+
 // ---- Employee flow: EMP101 — requests boxes are HIDDEN from employees ----
 // (user request: "مش عايز الخانات دي تظهر غير لليدر و الادمن بس" — the
 // schedule-requests card renders for leaders/admins only; employees get a
@@ -158,6 +200,17 @@ await page.locator('header').getByRole('button', { name: /فتح الإشعار�
 await page.waitForTimeout(600);
 check('notification center opens in header', await page.locator('[role="dialog"][aria-label*="الإشعارات"], [role="dialog"][aria-label*="Notification"]').first().isVisible().catch(() => false));
 await page.screenshot({ path: `${SHOTS}/notification-bell.png`, fullPage: false });
+
+// ---- Shadowing trainee side: EMP102 (the new agent) sees the same window ----
+await page.getByRole('button', { name: /التفضيلات|Preferences/ }).click();
+await page.getByRole('menuitem', { name: /تسجيل الخروج|Log out/ }).click();
+await page.waitForSelector('input', { timeout: 15000 });
+await login('EMP102', '1234', { leader: false });
+await page.waitForTimeout(800);
+const traineeBlock = page.locator('[data-shadowing-block="trainee"]').first();
+check('trainee (new agent) sees the sky-blue shadowing window', await traineeBlock.isVisible().catch(() => false));
+check('trainee block also uses the sky-400 palette', ((await traineeBlock.getAttribute('class').catch(() => '')) || '').includes('bg-sky-400'));
+await page.screenshot({ path: `${SHOTS}/shadowing-block-trainee.png`, fullPage: false });
 
 // ---- Excel content sanity: open the week workbook with xlsx and inspect rows ----
 const { createRequire } = await import('node:module');

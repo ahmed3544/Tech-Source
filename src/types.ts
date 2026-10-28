@@ -70,12 +70,26 @@ export interface Shift {
   breaks?: ShiftBreak[];
 }
 
+/** Shadowing session: an experienced agent trains a new agent for a time window.
+ *  Stored on the TRAINER's daily assignment; the trainee's row renders the same
+ *  window in sky blue by looking up assignments where traineeId matches. */
+export interface ShadowingInfo {
+  /** Optional id of the new agent being trained (shows the pairing on both rows). */
+  traineeId?: string;
+  /** HH:mm — e.g. "13:00" for "1". Must be earlier than endTime (same day). */
+  startTime: string;
+  /** HH:mm — e.g. "17:00" for "5". */
+  endTime: string;
+}
+
 /** A shift chosen for one employee on one calendar day. */
 export interface DailyShiftAssignment {
   employeeId: string;
   date: string; // YYYY-MM-DD
   shiftId: string;
   isOffDay?: boolean; // true when this employee has a scheduled weekly off day
+  /** Optional shadowing (training) window rendered in sky blue on the timeline. */
+  shadowing?: ShadowingInfo | null;
   assignedBy?: string;
   updatedAt: string;
 }

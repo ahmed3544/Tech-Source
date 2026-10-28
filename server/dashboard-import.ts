@@ -357,7 +357,10 @@ export async function applyDashboardImport(
 
       const key = `${employee.id}|${assignment.date}`;
       if (!options.overwriteAssignments && merged.has(key)) { summary.skippedAssignments++; continue; }
-      merged.set(key, { employeeId: employee.id, date: assignment.date, shiftId, isOffDay, clear: false, assignedBy: manager?.id ?? null, updatedAt: stamp });
+      // Preserve any existing shadowing (training) window — the dashboard file
+      // has no concept of shadowing, so imports must never erase one.
+      const previousShadowing = merged.get(key)?.shadowing ?? null;
+      merged.set(key, { employeeId: employee.id, date: assignment.date, shiftId, isOffDay, clear: false, shadowing: previousShadowing, assignedBy: manager?.id ?? null, updatedAt: stamp });
       summary.assignmentsApplied++;
       if (isOffDay) summary.offDays++;
       if (!minDate || assignment.date < minDate) minDate = assignment.date;
@@ -372,6 +375,7 @@ export async function applyDashboardImport(
       date: item.date,
       shiftId: item.shiftId || '',
       isOffDay: Boolean(item.isOffDay),
+      shadowing: item.shadowing ?? null,
       assignedBy: item.assignedBy ?? undefined,
       updatedAt: item.updatedAt || stamp,
     }));

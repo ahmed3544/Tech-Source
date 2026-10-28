@@ -1,8 +1,10 @@
 import app from "../dist/server.js";
 import { db } from "../src/db/index.js";
 import * as schema from "../src/db/schema.js";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { updateEmployeeHandler, createEmployeeHandler, deleteEmployeeHandler } from "../server/employees.js";
+import { requireManager, canManageEmployee, isPlatformAdmin } from "../server/auth.js";
+import { logActivity } from "../server/activity-logs.js";
 import { ensureSchema } from "../server/ensure-schema.js";
 import { sanitizeEmployees } from "../server/employee-sanitize.js";
 
@@ -25,6 +27,31 @@ async function directData(res: any) {
   return res.json({ success: true, employees: sanitizeEmployees(employees), attendanceRecords, leaveRequests, overtimeRequests, shifts: hydratedShifts, notifications, employeeShiftAssignments, dailyShiftAssignments: Array.isArray(settingsMap.get('dailyShiftAssignments')) ? settingsMap.get('dailyShiftAssignments') : [], shiftSwapRequests: Array.isArray(settingsMap.get('shiftSwapRequests')) ? settingsMap.get('shiftSwapRequests') : [], companyNameAr: settingsMap.get('companyNameAr') ?? null, companyNameEn: settingsMap.get('companyNameEn') ?? null, urgentNotice: settingsMap.get('urgentNotice') ?? null, officialHolidays: Array.isArray(settingsMap.get('officialHolidays')) ? settingsMap.get('officialHolidays') : [], lastUpdated: Date.now() });
 }
 
+const HHMM_RE = /^(\d{1,2}):(\d{2})$/;
+const minutesOfTime = (value: any): number => {
+  const m = HHMM_RE.exec(String(value ?? '').trim());
+  if (!m) return NaN;
+  const h = Number(m[1]); const mins = Number(m[2]);
+  if (!Number.isFinite(h) || !Number.isFinite(mins) || h > 23 || mins > 59) return NaN;
+  return h * 60 + mins;
+};
+/** Parses + validates an optional shadowing (training) window.
+ *  TRI-STATE: key absent → undefined (keep stored value), null/invalid → null
+ *  (remove), object → set. Protects sessions from older clients/importers. */
+function normalizeShadowing(raw: any): { traineeId?: string; startTime: string; endTime: string } | null | undefined {
+  if (raw === undefined) return undefined;
+  if (!raw || typeof raw !== 'object') return null;
+  const start = minutesOfTime(raw.startTime ?? raw.start_time ?? raw.start);
+  const end = minutesOfTime(raw.endTime ?? raw.end_time ?? raw.end);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return null;
+  const traineeId = String(raw.traineeId ?? raw.trainee_id ?? '').trim();
+  return {
+    ...(traineeId ? { traineeId } : {}),
+    startTime: String(raw.startTime ?? raw.start_time ?? raw.start).trim().slice(0, 5).padStart(5, '0'),
+    endTime: String(raw.endTime ?? raw.end_time ?? raw.end).trim().slice(0, 5).padStart(5, '0'),
+  };
+}
+
 function normalizeDirectSchedule(item: any, fallbackUpdatedAt: string) {
   const employeeId = String(item?.employeeId ?? item?.employee_id ?? '').trim();
   const date = String(item?.date ?? item?.scheduleDate ?? item?.schedule_date ?? '').slice(0, 10);
@@ -43,34 +70,52 @@ function normalizeDirectSchedule(item: any, fallbackUpdatedAt: string) {
     shiftId: clear || isOffDay ? '' : shiftId,
     isOffDay,
     clear,
+    shadowing: item && typeof item === 'object' && 'shadowing' in item ? normalizeShadowing(item.shadowing) : undefined,
     assignedBy: item?.assignedBy ?? item?.assigned_by ?? null,
     updatedAt: String(item?.updatedAt ?? item?.updated_at ?? fallbackUpdatedAt),
   };
 }
 
 async function directScheduleSync(req: any, res: any) {
+  // Server-side permission check (parity with the Express handler): only
+  // admins and team leaders may edit schedules, leaders scoped to their team.
+  const manager = await requireManager(req, (status, body) => res.status(status).json(body));
+  if (!manager) return;
   const incomingRaw = req.body?.dailyShiftAssignments;
   if (!Array.isArray(incomingRaw)) {
     return res.status(400).json({ success: false, error: 'dailyShiftAssignments must be an array' });
   }
 
   const stamp = new Date().toISOString();
-  const incoming = incomingRaw
+  const received = incomingRaw
     .map((item: any) => normalizeDirectSchedule(item, stamp))
     .filter((item: any) => item.employeeId && /^\d{4}-\d{2}-\d{2}$/.test(item.date));
+
+  // Team scoping: leaders may only edit their own team's rows.
+  if (!isPlatformAdmin(manager.role) && received.length) {
+    const targetIds: string[] = Array.from(new Set<string>(received.map((x: any) => String(x.employeeId))));
+    const targets = await db.select().from(schema.employees).where(inArray(schema.employees.id, targetIds));
+    const byId = new Map<string, any>(targets.map((t: any) => [String(t.id), t] as [string, any]));
+    const denied = targetIds.filter((tid) => !canManageEmployee(manager, byId.get(tid)));
+    if (denied.length) {
+      return res.status(403).json({ success: false, error: 'You can only edit schedules for employees in your own team.', deniedEmployeeIds: denied });
+    }
+  }
 
   const rows = await db.select().from(schema.settings).where(eq(schema.settings.key, 'dailyShiftAssignments'));
   const existing = Array.isArray(rows[0]?.value) ? rows[0].value : [];
   const merged = new Map<string, any>();
+  const previousShadowingByRow = new Map<string, any>();
 
   for (const item of existing) {
     const normalized = normalizeDirectSchedule(item, stamp);
     if (normalized.employeeId && /^\d{4}-\d{2}-\d{2}$/.test(normalized.date)) {
       merged.set(normalized.employeeId + '|' + normalized.date, normalized);
+      previousShadowingByRow.set(normalized.employeeId + '|' + normalized.date, normalized.shadowing ?? null);
     }
   }
 
-  for (const item of incoming) {
+  for (const item of received) {
     const key = item.employeeId + '|' + item.date;
     const previous = merged.get(key);
     const previousTime = new Date(String(previous?.updatedAt || '')).getTime();
@@ -81,11 +126,13 @@ async function directScheduleSync(req: any, res: any) {
     }
   }
 
+  // Absent shadowing key → carry the previously stored window forward.
   const assignments = Array.from(merged.values()).map((item: any) => ({
     employeeId: item.employeeId,
     date: item.date,
     shiftId: item.shiftId || '',
     isOffDay: Boolean(item.isOffDay),
+    shadowing: (item.shadowing === undefined ? previousShadowingByRow.get(item.employeeId + '|' + item.date) : item.shadowing) ?? null,
     assignedBy: item.assignedBy ?? undefined,
     updatedAt: item.updatedAt || stamp,
   }));
@@ -103,6 +150,46 @@ async function directScheduleSync(req: any, res: any) {
   } else {
     await db.insert(schema.settings).values({ key: stampKey, value: stamp } as any);
   }
+
+  // Activity log (parity with the Express handler): one summary entry per
+  // successful schedule write, with a per-change diff capped at 40 items.
+  try {
+    const isImport = String(req.body?.source ?? '') === 'excel-import';
+    const existingByKey = new Map<string, any>();
+    for (const item of existing) {
+      const normalized = normalizeDirectSchedule(item, stamp);
+      if (normalized.employeeId && /^\d{4}-\d{2}-\d{2}$/.test(normalized.date)) existingByKey.set(normalized.employeeId + '|' + normalized.date, normalized);
+    }
+    const changedItems: any[] = [];
+    for (const row of received) {
+      const prev = existingByKey.get(row.employeeId + '|' + row.date);
+      const from = prev ? (prev.isOffDay ? 'OFF' : (prev.shiftId || 'WORKING')) : null;
+      const to = row.clear ? null : (row.isOffDay ? 'OFF' : (row.shiftId || 'WORKING'));
+      const shadowChanged = row.shadowing !== undefined && (!prev ? Boolean(row.shadowing) : JSON.stringify(prev.shadowing ?? null) !== JSON.stringify(row.shadowing ?? null));
+      const shadowLabel = (s: any) => (s ? `Shadowing ${s.startTime}-${s.endTime}${s.traineeId ? ` w/${s.traineeId}` : ''}` : null);
+      if (row.clear) { if (prev) changedItems.push({ employeeId: row.employeeId, date: row.date, from, to, ...(shadowChanged ? { shadowingFrom: shadowLabel(prev?.shadowing), shadowingTo: null } : {}) }); continue; }
+      if (!prev || String(prev.shiftId || '') !== String(row.shiftId || '') || Boolean(prev.isOffDay) !== Boolean(row.isOffDay) || shadowChanged) {
+        changedItems.push({ employeeId: row.employeeId, date: row.date, from, to, ...(shadowChanged ? { shadowingFrom: shadowLabel(prev?.shadowing), shadowingTo: shadowLabel(row.shadowing) } : {}) });
+      }
+    }
+    if (changedItems.length || isImport) {
+      const dates = received.map((x: any) => String(x.date)).sort();
+      logActivity({
+        actorId: manager.id,
+        actorName: (manager as any).nameAr || (manager as any).nameEn || manager.id,
+        actorRole: manager.role,
+        action: isImport ? 'schedule.import_excel' : 'schedule.update',
+        entityType: 'schedule',
+        entityLabel: dates.length ? `${dates[0]} → ${dates[dates.length - 1]}` : null,
+        details: {
+          changes: changedItems.length,
+          received: received.length,
+          ...(isImport ? { breakDays: Math.max(0, Number(req.body?.breaksCount ?? 0) || 0) } : {}),
+          items: changedItems.slice(0, 40),
+        },
+      });
+    }
+  } catch (auditError) { console.error('[direct-schedule-sync] activity log failed:', auditError); }
 
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   res.setHeader('Pragma', 'no-cache');
