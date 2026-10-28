@@ -301,10 +301,10 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
   // Clicking a notification (bell dropdown or the full notifications page)
   // jumps to the Schedule requests card: break_* → break tab, everything
   // else (shift_swap_*, shift_changed) → shift swap tab. The card scrolls
-  // into view and flashes so the user can't miss it. The card is visible to
-  // leaders/admins only, so employees skip the navigation entirely.
+  // into view and flashes so the user can't miss it. Available to EVERYONE —
+  // employees receive swap/break notifications too and must land on the card
+  // (fixes "السواب شفت اتشالت": the card was briefly leaders-only).
   useEffect(() => {
-    if (!isLeader) return;
     const onNavigate = (event: Event) => {
       const detail = (event as CustomEvent<{ type?: string } | undefined>).detail;
       const type = String(detail?.type || '');
@@ -316,7 +316,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
     };
     window.addEventListener('techsource:navigate-notification', onNavigate);
     return () => window.removeEventListener('techsource:navigate-notification', onNavigate);
-  }, [isLeader]);
+  }, []);
 
   // Day view: breaks for the selected date (fetched when not already cached
   // from the visible-week load — e.g. after navigating to another week).
@@ -1035,11 +1035,12 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
         </div>
       )}
 
-      {/* Schedule requests — LEADERS/ADMINS ONLY (user request: "مش عايز الخانات
-          دي تظهر غير لليدر و الادمن بس"). Swap submissions, break-change
-          requests and approvals are all managed from this card; employees get
-          a clean read-only schedule view. */}
-      {isLeader && <div ref={requestsCardRef} data-requests-card className={`rounded-xl border-2 border-blue-300 bg-slate-50 p-2 shadow-sm transition-shadow dark:border-blue-500/40 dark:bg-slate-900/60 ${cardFlash ? 'ring-4 ring-blue-400' : ''}`}>
+      {/* Schedule requests — visible to EVERYONE (restore of the pre-f3246e7
+          behavior after "الاسواب شفت اتشالت"). The leader/admin-only rule from
+          "مش عايز الخانات دي تظهر غير لليدر و الادمن بس" applies to the Excel
+          import/export boxes (admin settings panel below) — NOT to swap/break
+          requests: employees submit them here, leaders review them here. */}
+      <div ref={requestsCardRef} data-requests-card className={`rounded-xl border-2 border-blue-300 bg-slate-50 p-2 shadow-sm transition-shadow dark:border-blue-500/40 dark:bg-slate-900/60 ${cardFlash ? 'ring-4 ring-blue-400' : ''}`}>
         <div className="flex flex-wrap items-center justify-between gap-2 px-1 py-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="flex items-center gap-2 text-xs font-black text-slate-700 dark:text-slate-200">{lang === 'ar' ? 'طلبات الجدول' : 'Schedule requests'}</span>
@@ -1054,7 +1055,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
             {requestTab === 'swap' && <ShiftSwapPanel employees={employees} shifts={shifts} assignments={assignments} currentUser={currentUser} lang={lang} />}
           </div>
         )}
-      </div>}
+      </div>
 
       {!employee ? <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm font-bold text-slate-500 dark:border-slate-600 dark:text-slate-400">{lang === 'ar' ? 'لا يوجد موظف متاح للعرض' : 'No employee available'}</div> : viewMode === 'month' ? (
         /* ---------------- MONTH VIEW ---------------- */

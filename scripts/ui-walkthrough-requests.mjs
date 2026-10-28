@@ -1,7 +1,7 @@
 // Visual walkthrough for the new features on the demo environment:
 //   1. Export to Excel (week + month) — real .xlsx downloads
 //   2. Break change request — employee submits, admin sees pending + approves
-//   3. Shift swap panel visible for everyone
+//   3. Shift swap panel visible for everyone (restored after "الاسواب شفت اتشالت")
 //   4. Notification click navigates to the requests card (flash + tab)
 //   5. Day view — one day sized to screen with prev/next navigation
 //   6. Import Excel — round-trip of the weekly export with one modified cell
@@ -45,8 +45,8 @@ const login = async (code, pin, { leader = true } = {}) => {
   await page.locator('input[type="password"]').fill(pin);
   await page.keyboard.press('Enter');
   if (leader) await openExcelSection();
-  // Employees no longer see the schedule-requests boxes — wait for the
-  // schedule toolbar instead (their login-complete signal).
+  // Employees see the schedule-requests card again — wait for the schedule
+  // toolbar as their login-complete signal (same as before the regression).
   else await page.locator('[data-range-label]').first().waitFor({ state: 'visible', timeout: 25000 });
 };
 
@@ -180,18 +180,21 @@ const shadowingSaved = await page.evaluate(async () => {
 });
 check('shadowing persisted server-side', shadowingSaved.status === 200 && shadowingSaved.count > 0 && shadowingSaved.sample.startTime === '13:00' && shadowingSaved.sample.endTime === '17:00' && shadowingSaved.sample.traineeId === 'emp-102', JSON.stringify(shadowingSaved));
 
-// ---- Employee flow: EMP101 — requests boxes are HIDDEN from employees ----
-// (user request: "مش عايز الخانات دي تظهر غير لليدر و الادمن بس" — the
-// schedule-requests card renders for leaders/admins only; employees get a
-// clean read-only schedule view)
+// ---- Employee flow: EMP101 — requests card is visible to EVERYONE (restored) ----
+// "الاسواب شفت اتشالت" regression fix: the swap + break request card must be
+// visible to employees again (they submit swaps, targets accept/reject).
+// The leader/admin-only rule applies to the Excel import boxes only.
 await page.getByRole('button', { name: /التفضيلات|Preferences/ }).click();
 await page.getByRole('menuitem', { name: /تسجيل الخروج|Log out/ }).click();
 await page.waitForSelector('input', { timeout: 15000 });
 await login('EMP101', '1234', { leader: false });
 check('employee login works', true);
 await page.waitForTimeout(700);
-check('employee does NOT see the requests card', await page.locator('[data-requests-card]').count() === 0, `count=${await page.locator('[data-requests-card]').count()}`);
-check('employee does NOT see swap/break tabs', !(await page.getByRole('button', { name: /تبديل الشيفت|Shift swap/ }).first().isVisible().catch(() => false)) && !(await page.getByRole('button', { name: /تغيير البريك|Break change/ }).first().isVisible().catch(() => false)));
+check('employee SEES the requests card (restored)', await page.locator('[data-requests-card]').count() > 0, `count=${await page.locator('[data-requests-card]').count()}`);
+check('employee sees swap tab', await page.getByRole('button', { name: /تبديل الشيفت|Shift swap/ }).first().isVisible().catch(() => false));
+check('employee sees break tab', await page.getByRole('button', { name: /تغيير البريك|Break change/ }).first().isVisible().catch(() => false));
+check('employee sees the swap submit form (date + target + send)', await page.getByText(/تاريخ التبديل|Swap Date/).first().isVisible().catch(() => false) && await page.getByText(/التبديل مع|Swap With/).first().isVisible().catch(() => false));
+check('employee does NOT see the Excel import boxes (admin-only)', !(await exportBtn.isVisible().catch(() => false)));
 check('employee still sees their schedule', await page.locator('[data-range-label]').first().isVisible());
 await page.screenshot({ path: `${SHOTS}/requests-panel-employee.png`, fullPage: false });
 
