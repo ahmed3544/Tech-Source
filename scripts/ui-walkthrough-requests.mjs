@@ -198,6 +198,37 @@ check('employee does NOT see the Excel import boxes (admin-only)', !(await expor
 check('employee still sees their schedule', await page.locator('[data-range-label]').first().isVisible());
 await page.screenshot({ path: `${SHOTS}/requests-panel-employee.png`, fullPage: false });
 
+// ---- Shift swap e2e part 1/3: employee submits a REAL swap from the UI ----
+// Find a date (not tomorrow — the import step later claims it) where EMP101
+// and EMP102 both have assignments and are not both OFF.
+const swapState = await (async () => {
+  const d = await (await fetch(`${BASE}/api/data`)).json();
+  const rows = d.dailyShiftAssignments || [];
+  const emp101 = (d.employees || []).find((e) => String(e.code).toUpperCase() === 'EMP101');
+  const emp102 = (d.employees || []).find((e) => String(e.code).toUpperCase() === 'EMP102');
+  if (!emp101 || !emp102) return null;
+  const todayKey = new Date().toISOString().slice(0, 10);
+  const dates = [...new Set(rows.map((r) => r.date))].filter((dt) => dt >= todayKey && dt !== tomorrowKey).sort();
+  for (const dt of dates) {
+    const r1 = rows.find((x) => x.employeeId === emp101.id && x.date === dt);
+    const r2 = rows.find((x) => x.employeeId === emp102.id && x.date === dt);
+    if (r1 && r2 && !(r1.isOffDay && r2.isOffDay)) return { emp101, emp102, date: dt, orig101: r1, orig102: r2 };
+  }
+  return null;
+})();
+if (swapState) {
+  const cardDate = page.locator('[data-requests-card] input[type="date"]');
+  await cardDate.fill(swapState.date);
+  const targetSelect = page.locator('[data-requests-card] select');
+  const optValue = await targetSelect.locator('option').filter({ hasText: 'EMP102' }).first().getAttribute('value');
+  await targetSelect.selectOption(optValue);
+  await page.getByRole('button', { name: /^إرسال الطلب$|^Submit Request$/ }).click();
+  await page.waitForTimeout(1800);
+  check('employee swap submitted from UI (row appears with the date)', await page.locator('[data-requests-card]').getByText(swapState.date).first().isVisible().catch(() => false), `date=${swapState.date}`);
+} else {
+  check('swap e2e fixture available', false, 'no date where EMP101+EMP102 both have assignments');
+}
+
 // ---- Notification bell mounted in header ----
 await page.locator('header').getByRole('button', { name: /فتح الإشعارات|Open notifications/i }).click();
 await page.waitForTimeout(600);
@@ -214,6 +245,18 @@ const traineeBlock = page.locator('[data-shadowing-block="trainee"]').first();
 check('trainee (new agent) sees the sky-blue shadowing window', await traineeBlock.isVisible().catch(() => false));
 check('trainee block also uses the sky-400 palette', ((await traineeBlock.getAttribute('class').catch(() => '')) || '').includes('bg-sky-400'));
 await page.screenshot({ path: `${SHOTS}/shadowing-block-trainee.png`, fullPage: false });
+
+// ---- Shift swap e2e part 2/3: the target employee accepts from the UI ----
+if (swapState) {
+  const acceptBtn = page.locator('[data-requests-card] button[title="موافقة"], [data-requests-card] button[title="Accept"]').first();
+  if (await acceptBtn.isVisible().catch(() => false)) {
+    await acceptBtn.click();
+    await page.waitForTimeout(1800);
+    check('target accepted the swap from UI (awaiting_target → pending)', true);
+  } else {
+    check('target sees the accept button', false, 'no awaiting_target row rendered for EMP102');
+  }
+}
 
 // ---- Excel content sanity: open the week workbook with xlsx and inspect rows ----
 const { createRequire } = await import('node:module');
@@ -238,6 +281,34 @@ await page.getByRole('menuitem', { name: /تسجيل الخروج|Log out/ }).cl
 await page.waitForSelector('input', { timeout: 15000 });
 await login('EMP002', '1234');
 check('admin re-login for import', true);
+
+// ---- Shift swap e2e part 3/3: leader approves → schedule MUST change ----
+// This is the regression fix for "بعد الاسواب مايتعمل الشفت مش بيتبدل": the
+// swapped rows go through /api/schedule-sync (permission-checked) instead of
+// /api/sync (which strips schedule rows server-side).
+if (swapState) {
+  const approveBtn = page.locator('[data-requests-card] button[title="اعتماد"], [data-requests-card] button[title="Approve"]').first();
+  if (await approveBtn.isVisible().catch(() => false)) {
+    await approveBtn.click();
+    let landed = false;
+    let after = '';
+    for (let i = 0; i < 10 && !landed; i++) {
+      await page.waitForTimeout(1000);
+      const d = await (await fetch(`${BASE}/api/data`)).json();
+      const rows = d.dailyShiftAssignments || [];
+      const r1 = rows.find((x) => x.employeeId === swapState.emp101.id && x.date === swapState.date);
+      const r2 = rows.find((x) => x.employeeId === swapState.emp102.id && x.date === swapState.date);
+      after = JSON.stringify({ r1, r2 });
+      landed = Boolean(r1 && r2
+        && String(r1.shiftId || '') === String(swapState.orig102.shiftId || '') && Boolean(r1.isOffDay) === Boolean(swapState.orig102.isOffDay)
+        && String(r2.shiftId || '') === String(swapState.orig101.shiftId || '') && Boolean(r2.isOffDay) === Boolean(swapState.orig101.isOffDay));
+    }
+    check('approved swap CHANGED the schedule server-side (fix verified)', landed, `date=${swapState.date} ${after.slice(0, 200)}`);
+    check('swap approval shows no error bar', !(await page.getByText(/تعذر تنفيذ|تعذر حفظ|Could not apply|Could not save/).first().isVisible().catch(() => false)));
+  } else {
+    check('admin sees the approve button', false, 'no pending swap row rendered');
+  }
+}
 
 const importWb = XLSX.readFile(weekFile);
 const importSheet = importWb.Sheets[importWb.SheetNames[0]];
@@ -329,7 +400,7 @@ await page.getByRole('button', { name: /التفضيلات|Preferences/ }).click
 await page.getByRole('menuitem', { name: /استيراد الداش بورد|Excel dashboard import/ }).click();
 await page.waitForSelector('[role="dialog"][aria-label*="استيراد الداش بورد"]', { timeout: 15000 });
 check('dashboard import panel opens from preferences menu', true);
-check('dashboard import upload section visible', await page.getByText(/ارفع ملف الداش بورد|Upload your dashboard file/).first().isVisible().catch(() => false));
+check('dashboard import upload section visible', await page.getByText(/ارفع ملف الداش بورد|Upload your dashboard file/).first().waitFor({ state: 'visible', timeout: 10000 }).then(() => true).catch(() => false));
 check('dashboard import url auto-sync section visible (admin)', await page.getByText(/مزامنة تلقائية من رابط الملف|Auto-sync from a file URL/).first().isVisible().catch(() => false));
 check('dashboard import url input present', await page.locator('[role="dialog"][aria-label*="استيراد الداش بورد"] input[type="url"]').isVisible());
 check('dashboard import: auto-import box visible', await page.getByText(/الاستيراد التلقائي للملف المرفوع|Automatic re-import of the uploaded file/).first().isVisible().catch(() => false));

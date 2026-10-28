@@ -19,6 +19,7 @@ export const ShiftSwapPanel: React.FC<Props> = ({ employees, shifts, assignments
   const [date, setDate] = useState('');
   const [targetId, setTargetId] = useState('');
   const [loading, setLoading] = useState(false);
+  const [actionError, setActionError] = useState('');
   const isLeader = currentUser?.role === 'leader' || currentUser?.role === 'admin';
   const team = useMemo(() => {
     if (!currentUser) return [];
@@ -163,6 +164,7 @@ export const ShiftSwapPanel: React.FC<Props> = ({ employees, shifts, assignments
   const review = async (request: ShiftSwapRequest, status: 'approved' | 'rejected') => {
     if (!isLeader || request.status !== 'pending') return;
     setLoading(true);
+    setActionError('');
     const now = new Date().toISOString();
     const nextRequests = requests.map(r => r.id === request.id ? { ...r, status, reviewedBy: currentUser?.id, reviewedAt: now } : r);
     let nextNotifications = notifications;
@@ -172,14 +174,38 @@ export const ShiftSwapPanel: React.FC<Props> = ({ employees, shifts, assignments
       const b = nextAssignments.findIndex(x => key(x.employeeId, x.date) === key(request.targetEmployeeId, request.date));
       const requesterCurrent = a >= 0 ? nextAssignments[a] : undefined;
       const targetCurrent = b >= 0 ? nextAssignments[b] : undefined;
-      if (!requesterCurrent || !targetCurrent) { setLoading(false); return; }
+      if (!requesterCurrent || !targetCurrent) {
+        // The schedule rows are gone (e.g. the week was re-imported since the
+        // request was made). Surface it instead of silently doing nothing.
+        setActionError(lang === 'ar' ? 'تعذر تنفيذ التبديل: تعيين أحد الموظفين لهذا اليوم غير موجود. حدث الصفحة وحاول مرة أخرى.' : 'Could not apply the swap: one of the day assignments is missing. Refresh the page and try again.');
+        setLoading(false);
+        return;
+      }
       nextAssignments[a] = { ...requesterCurrent, shiftId: request.targetShiftId, isOffDay: request.targetWasOff ?? ['__OFF__', 'OFF', 'off'].includes(String(request.targetShiftId)), assignedBy: currentUser?.id, updatedAt: now };
       nextAssignments[b] = { ...targetCurrent, shiftId: request.requesterShiftId, isOffDay: request.requesterWasOff ?? ['__OFF__', 'OFF', 'off'].includes(String(request.requesterShiftId)), assignedBy: currentUser?.id, updatedAt: now };
       nextNotifications = [...notifications,
         makeNotification(request.requesterId, 'shift_changed', lang === 'ar' ? 'تم اعتماد تبديل الشفت' : 'Shift Swap Approved', lang === 'ar' ? `تم اعتماد تبديل الشفت مع ${name(request.targetEmployeeId)} ليوم ${request.date}. شفتك الآن ${shiftName(request.targetShiftId)}.` : `Your shift swap with ${name(request.targetEmployeeId)} for ${request.date} was approved. Your new shift is ${shiftName(request.targetShiftId)}.`, request.id, now),
         makeNotification(request.targetEmployeeId, 'shift_changed', lang === 'ar' ? 'تم اعتماد تبديل الشفت' : 'Shift Swap Approved', lang === 'ar' ? `تم اعتماد تبديل الشفت مع ${name(request.requesterId)} ليوم ${request.date}. شفتك الآن ${shiftName(request.requesterShiftId)}.` : `Your shift swap with ${name(request.requesterId)} for ${request.date} was approved. Your new shift is ${shiftName(request.requesterShiftId)}.`, request.id, now)
       ];
-      await syncState(nextRequests, nextNotifications, nextAssignments);
+      // THE FIX for "بعد الاسواب مايتعمل الشفت مش بيتبدل": the swapped rows
+      // MUST go through the dedicated permission-checked /api/schedule-sync
+      // endpoint. The legacy /api/sync silently STRIPS dailyShiftAssignments
+      // (server/schedule-sync-guard.ts: "the dedicated /api/schedule-sync
+      // endpoint is the only schedule writer"), so approvals posted there
+      // saved the request status but threw the shift change away.
+      const swapRes = await fetch('/api/schedule-sync', {
+        method: 'POST', credentials: 'include', cache: 'no-store',
+        headers: authHeaders({ 'Content-Type': 'application/json', Accept: 'application/json' }),
+        body: JSON.stringify({ dailyShiftAssignments: [nextAssignments[a], nextAssignments[b]], syncTimestamp: now, source: 'shift-swap' }),
+      });
+      if (!swapRes.ok) {
+        setActionError(lang === 'ar' ? `تعذر حفظ تبديل الشفت على الجدول (خطأ ${swapRes.status}). تأكد من صلاحياتك وحاول مرة أخرى.` : `Could not save the shift swap to the schedule (error ${swapRes.status}). Check your permissions and try again.`);
+        setLoading(false);
+        return;
+      }
+      const swapData = await swapRes.json().catch(() => null);
+      if (Array.isArray(swapData?.dailyShiftAssignments)) { try { localStorage.setItem('daily_shift_assignments', JSON.stringify(swapData.dailyShiftAssignments)); } catch {} }
+      await syncState(nextRequests, nextNotifications);
     } else {
       nextNotifications = [...notifications,
         makeNotification(request.requesterId, 'shift_swap_rejected', lang === 'ar' ? 'تم رفض تبديل الشفت' : 'Shift Swap Rejected', lang === 'ar' ? `الليدر رفض تبديل الشفت مع ${name(request.targetEmployeeId)} ليوم ${request.date}.` : `The leader rejected the shift swap with ${name(request.targetEmployeeId)} for ${request.date}.`, request.id, now),
@@ -199,6 +225,7 @@ export const ShiftSwapPanel: React.FC<Props> = ({ employees, shifts, assignments
 
   return <section className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-4 space-y-4">
     <div className="flex items-center gap-2"><ArrowLeftRight className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /><h4 className="text-sm font-black text-slate-900 dark:text-white dark:text-slate-100">{lang === 'ar' ? 'تبديل الشفت' : 'Shift Swap'}</h4></div>
+    {actionError && <div className="rounded-xl border border-rose-300 bg-rose-50 dark:border-rose-500/40 dark:bg-rose-500/10 px-3 py-2 text-xs font-bold text-rose-700 dark:text-rose-300">{actionError}</div>}
     {!isLeader && currentUser && <div className="space-y-3">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <label className="text-xs font-bold text-slate-700 dark:text-slate-300">{lang === 'ar' ? 'تاريخ التبديل' : 'Swap Date'}<input type="date" value={date} onChange={e => setDate(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2" /></label>
