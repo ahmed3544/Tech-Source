@@ -118,8 +118,8 @@ const validateBreakRows = (rows: ScheduleBreak[]): string | null => {
 /* Teleopti WFM palette — matches the reference design exactly.        */
 /* ------------------------------------------------------------------ */
 const TEO = {
-  shift: 'bg-orange-400 hover:bg-orange-500 text-white dark:bg-orange-500 dark:hover:bg-orange-400',
-  shiftPending: 'bg-orange-300 text-white ring-2 ring-blue-400 dark:bg-orange-600',
+  shift: 'bg-green-500 hover:bg-green-600 text-white dark:bg-green-600 dark:hover:bg-green-500',
+  shiftPending: 'bg-green-400 text-white ring-2 ring-blue-400 dark:bg-green-600',
   breakBar: 'bg-red-500 hover:bg-red-600 dark:bg-red-600 dark:hover:bg-red-500',
   holiday: 'bg-red-100 text-red-800 border border-red-300 dark:bg-red-500/15 dark:text-red-300 dark:border-red-500/40',
   annual: 'bg-yellow-300 text-yellow-900 dark:bg-yellow-500/25 dark:text-yellow-300',
