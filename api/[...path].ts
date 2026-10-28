@@ -114,6 +114,41 @@ async function directScheduleSync(req: any, res: any) {
   });
 }
 
+async function directShadowing(req: any, res: any) {
+  const rows = await db.select().from(schema.settings).where(eq(schema.settings.key, 'employeeShadowing'));
+  const current = Array.isArray(rows[0]?.value) ? rows[0].value as any[] : [];
+  if (req.method === 'GET') {
+    const employeeId = String(req.query?.employeeId || '').trim();
+    const from = String(req.query?.from || '').slice(0, 10);
+    const to = String(req.query?.to || '').slice(0, 10);
+    const result: Record<string, { startTime: string; endTime: string }> = {};
+    for (const item of current) {
+      if (String(item.employeeId) !== employeeId) continue;
+      const date = String(item.date || '').slice(0, 10);
+      if ((from && date < from) || (to && date > to)) continue;
+      if (item.startTime && item.endTime) result[date] = { startTime: String(item.startTime), endTime: String(item.endTime) };
+    }
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    return res.json({ success: true, shadowingByDate: result });
+  }
+  if (req.method !== 'POST') return res.status(405).json({ success: false, error: 'method_not_allowed' });
+  const employeeId = String(req.body?.employeeId || '').trim();
+  const date = String(req.body?.date || '').slice(0, 10);
+  if (!employeeId || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ success: false, error: 'invalid_employee_or_date' });
+  const next = current.filter((item: any) => !(String(item.employeeId) === employeeId && String(item.date).slice(0, 10) === date));
+  if (!req.body?.clear) {
+    const startTime = String(req.body?.startTime || '');
+    const endTime = String(req.body?.endTime || '');
+    const validTime = (value: string) => /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
+    if (!validTime(startTime) || !validTime(endTime) || endTime <= startTime) return res.status(400).json({ success: false, error: 'invalid_time_range' });
+    next.push({ employeeId, date, startTime, endTime, assignedBy: req.body?.assignedBy || null, updatedAt: new Date().toISOString() });
+  }
+  if (rows[0]) await db.update(schema.settings).set({ value: next } as any).where(eq(schema.settings.key, 'employeeShadowing'));
+  else await db.insert(schema.settings).values({ key: 'employeeShadowing', value: next } as any);
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  return res.json({ success: true });
+}
+
 async function directNotifications(req: any, res: any) {
   const userId = String(req.query?.userId || '').trim();
   if (!userId) return res.json({ success: true, notifications: [] });
@@ -219,6 +254,7 @@ export default async function handler(req: any, res: any) {
   // GET/POST /api/employee-breaks are handled by the bundled express app below
   // (routes registered in server.ts via registerEmployeeBreaks).
   try {
+    if ((req.method === 'GET' || req.method === 'POST') && isPath(req, '/api/shadowing')) return await directShadowing(req, res);
     if (req.method === 'POST' && isPath(req, '/api/schedule-sync')) return await directScheduleSync(req, res);
     if (req.method === 'GET' && isPath(req, '/api/data')) { res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate'); res.setHeader('Pragma', 'no-cache'); return await directData(res); }
     if (req.method === 'GET' && isPath(req, '/api/notifications')) { res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate'); res.setHeader('Pragma', 'no-cache'); return await directNotifications(req, res); }
