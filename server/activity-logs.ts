@@ -12,6 +12,7 @@ import { authenticateRequest, isManagerRole, requireManager } from './auth.js';
  *   breaks.update
  *   break_request.submit / break_request.approve / break_request.reject
  *   swap.submit / swap.accept / swap.reject / swap.approve  (reported by the client)
+ *   swap.direct  (admin's direct shift swap — no request/approval chain)
  *   auth.login
  *
  * Writing is fire-and-forget: a logging failure must NEVER break the user's
@@ -29,12 +30,12 @@ export type ActivityAction =
   | 'schedule.update' | 'schedule.import_excel'
   | 'breaks.update'
   | 'break_request.submit' | 'break_request.approve' | 'break_request.reject'
-  | 'swap.submit' | 'swap.accept' | 'swap.reject' | 'swap.approve' | 'swap.cancel'
+  | 'swap.submit' | 'swap.accept' | 'swap.reject' | 'swap.approve' | 'swap.cancel' | 'swap.direct'
   | 'auth.login'
   | 'sheet.config' | 'sheet.sync' | 'sheet.sync_failed';
 
 /** Actions the client may self-report (shift swap flow has no dedicated endpoint). */
-const CLIENT_ACTIONS = new Set<string>(['swap.submit', 'swap.accept', 'swap.reject', 'swap.approve', 'swap.cancel']);
+const CLIENT_ACTIONS = new Set<string>(['swap.submit', 'swap.accept', 'swap.reject', 'swap.approve', 'swap.cancel', 'swap.direct']);
 
 const MAX_DETAILS_LENGTH = 4000;
 

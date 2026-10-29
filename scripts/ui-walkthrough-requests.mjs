@@ -65,9 +65,15 @@ await closeExcelSection();
 check('week export downloads', /TechSource-Schedule-Week-\d{4}-\d{2}-\d{2}\.xlsx/.test(weekDownload.suggestedFilename()), weekDownload.suggestedFilename());
 check('week xlsx is a real zip (xlsx)', fs.readFileSync(weekFile).subarray(0, 2).toString() === 'PK', `${fs.statSync(weekFile).size} bytes`);
 
-// ---- Requests card is open by default with the swap tab active ----
+// ---- Requests DROPDOWN ("عايزه يبقا dropdown عند الايجنت والادمن والليدر"):
+// collapsed by default for EVERYONE, header click expands the tabs + panels.
+const reqDropdown = page.locator('[data-requests-toggle]');
 await page.waitForTimeout(700);
-check('shift swap tab visible by default', await requestsToggle.isVisible());
+check('requests dropdown header visible (admin)', await reqDropdown.isVisible());
+check('requests dropdown COLLAPSED by default (swap tab hidden)', !(await requestsToggle.isVisible().catch(() => false)), `tabVisible=${await requestsToggle.isVisible().catch(() => false)}`);
+await reqDropdown.click();
+await page.waitForTimeout(400);
+check('dropdown expands on header click (swap tab appears)', await requestsToggle.isVisible());
 check('shift swap panel visible', await page.getByText('تبديل الشفت', { exact: true }).first().isVisible().catch(() => false));
 
 // ---- Break tab: panel renders there ----
@@ -92,6 +98,56 @@ check('pending chip shows', await page.getByText('بانتظار المراجع�
 await page.locator('button[title*="اعتماد وتحديث الجدول"], button[title*="Approve & update schedule"]').first().click();
 await page.waitForSelector('text=/تم اعتماد الطلب|Request approved/i', { timeout: 15000 });
 check('approval from UI works (schedule updated + notified)', true);
+
+// ---- ADMIN DIRECT SWAP ("يسواب الشفت بدون الرجوع للاداره") ----
+// The admin swaps two agents' shifts for a date IMMEDIATELY — no swap
+// request, no target acceptance, no leader approval chain.
+await page.getByRole('button', { name: /^(تبديل الشيفت|Shift swap)$/ }).click();
+await page.waitForTimeout(500);
+check('direct swap tool visible for ADMIN', await page.locator('[data-direct-swap-apply]').isVisible().catch(() => false));
+const directState = await (async () => {
+  const d = await (await fetch(`${BASE}/api/data`)).json();
+  const rows = d.dailyShiftAssignments || [];
+  const e1 = (d.employees || []).find((e) => String(e.code).toUpperCase() === 'EMP101');
+  const e2 = (d.employees || []).find((e) => String(e.code).toUpperCase() === 'EMP102');
+  if (!e1 || !e2) return null;
+  const todayKey = new Date().toISOString().slice(0, 10);
+  const dates = [...new Set(rows.map((r) => r.date))].filter((dt) => dt >= todayKey && dt !== tomorrowKey).sort();
+  for (const dt of [...dates].reverse()) {
+    const r1 = rows.find((x) => x.employeeId === e1.id && x.date === dt);
+    const r2 = rows.find((x) => x.employeeId === e2.id && x.date === dt);
+    if (r1 && r2 && !(r1.isOffDay && r2.isOffDay)) return { e1, e2, date: dt, orig1: r1, orig2: r2 };
+  }
+  return null;
+})();
+if (directState) {
+  await page.locator('[data-direct-swap-date]').fill(directState.date);
+  await page.locator('[data-direct-swap-a]').selectOption(directState.e1.id);
+  await page.locator('[data-direct-swap-b]').selectOption(directState.e2.id);
+  await page.waitForTimeout(300);
+  check('direct swap preview shows both current shifts', await page.getByText(/الوضع الحالي ليوم|Current state on/).first().isVisible().catch(() => false));
+  await page.screenshot({ path: `${SHOTS}/direct-swap-before.png`, fullPage: false });
+  await page.locator('[data-direct-swap-apply]').click();
+  await page.waitForSelector('text=/تم تنفيذ التبديل|Swap applied/', { timeout: 15000 });
+  check('direct swap success message shows', true);
+  let directLanded = false;
+  let directAfter = '';
+  for (let i = 0; i < 10 && !directLanded; i++) {
+    await page.waitForTimeout(800);
+    const d = await (await fetch(`${BASE}/api/data`)).json();
+    const rows = d.dailyShiftAssignments || [];
+    const r1 = rows.find((x) => x.employeeId === directState.e1.id && x.date === directState.date);
+    const r2 = rows.find((x) => x.employeeId === directState.e2.id && x.date === directState.date);
+    directAfter = JSON.stringify({ r1, r2 });
+    directLanded = Boolean(r1 && r2
+      && String(r1.shiftId || '') === String(directState.orig2.shiftId || '') && Boolean(r1.isOffDay) === Boolean(directState.orig2.isOffDay)
+      && String(r2.shiftId || '') === String(directState.orig1.shiftId || '') && Boolean(r2.isOffDay) === Boolean(directState.orig1.isOffDay));
+  }
+  check('direct swap CHANGED the schedule server-side (no approval chain)', directLanded, `date=${directState.date} ${directAfter.slice(0, 200)}`);
+  await page.screenshot({ path: `${SHOTS}/direct-swap-admin.png`, fullPage: false });
+} else {
+  check('direct swap fixture available', false, 'no suitable EMP101+EMP102 date');
+}
 
 // ---- Notification click navigates to the requests card ----
 await page.locator('header').getByRole('button', { name: /فتح الإشعارات|Open notifications/i }).click();
@@ -191,7 +247,11 @@ await login('EMP101', '1234', { leader: false });
 check('employee login works', true);
 await page.waitForTimeout(700);
 check('employee SEES the requests card (restored)', await page.locator('[data-requests-card]').count() > 0, `count=${await page.locator('[data-requests-card]').count()}`);
+check('employee requests dropdown COLLAPSED by default', await page.locator('[data-requests-toggle]').isVisible().catch(() => false) && !(await requestsToggle.isVisible().catch(() => false)));
+await page.locator('[data-requests-toggle]').click();
+await page.waitForTimeout(400);
 check('employee sees swap tab', await page.getByRole('button', { name: /تبديل الشيفت|Shift swap/ }).first().isVisible().catch(() => false));
+check('employee does NOT see the direct swap tool (admin-only)', !(await page.locator('[data-direct-swap-apply]').isVisible().catch(() => false)));
 check('employee sees break tab', await page.getByRole('button', { name: /تغيير البريك|Break change/ }).first().isVisible().catch(() => false));
 check('employee sees the swap submit form (date + target + send)', await page.getByText(/تاريخ التبديل|Swap Date/).first().isVisible().catch(() => false) && await page.getByText(/التبديل مع|Swap With/).first().isVisible().catch(() => false));
 check('employee does NOT see the Excel import boxes (admin-only)', !(await exportBtn.isVisible().catch(() => false)));
@@ -248,6 +308,7 @@ await page.screenshot({ path: `${SHOTS}/shadowing-block-trainee.png`, fullPage: 
 
 // ---- Shift swap e2e part 2/3: the target employee accepts from the UI ----
 if (swapState) {
+  if (!(await requestsToggle.isVisible().catch(() => false))) { await page.locator('[data-requests-toggle]').click(); await page.waitForTimeout(400); }
   const acceptBtn = page.locator('[data-requests-card] button[title="موافقة"], [data-requests-card] button[title="Accept"]').first();
   if (await acceptBtn.isVisible().catch(() => false)) {
     await acceptBtn.click();
@@ -257,6 +318,22 @@ if (swapState) {
     check('target sees the accept button', false, 'no awaiting_target row rendered for EMP102');
   }
 }
+
+// ---- Leader (EMP011): the dropdown works for leaders too, but the direct
+// swap tool is ADMIN-ONLY ("بدون الرجوع للاداره" applies to the admin).
+await page.getByRole('button', { name: /التفضيلات|Preferences/ }).click();
+await page.getByRole('menuitem', { name: /تسجيل الخروج|Log out/ }).click();
+await page.waitForSelector('input', { timeout: 15000 });
+await login('EMP011', 'leader123', { leader: false });
+check('leader login works', true);
+await page.waitForTimeout(700);
+check('leader sees the requests dropdown (collapsed by default)', await page.locator('[data-requests-toggle]').isVisible().catch(() => false) && !(await requestsToggle.isVisible().catch(() => false)));
+await page.locator('[data-requests-toggle]').click();
+await page.waitForTimeout(400);
+check('leader can expand the dropdown (swap panel visible)', await page.getByText('تبديل الشفت', { exact: true }).first().isVisible().catch(() => false));
+check('leader does NOT see the direct swap tool (admin-only)', !(await page.locator('[data-direct-swap-apply]').isVisible().catch(() => false)));
+check('leader sees the pending swap approve button', await page.locator('[data-requests-card] button[title="اعتماد"], [data-requests-card] button[title="Approve"]').first().isVisible().catch(() => false));
+await page.screenshot({ path: `${SHOTS}/requests-dropdown-leader.png`, fullPage: false });
 
 // ---- Excel content sanity: open the week workbook with xlsx and inspect rows ----
 const { createRequire } = await import('node:module');
@@ -287,6 +364,7 @@ check('admin re-login for import', true);
 // swapped rows go through /api/schedule-sync (permission-checked) instead of
 // /api/sync (which strips schedule rows server-side).
 if (swapState) {
+  if (!(await requestsToggle.isVisible().catch(() => false))) { await page.locator('[data-requests-toggle]').click(); await page.waitForTimeout(400); }
   const approveBtn = page.locator('[data-requests-card] button[title="اعتماد"], [data-requests-card] button[title="Approve"]').first();
   if (await approveBtn.isVisible().catch(() => false)) {
     await approveBtn.click();

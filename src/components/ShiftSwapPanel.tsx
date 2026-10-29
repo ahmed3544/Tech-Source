@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeftRight, Check, Clock3, X } from 'lucide-react';
+import { ArrowLeftRight, Check, Clock3, X, Zap } from 'lucide-react';
 import { DailyShiftAssignment, Employee, Language, Notification, Shift, ShiftSwapRequest } from '../types';
 import { authHeaders } from '../utils/errors';
 
@@ -21,6 +21,17 @@ export const ShiftSwapPanel: React.FC<Props> = ({ employees, shifts, assignments
   const [loading, setLoading] = useState(false);
   const [actionError, setActionError] = useState('');
   const isLeader = currentUser?.role === 'leader' || currentUser?.role === 'admin';
+  const isAdmin = currentUser?.role === 'admin';
+  // Admin direct swap ("عايز الادمن يبقي ليه اكسس يسواب الشفت بدون الرجوع
+  // للاداره"): the admin swaps any two employees' shifts immediately — no
+  // request, no target acceptance, no leader approval chain.
+  const [directDate, setDirectDate] = useState('');
+  const [directAId, setDirectAId] = useState('');
+  const [directBId, setDirectBId] = useState('');
+  const [directBusy, setDirectBusy] = useState(false);
+  const [directError, setDirectError] = useState('');
+  const [directDone, setDirectDone] = useState('');
+  const directPool = useMemo(() => employees.filter(e => e.status === 'active'), [employees]);
   const team = useMemo(() => {
     if (!currentUser) return [];
     if (currentUser.role === 'admin') return employees.filter(e => e.id !== currentUser.id && e.status === 'active');
@@ -206,6 +217,9 @@ export const ShiftSwapPanel: React.FC<Props> = ({ employees, shifts, assignments
       const swapData = await swapRes.json().catch(() => null);
       if (Array.isArray(swapData?.dailyShiftAssignments)) { try { localStorage.setItem('daily_shift_assignments', JSON.stringify(swapData.dailyShiftAssignments)); } catch {} }
       await syncState(nextRequests, nextNotifications);
+      // The schedule rows just changed server-side — ask the app to re-pull
+      // /api/data so the grid shows the swap immediately (no page refresh).
+      window.dispatchEvent(new CustomEvent('techsource:assignments-changed'));
     } else {
       nextNotifications = [...notifications,
         makeNotification(request.requesterId, 'shift_swap_rejected', lang === 'ar' ? 'تم رفض تبديل الشفت' : 'Shift Swap Rejected', lang === 'ar' ? `الليدر رفض تبديل الشفت مع ${name(request.targetEmployeeId)} ليوم ${request.date}.` : `The leader rejected the shift swap with ${name(request.targetEmployeeId)} for ${request.date}.`, request.id, now),
@@ -217,6 +231,51 @@ export const ShiftSwapPanel: React.FC<Props> = ({ employees, shifts, assignments
     setLoading(false);
   };
 
+  /** ADMIN DIRECT SWAP: exchanges the two selected employees' assignments for
+   *  one date through the permission-checked /api/schedule-sync endpoint and
+   *  notifies both of them. Mirrors the swap-write logic of review(). */
+  const applyDirectSwap = async () => {
+    if (!isAdmin || directBusy || !directDate || !directAId || !directBId || directAId === directBId) return;
+    const rowA = assignmentAt(directAId, directDate);
+    const rowB = assignmentAt(directBId, directDate);
+    if (!rowA || !rowB) { setDirectError(lang === 'ar' ? 'تعذر التنفيذ: أحد الموظفين ليس له تعيين في هذا اليوم.' : 'Cannot apply: one of the employees has no assignment on that day.'); return; }
+    if (isOff(directAId, directDate) && isOff(directBId, directDate)) { setDirectError(lang === 'ar' ? 'الاتنين OFF في اليوم ده — مفيش حاجة تتبدل.' : 'Both employees are OFF that day — nothing to swap.'); return; }
+    setDirectBusy(true); setDirectError(''); setDirectDone('');
+    const now = new Date().toISOString();
+    const nextA = { ...rowA, shiftId: rowB.shiftId || '', isOffDay: Boolean(rowB.isOffDay), assignedBy: currentUser?.id, updatedAt: now };
+    const nextB = { ...rowB, shiftId: rowA.shiftId || '', isOffDay: Boolean(rowA.isOffDay), assignedBy: currentUser?.id, updatedAt: now };
+    try {
+      const res = await fetch('/api/schedule-sync', {
+        method: 'POST', credentials: 'include', cache: 'no-store',
+        headers: authHeaders({ 'Content-Type': 'application/json', Accept: 'application/json' }),
+        body: JSON.stringify({ dailyShiftAssignments: [nextA, nextB], syncTimestamp: now, source: 'shift-swap' }),
+      });
+      if (!res.ok) {
+        setDirectError(lang === 'ar' ? `تعذر حفظ التبديل على الجدول (خطأ ${res.status}). تأكد من صلاحياتك وحاول مرة أخرى.` : `Could not save the swap to the schedule (error ${res.status}). Check your permissions and try again.`);
+        setDirectBusy(false);
+        return;
+      }
+      const data = await res.json().catch(() => null);
+      if (Array.isArray(data?.dailyShiftAssignments)) { try { localStorage.setItem('daily_shift_assignments', JSON.stringify(data.dailyShiftAssignments)); } catch {} }
+      const nextNotifications = [...notifications,
+        makeNotification(directAId, 'shift_changed', lang === 'ar' ? 'تم تبديل الشفت' : 'Shift Swapped', lang === 'ar' ? `الأدمن بدّل شفتك ليوم ${directDate}. شفتك الآن ${nextA.isOffDay ? 'OFF' : shiftName(nextA.shiftId)}.` : `The admin swapped your shift for ${directDate}. Your shift is now ${nextA.isOffDay ? 'OFF' : shiftName(nextA.shiftId)}.`, `direct-${Date.now()}-${directAId}`, now),
+        makeNotification(directBId, 'shift_changed', lang === 'ar' ? 'تم تبديل الشفت' : 'Shift Swapped', lang === 'ar' ? `الأدمن بدّل شفتك ليوم ${directDate}. شفتك الآن ${nextB.isOffDay ? 'OFF' : shiftName(nextB.shiftId)}.` : `The admin swapped your shift for ${directDate}. Your shift is now ${nextB.isOffDay ? 'OFF' : shiftName(nextB.shiftId)}.`, `direct-${Date.now()}-${directBId}`, now),
+      ];
+      setNotifications(nextNotifications);
+      try { localStorage.setItem('notifications', JSON.stringify(nextNotifications)); } catch {}
+      void fetch('/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ notifications: nextNotifications }) }).catch(() => {});
+      reportActivity('swap.direct', { id: `direct-${Date.now()}`, requesterId: directAId, targetEmployeeId: directBId, date: directDate, requesterShiftId: rowA.shiftId, targetShiftId: rowB.shiftId, requesterWasOff: Boolean(rowA.isOffDay), targetWasOff: Boolean(rowB.isOffDay), status: 'approved', createdAt: now } as ShiftSwapRequest, { appliedBy: currentUser?.id, mode: 'direct' });
+      // Tell the app the schedule changed so the grid re-pulls /api/data and
+      // reflects the swap immediately — no manual page refresh.
+      window.dispatchEvent(new CustomEvent('techsource:assignments-changed'));
+      setDirectDone(lang === 'ar' ? `تم تنفيذ التبديل: ${name(directAId)} ↔ ${name(directBId)} ليوم ${directDate}` : `Swap applied: ${name(directAId)} ↔ ${name(directBId)} on ${directDate}`);
+      setDirectDate(''); setDirectAId(''); setDirectBId('');
+    } catch {
+      setDirectError(lang === 'ar' ? 'تعذر الاتصال بالسيرفر. حاول مرة أخرى.' : 'Could not reach the server. Try again.');
+    }
+    setDirectBusy(false);
+  };
+
   const selectedMine = date && currentUser ? shiftAt(currentUser.id, date) : undefined;
   const selectedTarget = date && targetId ? shiftAt(targetId, date) : undefined;
   const visibleRequests = isLeader
@@ -226,6 +285,22 @@ export const ShiftSwapPanel: React.FC<Props> = ({ employees, shifts, assignments
   return <section className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-4 space-y-4">
     <div className="flex items-center gap-2"><ArrowLeftRight className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /><h4 className="text-sm font-black text-slate-900 dark:text-white dark:text-slate-100">{lang === 'ar' ? 'تبديل الشفت' : 'Shift Swap'}</h4></div>
     {actionError && <div className="rounded-xl border border-rose-300 bg-rose-50 dark:border-rose-500/40 dark:bg-rose-500/10 px-3 py-2 text-xs font-bold text-rose-700 dark:text-rose-300">{actionError}</div>}
+    {isAdmin && <div className="space-y-3 rounded-xl border-2 border-indigo-300 bg-indigo-50/70 p-3 dark:border-indigo-500/40 dark:bg-indigo-500/10">
+      <div className="flex items-center gap-2 text-xs font-black text-indigo-800 dark:text-indigo-200"><Zap className="h-4 w-4" />{lang === 'ar' ? 'تبديل مباشر للشيفتات (أدمن فقط) — بدون طلب أو موافقة الإدارة' : 'Direct shift swap (admin only) — no request or approval needed'}</div>
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <label className="text-xs font-bold text-slate-700 dark:text-slate-300">{lang === 'ar' ? 'التاريخ' : 'Date'}<input type="date" data-direct-swap-date value={directDate} onChange={e => { setDirectDate(e.target.value); setDirectDone(''); }} className="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2" /></label>
+        <label className="text-xs font-bold text-slate-700 dark:text-slate-300">{lang === 'ar' ? 'الموظف الأول' : 'First employee'}<select data-direct-swap-a value={directAId} onChange={e => { setDirectAId(e.target.value); setDirectDone(''); }} className="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2"><option value="">{lang === 'ar' ? 'اختيار الموظف' : 'Select employee'}</option>{directPool.map(e => <option key={e.id} value={e.id}>{e.code} - {lang === 'ar' ? e.nameAr : e.nameEn}</option>)}</select></label>
+        <label className="text-xs font-bold text-slate-700 dark:text-slate-300">{lang === 'ar' ? 'الموظف الثاني' : 'Second employee'}<select data-direct-swap-b value={directBId} onChange={e => { setDirectBId(e.target.value); setDirectDone(''); }} className="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2"><option value="">{lang === 'ar' ? 'اختيار الموظف' : 'Select employee'}</option>{directPool.filter(e => e.id !== directAId).map(e => <option key={e.id} value={e.id}>{e.code} - {lang === 'ar' ? e.nameAr : e.nameEn}</option>)}</select></label>
+        <div className="flex items-end"><button type="button" data-direct-swap-apply onClick={applyDirectSwap} disabled={directBusy || !directDate || !directAId || !directBId || directAId === directBId} className="w-full rounded-xl bg-indigo-600 text-white px-4 py-2.5 text-xs font-black disabled:opacity-50">{directBusy ? (lang === 'ar' ? 'جاري التنفيذ...' : 'Applying...') : (lang === 'ar' ? 'تنفيذ التبديل الآن' : 'Apply swap now')}</button></div>
+      </div>
+      {directDate && directAId && directBId && directAId !== directBId && <div className="rounded-xl border border-indigo-200 dark:border-indigo-500/30 bg-white dark:bg-slate-900 p-3 text-xs">
+        <div className="font-black text-slate-800 dark:text-slate-200 mb-2">{lang === 'ar' ? `الوضع الحالي ليوم ${directDate}` : `Current state on ${directDate}`}</div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2"><div className="rounded-lg bg-slate-50 dark:bg-slate-800/50 px-3 py-2"><span className="font-bold">{name(directAId)}:</span> {assignmentLabel(directAId, directDate)}</div><div className="rounded-lg bg-slate-50 dark:bg-slate-800/50 px-3 py-2"><span className="font-bold">{name(directBId)}:</span> {assignmentLabel(directBId, directDate)}</div></div>
+        <div className="mt-2 text-slate-600 dark:text-slate-300">{lang === 'ar' ? 'بعد التنفيذ يأخذ كل موظف شفت الآخر في نفس اليوم (شفت ↔ OFF مسموح).' : 'After applying, each employee takes the other\u2019s shift that day (shift ↔ OFF allowed).'}</div>
+      </div>}
+      {directError && <div className="rounded-xl border border-rose-300 bg-rose-50 dark:border-rose-500/40 dark:bg-rose-500/10 px-3 py-2 text-xs font-bold text-rose-700 dark:text-rose-300">{directError}</div>}
+      {directDone && <div className="rounded-xl border border-emerald-300 bg-emerald-50 dark:border-emerald-500/40 dark:bg-emerald-500/10 px-3 py-2 text-xs font-bold text-emerald-700 dark:text-emerald-300">{directDone}</div>}
+    </div>}
     {!isLeader && currentUser && <div className="space-y-3">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <label className="text-xs font-bold text-slate-700 dark:text-slate-300">{lang === 'ar' ? 'تاريخ التبديل' : 'Swap Date'}<input type="date" value={date} onChange={e => setDate(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2" /></label>
