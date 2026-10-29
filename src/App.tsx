@@ -164,39 +164,48 @@ export default function App() {
     return result;
   };
 
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
+  const loadSchedulingData = React.useCallback(async () => {
+    try {
+      const response = await fetch('/api/data?_=' + Date.now(), { cache: 'no-store', headers: { Accept: 'application/json', 'Cache-Control': 'no-cache' } });
+      if (!response.ok) return;
+      const data = await response.json();
+      const serverEmployees = Array.isArray(data.employees) ? data.employees.map(normalizeEmployee) : [];
+      const admin = serverEmployees.find((e: Employee) => e.id === ADMIN_ID || e.email.toLowerCase() === ADMIN_EMAIL);
+      const safeEmployees = serverEmployees.filter((e: Employee) => e.id === ADMIN_ID || e.email.toLowerCase() === ADMIN_EMAIL || e.status === 'active');
+      if (admin) {
+        const fixedAdmin = { ...admin, id: ADMIN_ID, role: 'admin' as const, email: ADMIN_EMAIL, nameAr: 'Ahmed Mahmoud Ahmed Mahmoud', nameEn: 'Ahmed Mahmoud Ahmed Mahmoud', code: admin.code || 'EMP002', status: 'active' as const };
+        setEmployees([fixedAdmin, ...safeEmployees.filter((e: Employee) => e.id !== admin.id && e.email.toLowerCase() !== ADMIN_EMAIL)]);
+      } else {
+        setEmployees(INITIAL_EMPLOYEES.map(normalizeEmployee));
+      }
+      setShifts(Array.isArray(data.shifts) ? data.shifts.map(normalizeShift) : []);
+      const schedule = Array.isArray(data.dailyShiftAssignments) ? data.dailyShiftAssignments : [];
+      setAssignments(schedule);
+      setLeaveRequests(Array.isArray(data.leaveRequests) ? data.leaveRequests : []);
+      setHolidays(Array.isArray(data.officialHolidays) ? data.officialHolidays : []);
       try {
-        const response = await fetch('/api/data?_=' + Date.now(), { cache: 'no-store', headers: { Accept: 'application/json', 'Cache-Control': 'no-cache' } });
-        if (!response.ok) return;
-        const data = await response.json();
-        if (cancelled) return;
-        const serverEmployees = Array.isArray(data.employees) ? data.employees.map(normalizeEmployee) : [];
-        const admin = serverEmployees.find((e: Employee) => e.id === ADMIN_ID || e.email.toLowerCase() === ADMIN_EMAIL);
-        const safeEmployees = serverEmployees.filter((e: Employee) => e.id === ADMIN_ID || e.email.toLowerCase() === ADMIN_EMAIL || e.status === 'active');
-        if (admin) {
-          const fixedAdmin = { ...admin, id: ADMIN_ID, role: 'admin' as const, email: ADMIN_EMAIL, nameAr: 'Ahmed Mahmoud Ahmed Mahmoud', nameEn: 'Ahmed Mahmoud Ahmed Mahmoud', code: admin.code || 'EMP002', status: 'active' as const };
-          setEmployees([fixedAdmin, ...safeEmployees.filter((e: Employee) => e.id !== admin.id && e.email.toLowerCase() !== ADMIN_EMAIL)]);
-        } else {
-          setEmployees(INITIAL_EMPLOYEES.map(normalizeEmployee));
-        }
-        setShifts(Array.isArray(data.shifts) ? data.shifts.map(normalizeShift) : []);
-        const schedule = Array.isArray(data.dailyShiftAssignments) ? data.dailyShiftAssignments : [];
-        setAssignments(schedule);
-        setLeaveRequests(Array.isArray(data.leaveRequests) ? data.leaveRequests : []);
-        setHolidays(Array.isArray(data.officialHolidays) ? data.officialHolidays : []);
-        try {
-          localStorage.setItem('attendance_employees', JSON.stringify(admin ? [admin, ...safeEmployees.filter((e: Employee) => e.id !== admin.id)] : INITIAL_EMPLOYEES));
-          localStorage.setItem('attendance_shifts', JSON.stringify(data.shifts || []));
-          localStorage.setItem('daily_shift_assignments', JSON.stringify(schedule));
-          for (const key of ['attendance_records','attendance_leaves','attendance_notifications','notifications','urgent_notice','attendance_current_user']) localStorage.removeItem(key);
-        } catch {}
-      } catch (e) { console.error('Scheduling data load failed', e); }
-    };
-    void load();
-    return () => { cancelled = true; };
+        localStorage.setItem('attendance_employees', JSON.stringify(admin ? [admin, ...safeEmployees.filter((e: Employee) => e.id !== admin.id)] : INITIAL_EMPLOYEES));
+        localStorage.setItem('attendance_shifts', JSON.stringify(data.shifts || []));
+        localStorage.setItem('daily_shift_assignments', JSON.stringify(schedule));
+        for (const key of ['attendance_records','attendance_leaves','attendance_notifications','notifications','urgent_notice','attendance_current_user']) localStorage.removeItem(key);
+      } catch {}
+    } catch (e) { console.error('Scheduling data load failed', e); }
   }, []);
+
+  useEffect(() => {
+    void loadSchedulingData();
+  }, [loadSchedulingData]);
+
+  // Shift swaps (leader approval or the admin direct-swap tool) rewrite the
+  // schedule rows through /api/schedule-sync and then fire
+  // 'techsource:assignments-changed'. Re-pulling /api/data here makes the
+  // schedule grid reflect the swap IMMEDIATELY — the "بعد الاسواب مايتعمل
+  // الشفت مش بيتبدل" fix must also be visible without a manual page refresh.
+  useEffect(() => {
+    const onAssignmentsChanged = () => { void loadSchedulingData(); };
+    window.addEventListener('techsource:assignments-changed', onAssignmentsChanged);
+    return () => window.removeEventListener('techsource:assignments-changed', onAssignmentsChanged);
+  }, [loadSchedulingData]);
 
   // Background Google Sheets dashboard sync: when auto-sync is enabled, the
   // first manager opening the app asks the server to push fresh data. The

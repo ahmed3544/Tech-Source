@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeftRight, ChevronLeft, ChevronRight, Coffee, FileSpreadsheet, Loader2, Save, Upload, Users, Pencil, Trash2, Plus } from 'lucide-react';
+import { ArrowLeftRight, ChevronDown, ChevronLeft, ChevronRight, ClipboardList, Coffee, FileSpreadsheet, Loader2, Save, Upload, Users, Pencil, Trash2, Plus } from 'lucide-react';
 import { Employee, Language, ShadowingInfo, Shift, DailyShiftAssignment } from '../types';
 import { ShiftManager } from './ShiftManager';
 import { ShiftSwapPanel } from './ShiftSwapPanel';
@@ -529,7 +529,10 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
 
   const [applyingBreakPreset, setApplyingBreakPreset] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [requestsOpen, setRequestsOpen] = useState(true);
+  // "عايزه يبقا dropdown": the requests card starts COLLAPSED for everyone
+  // (agents, leaders, admins) and expands via the header toggle. Notification
+  // navigation force-opens it.
+  const [requestsOpen, setRequestsOpen] = useState(false);
   const [requestTab, setRequestTab] = useState<'swap' | 'break'>('swap');
 
   // Apply the approved agent-specific break plan for 25–31 Oct 2026 in one action.
@@ -1035,22 +1038,25 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
         </div>
       )}
 
-      {/* Schedule requests — visible to EVERYONE (restore of the pre-f3246e7
-          behavior after "الاسواب شفت اتشالت"). The leader/admin-only rule from
-          "مش عايز الخانات دي تظهر غير لليدر و الادمن بس" applies to the Excel
-          import/export boxes (admin settings panel below) — NOT to swap/break
-          requests: employees submit them here, leaders review them here. */}
+      {/* Schedule requests — visible to EVERYONE and rendered as a DROPDOWN
+          ("عايزه يبقا dropdown عند الايجنت والادمن والليدر"): collapsed by
+          default, one click on the header expands the swap/break tabs and the
+          panels. Employees submit here, leaders/admins review here. */}
       <div ref={requestsCardRef} data-requests-card className={`rounded-xl border-2 border-blue-300 bg-slate-50 p-2 shadow-sm transition-shadow dark:border-blue-500/40 dark:bg-slate-900/60 ${cardFlash ? 'ring-4 ring-blue-400' : ''}`}>
-        <div className="flex flex-wrap items-center justify-between gap-2 px-1 py-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="flex items-center gap-2 text-xs font-black text-slate-700 dark:text-slate-200">{lang === 'ar' ? 'طلبات الجدول' : 'Schedule requests'}</span>
-            <button type="button" onClick={() => { setRequestTab('swap'); setRequestsOpen(true); }} aria-expanded={requestsOpen} aria-pressed={requestsOpen && requestTab === 'swap'} className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-black transition ${requestsOpen && requestTab === 'swap' ? 'bg-emerald-600 text-white shadow' : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800'}`}><ArrowLeftRight className="h-3.5 w-3.5" />{lang === 'ar' ? 'تبديل الشيفت' : 'Shift swap'}</button>
-            <button type="button" onClick={() => { setRequestTab('break'); setRequestsOpen(true); }} aria-expanded={requestsOpen} aria-pressed={requestsOpen && requestTab === 'break'} className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-black transition ${requestsOpen && requestTab === 'break' ? 'bg-red-500 text-white shadow' : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800'}`}><Coffee className="h-3.5 w-3.5" />{lang === 'ar' ? 'تغيير البريك' : 'Break change'}</button>
-          </div>
-          <button type="button" onClick={() => setRequestsOpen((v) => !v)} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800">{requestsOpen ? (lang === 'ar' ? 'إخفاء' : 'Hide') : (lang === 'ar' ? 'إظهار' : 'Show')}</button>
-        </div>
+        <button type="button" data-requests-toggle onClick={() => setRequestsOpen((v) => !v)} aria-expanded={requestsOpen} className="flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-start transition hover:bg-blue-50 dark:hover:bg-blue-500/10">
+          <span className="flex items-center gap-2 text-xs font-black text-slate-700 dark:text-slate-200">
+            <ClipboardList className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+            {lang === 'ar' ? 'طلبات الجدول' : 'Schedule requests'}
+            <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-black ${requestsOpen ? 'bg-blue-600 text-white' : 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300'}`}>{requestsOpen ? (lang === 'ar' ? 'مفتوح' : 'Open') : (lang === 'ar' ? 'مغلق' : 'Closed')}</span>
+          </span>
+          <ChevronDown className={`h-4 w-4 shrink-0 text-slate-500 transition-transform dark:text-slate-400 ${requestsOpen ? 'rotate-180' : ''}`} />
+        </button>
         {requestsOpen && (
-          <div className="mt-2 space-y-3">
+          <div className="mt-1 space-y-3 border-t border-blue-200 pt-2 dark:border-blue-500/30">
+            <div className="flex flex-wrap items-center gap-2">
+              <button type="button" onClick={() => { setRequestTab('swap'); setRequestsOpen(true); }} aria-pressed={requestTab === 'swap'} className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-black transition ${requestTab === 'swap' ? 'bg-emerald-600 text-white shadow' : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800'}`}><ArrowLeftRight className="h-3.5 w-3.5" />{lang === 'ar' ? 'تبديل الشيفت' : 'Shift swap'}</button>
+              <button type="button" onClick={() => { setRequestTab('break'); setRequestsOpen(true); }} aria-pressed={requestTab === 'break'} className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-black transition ${requestTab === 'break' ? 'bg-red-500 text-white shadow' : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800'}`}><Coffee className="h-3.5 w-3.5" />{lang === 'ar' ? 'تغيير البريك' : 'Break change'}</button>
+            </div>
             {requestTab === 'break' && <BreakRequestPanel employees={employees} currentUser={currentUser} lang={lang} breaksByDate={breaksByDate} onAuthFailure={onAuthFailure} onBreaksApproved={refreshBreaksFor} />}
             {requestTab === 'swap' && <ShiftSwapPanel employees={employees} shifts={shifts} assignments={assignments} currentUser={currentUser} lang={lang} />}
           </div>
