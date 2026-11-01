@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeftRight, ChevronDown, ChevronLeft, ChevronRight, ClipboardList, Coffee, FileSpreadsheet, Loader2, Save, Upload, Users, Pencil, Trash2, Plus } from 'lucide-react';
 import { Employee, Language, ShadowingInfo, Shift, DailyShiftAssignment } from '../types';
 import { ShiftManager } from './ShiftManager';
-import { TechSourceLogo } from './TechSourceLogo';
 import { ShiftSwapPanel } from './ShiftSwapPanel';
 import { BreakRequestPanel } from './BreakRequestPanel';
 import { authHeaders, errorToMessage, extractApiError, parseResponse } from '../utils/errors';
@@ -918,12 +917,10 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
       };
       workRanges.forEach((range, idx) => {
         blocksFor(clock(range.start), clock(range.end)).forEach((seg, segmentIndex) => {
-          const segmentDuration = range.end - range.start;
-          blocks.push(
+              blocks.push(
             <div key={`shift-${idx}-${segmentIndex}`} className={`absolute inset-x-0.5 z-[1] flex flex-col items-center justify-start gap-0.5 overflow-hidden rounded-md px-1 pt-1 text-center shadow-sm ${TEO.shift}`} style={{ top: `${seg.top}%`, height: `${seg.height}%` }} title={`${name} ${clock(range.start)} - ${clock(range.end)}`}>
-              <span className="truncate text-[11px] font-black leading-tight">{name}</span>
-              {seg.height > 12 && <span className="truncate text-[9px] font-bold leading-tight opacity-90">{formatDuration(segmentDuration, lang)}</span>}
-              <span dir="ltr" className="max-w-full truncate rounded bg-emerald-800/90 px-1 py-0.5 font-mono text-[9px] font-black leading-tight text-white">{mobile ? `${fmt12(range.start, lang)} - ${fmt12(range.end, lang)}` : `${fmt24(range.start, lang)} – ${fmt24(range.end, lang)}`}</span>
+              {idx === 0 && <span className="truncate text-[11px] font-black leading-tight">{name}</span>}
+              {idx === 0 && seg.height > 8 && <span dir="ltr" className="max-w-full truncate rounded bg-emerald-800/90 px-1 py-0.5 font-mono text-[9px] font-black leading-tight text-white">{mobile ? `${fmt12(shiftStart, lang)} - ${fmt12(shiftEnd, lang)}` : `${fmt24(shiftStart, lang)} – ${fmt24(shiftEnd, lang)}`}</span>}
             </div>
           );
         });
@@ -988,11 +985,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
   };
   return (
     <section className="min-h-[calc(100dvh-72px)] w-full space-y-3 rounded-none border-0 bg-white p-2 shadow-none dark:bg-slate-950 sm:p-3" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
-      {/* Compact brand mark sits in the schedule title position, away from notification controls. */}
       <header className="flex flex-col gap-3 border-b-2 border-slate-800/10 pb-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex min-w-0 items-center gap-3">
-          <TechSourceLogo size="sm" withBg />
-        </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex min-w-0 items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 dark:border-blue-500/40 dark:bg-blue-950/40">
             <Users className="h-5 w-5 shrink-0 text-blue-600 dark:text-blue-400" />
