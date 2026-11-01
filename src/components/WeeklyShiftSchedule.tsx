@@ -187,7 +187,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
   const [shadowEditor, setShadowEditor] = useState<{ dateKey: string; dayName: string } | null>(null);
   const [shadowForm, setShadowForm] = useState<{ enabled: boolean; traineeId: string; startTime: string; endTime: string }>({ enabled: false, traineeId: '', startTime: '13:00', endTime: '17:00' });
   const [shadowError, setShadowError] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'week' | 'month' | 'day'>('week');
+  const [viewMode, setViewMode] = useState<'week' | 'month' | 'day'>(() => ['leader', 'admin', 'company_admin', 'platform_admin'].includes(String(suppliedUser?.role || '').toLowerCase()) ? 'week' : 'day');
   const [dayDate, setDayDate] = useState(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; });
   const [importing, setImporting] = useState(false);
   const importInputRef = useRef<HTMLInputElement | null>(null);
@@ -210,7 +210,8 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
     setAssignments(suppliedAssignments || []);
     if (suppliedUser) {
       setCurrentUser(suppliedUser);
-      if (!isLeader) setSelectedEmployeeId(suppliedUser.id);
+      if (!isLeader) { setSelectedEmployeeId(suppliedUser.id); setViewMode('day'); }
+      else setViewMode('week');
     }
   }, [suppliedEmployees, suppliedShifts, suppliedAssignments, suppliedUser, isLeader]);
 
