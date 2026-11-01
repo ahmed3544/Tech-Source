@@ -14,36 +14,33 @@ export const TechSourceLogo: React.FC<TechSourceLogoProps> = ({
 }) => {
   const imgHeightClass = {
     sm: 'h-7 sm:h-8',
-    md: 'h-9 sm:h-10',
-    lg: 'h-12 sm:h-14',
+    md: 'h-8 sm:h-9',
+    lg: 'h-10 sm:h-12',
   }[size];
 
   const containerPadding = {
-    sm: 'px-2 py-1 rounded-xl',
-    md: 'px-3 py-1.5 rounded-2xl',
-    lg: 'px-4 py-2.5 rounded-3xl',
+    sm: 'px-2 py-0.5 rounded-lg',
+    md: 'px-2 py-1 rounded-xl',
+    lg: 'px-3 py-1.5 rounded-2xl',
   }[size];
 
   return (
-    <div className={`tech-source-logo inline-flex items-center select-none ${className}`}>
+    <div className={`tech-source-logo inline-flex items-center select-none shrink-0 ${className}`}>
       {withBg ? (
-        <div className={`bg-white dark:bg-slate-900 shadow-sm border border-slate-100/90 flex items-center justify-center ${containerPadding} transition-all duration-200 hover:shadow-md`}>
+        <div className={`bg-white shadow-sm border border-slate-200/80 flex items-center justify-center ${containerPadding}`}>
           <img
-            src="logo.png"
+            src="/logo.png"
             alt="Tech Source GDS - Global Development"
-            referrerPolicy="no-referrer"
             className={`${imgHeightClass} w-auto max-w-full object-contain`}
           />
         </div>
       ) : (
         <img
-          src="logo.png"
+          src="/logo.png"
           alt="Tech Source GDS - Global Development"
-          referrerPolicy="no-referrer"
           className={`${imgHeightClass} w-auto max-w-full object-contain`}
         />
       )}
     </div>
   );
 };
-
