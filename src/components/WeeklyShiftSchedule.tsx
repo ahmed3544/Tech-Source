@@ -1218,6 +1218,22 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
                       );
                     })()}
                   </div>
+                  {isAdmin && (
+                    <div className="mb-3 rounded-xl border border-blue-200 bg-blue-50 p-3 dark:border-blue-500/30 dark:bg-blue-500/10" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
+                      <label className="mb-1.5 block text-[11px] font-black text-blue-900 dark:text-blue-200">{lang === 'ar' ? 'تعديل شيفت اليوم' : "Edit today's shift"}</label>
+                      <select value={valueFor(day.key)} onChange={e => updateDay(day.key, e.target.value)} className="h-11 w-full rounded-lg border border-blue-200 bg-white px-3 text-sm font-black text-slate-800 outline-none focus:border-blue-500 dark:border-blue-500/40 dark:bg-slate-900 dark:text-slate-100">
+                        <option value={EMPTY}>{lang === 'ar' ? 'غير مُعيّن' : 'Unassigned'}</option>
+                        <option value={OFF}>{lang === 'ar' ? 'راحة أسبوعية (OFF)' : 'OFF'}</option>
+                        <option value={ANNUAL}>{lang === 'ar' ? 'إجازة سنوية' : 'Annual Leave'}</option>
+                        <option value={HOLIDAY}>{lang === 'ar' ? 'عطلة رسمية' : 'Holiday'}</option>
+                        {shifts.map(s => <option key={s.id} value={s.id}>{lang === 'ar' ? s.nameAr || s.name : s.nameEn || s.name} — {s.startTime ? fmt24(timeToMinutes(s.startTime), lang) : '--'}–{s.endTime ? fmt24(timeToMinutes(s.endTime), lang) : '--'}</option>)}
+                      </select>
+                      <div className="mt-2 grid grid-cols-2 gap-2">
+                        <button type="button" onClick={() => openBreakEditor(day)} disabled={resolveFor(day.key).status !== 'working'} className="inline-flex h-10 items-center justify-center gap-1.5 rounded-lg bg-red-100 px-3 text-xs font-black text-red-700 disabled:opacity-40 dark:bg-red-500/15 dark:text-red-300"><Coffee className="h-4 w-4" />{lang === 'ar' ? 'البريكات' : 'Breaks'}</button>
+                        <button type="button" onClick={saveWeek} disabled={!isDayDirty(day.key) || saving} className="inline-flex h-10 items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-xs font-black text-white disabled:opacity-40"><Save className="h-4 w-4" />{saving ? (lang === 'ar' ? 'جاري الحفظ' : 'Saving') : (lang === 'ar' ? 'حفظ الشيفت' : 'Save shift')}</button>
+                      </div>
+                    </div>
+                  )}
                   <div className="relative flex" dir="ltr">
                     <div className="relative w-12 shrink-0" style={{ height: gridHeightMobile }}>
                       {axisHours.map(minutes => (
@@ -1239,7 +1255,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
       )}
 
       {isAdmin && employee && (
-        <div id="employee-shift-assignment" className="rounded-xl border-2 border-blue-200 bg-white shadow-sm dark:border-blue-500/30 dark:bg-slate-950">
+        <div id="employee-shift-assignment" className="hidden rounded-xl border-2 border-blue-200 bg-white shadow-sm dark:border-blue-500/30 dark:bg-slate-950 lg:block">
           <button type="button" onClick={() => setEditPanelOpen(v => !v)} className="flex w-full items-center justify-between px-4 py-2.5 text-xs font-black text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800/60">
             <span className="flex items-center gap-2"><Pencil className="h-4 w-4" />{lang === 'ar' ? 'تعيين الشيفت لكل موظف ولكل يوم' : 'Assign shifts per employee and day'}</span>
             <ChevronLeft className={`h-4 w-4 transition-transform ${editPanelOpen ? '-rotate-90' : 'rotate-0 rtl:rotate-180'}`} />
