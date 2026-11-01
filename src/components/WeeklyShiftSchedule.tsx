@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeftRight, ChevronDown, ChevronLeft, ChevronRight, ClipboardList, Coffee, FileSpreadsheet, Loader2, Save, Upload, Users, Pencil, Trash2, Plus } from 'lucide-react';
 import { Employee, Language, ShadowingInfo, Shift, DailyShiftAssignment } from '../types';
 import { ShiftManager } from './ShiftManager';
+import { TechSourceLogo } from './TechSourceLogo';
 import { ShiftSwapPanel } from './ShiftSwapPanel';
 import { BreakRequestPanel } from './BreakRequestPanel';
 import { authHeaders, errorToMessage, extractApiError, parseResponse } from '../utils/errors';
@@ -987,10 +988,10 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
   };
   return (
     <section className="min-h-[calc(100dvh-72px)] w-full space-y-3 rounded-none border-0 bg-white p-2 shadow-none dark:bg-slate-950 sm:p-3" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
-      {/* Teleopti-style brand row: title + acting employee chip. */}
+      {/* Compact brand mark sits in the schedule title position, away from notification controls. */}
       <header className="flex flex-col gap-3 border-b-2 border-slate-800/10 pb-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex items-center gap-3">
-          <div className="rounded-lg bg-slate-900 px-3 py-2 text-white dark:bg-slate-700"><div className="text-sm font-black tracking-wide">TECH SOURCE</div><div className="text-[9px] font-bold opacity-80">{lang === 'ar' ? 'جدول الموظفين' : 'WEEKLY SCHEDULE'}</div></div>
+        <div className="flex min-w-0 items-center gap-3">
+          <TechSourceLogo size="sm" withBg />
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex min-w-0 items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 dark:border-blue-500/40 dark:bg-blue-950/40">
