@@ -187,7 +187,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
   const [shadowEditor, setShadowEditor] = useState<{ dateKey: string; dayName: string } | null>(null);
   const [shadowForm, setShadowForm] = useState<{ enabled: boolean; traineeId: string; startTime: string; endTime: string }>({ enabled: false, traineeId: '', startTime: '13:00', endTime: '17:00' });
   const [shadowError, setShadowError] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'week' | 'month' | 'day'>('week');
+  const [viewMode, setViewMode] = useState<'week' | 'month' | 'day'>(() => ['leader', 'admin', 'company_admin', 'platform_admin'].includes(String(suppliedUser?.role || '').toLowerCase()) ? 'week' : 'day');
   const [dayDate, setDayDate] = useState(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; });
   const [importing, setImporting] = useState(false);
   const importInputRef = useRef<HTMLInputElement | null>(null);
@@ -210,7 +210,8 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
     setAssignments(suppliedAssignments || []);
     if (suppliedUser) {
       setCurrentUser(suppliedUser);
-      if (!isLeader) setSelectedEmployeeId(suppliedUser.id);
+      if (!isLeader) { setSelectedEmployeeId(suppliedUser.id); setViewMode('day'); }
+      else setViewMode('week');
     }
   }, [suppliedEmployees, suppliedShifts, suppliedAssignments, suppliedUser, isLeader]);
 
@@ -891,20 +892,40 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
       const shift = r.shift;
       const name = lang === 'ar' ? (shift.nameAr || shift.name) : (shift.nameEn || shift.name);
       const duration = Math.max(1, isOvernightShift(shift.startTime, shift.endTime) ? (1440 - timeToMinutes(shift.startTime)) + timeToMinutes(shift.endTime) : timeToMinutes(shift.endTime) - timeToMinutes(shift.startTime));
-      blocksFor(shift.startTime, shift.endTime).forEach((seg, idx) => {
-        blocks.push(
-          <>
-            <div key={`shift-${idx}`} className={`absolute inset-x-0.5 z-[1] flex flex-col items-center justify-start gap-0.5 overflow-hidden rounded-md px-1 pt-1 text-center shadow-sm ${TEO.shift}`} style={{ top: `${seg.top}%`, height: `${seg.height}%` }} title={`${name} ${shift.startTime} - ${shift.endTime}`}>
+      // Split the green work bar around each employee-specific break.
+      // This creates the Teleopti sequence: green work → red break → green work.
+      const shiftStart = timeToMinutes(shift.startTime);
+      const shiftEndRaw = timeToMinutes(shift.endTime);
+      const shiftEnd = shiftEndRaw <= shiftStart ? shiftEndRaw + 1440 : shiftEndRaw;
+      const breakRanges = r.effectiveBreaks.map(item => {
+        let start = timeToMinutes(item.startTime);
+        let end = timeToMinutes(item.endTime);
+        while (start < shiftStart) start += 1440;
+        while (end <= start) end += 1440;
+        return { start: Math.max(shiftStart, start), end: Math.min(shiftEnd, end) };
+      }).filter(item => item.end > item.start).sort((a, b) => a.start - b.start);
+      const workRanges: Array<{ start: number; end: number }> = [];
+      let cursor = shiftStart;
+      for (const pause of breakRanges) {
+        if (pause.start > cursor) workRanges.push({ start: cursor, end: pause.start });
+        cursor = Math.max(cursor, pause.end);
+      }
+      if (cursor < shiftEnd) workRanges.push({ start: cursor, end: shiftEnd });
+      const clock = (minutes: number) => {
+        const value = ((minutes % 1440) + 1440) % 1440;
+        return `${pad(Math.floor(value / 60))}:${pad(value % 60)}`;
+      };
+      workRanges.forEach((range, idx) => {
+        blocksFor(clock(range.start), clock(range.end)).forEach((seg, segmentIndex) => {
+          const segmentDuration = range.end - range.start;
+          blocks.push(
+            <div key={`shift-${idx}-${segmentIndex}`} className={`absolute inset-x-0.5 z-[1] flex flex-col items-center justify-start gap-0.5 overflow-hidden rounded-md px-1 pt-1 text-center shadow-sm ${TEO.shift}`} style={{ top: `${seg.top}%`, height: `${seg.height}%` }} title={`${name} ${clock(range.start)} - ${clock(range.end)}`}>
               <span className="truncate text-[11px] font-black leading-tight">{name}</span>
-              {seg.height > 12 && <span className="truncate text-[9px] font-bold leading-tight opacity-90">{formatDuration(duration, lang)}</span>}
+              {seg.height > 12 && <span className="truncate text-[9px] font-bold leading-tight opacity-90">{formatDuration(segmentDuration, lang)}</span>}
+              <span dir="ltr" className="max-w-full truncate rounded bg-emerald-800/90 px-1 py-0.5 font-mono text-[9px] font-black leading-tight text-white">{mobile ? `${fmt12(range.start, lang)} - ${fmt12(range.end, lang)}` : `${fmt24(range.start, lang)} – ${fmt24(range.end, lang)}`}</span>
             </div>
-            <div key={`shift-time-${idx}`} className="pointer-events-none absolute inset-x-1 z-20 flex justify-center" style={{ top: `calc(${seg.top}% + 1.35rem)` }}>
-              <span className="max-w-full truncate rounded bg-emerald-800 px-1.5 py-0.5 font-mono text-[10px] font-black leading-tight text-white shadow ring-1 ring-white/70" dir="ltr">
-                {mobile ? `${fmt12(timeToMinutes(shift.startTime), lang)} - ${fmt12(timeToMinutes(shift.endTime), lang)}` : `${fmt24(timeToMinutes(shift.startTime), lang)} – ${fmt24(timeToMinutes(shift.endTime), lang)}`}
-              </span>
-            </div>
-          </>
-        );
+          );
+        });
       });
       // Break bars show the break's time range, not the employee name.
       r.effectiveBreaks.forEach(item => {
