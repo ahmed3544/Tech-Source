@@ -448,7 +448,7 @@ export default function App() {
           </div>
         </div>
       </div>
-    </header>der>
+    </header>
     <div className={`mx-auto grid w-full max-w-none gap-2 p-1 sm:p-2 ${showEmployeeSettings ? "grid-cols-1 lg:grid-cols-[minmax(0,1fr)_340px]" : "grid-cols-1"}`}>
       <section className="min-w-0"><WeeklyShiftSchedule employees={visibleEmployees} shifts={shifts} dailyShiftAssignments={assignments} leaveRequests={leaveRequests} holidays={holidays} currentUser={currentUser} lang={lang} onAddShift={handleAddShift} onUpdateShift={handleUpdateShift} onDeleteShift={handleDeleteShift} onAuthFailure={forceReLogin} settingsOpen={showEmployeeSettings} /></section>
       {isLeader && showEmployeeSettings && <aside role="dialog" aria-label={lang === "ar" ? "إعدادات الموظفين" : "Employee settings"} className="relative z-10 h-fit max-h-[calc(100dvh-88px)] w-full overflow-y-auto rounded-2xl lg:sticky lg:top-[76px] lg:w-[340px] border border-slate-200 bg-white p-4 shadow-2xl dark:border-slate-800 dark:bg-slate-900">
