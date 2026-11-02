@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { CalendarDays, Users, Plus, LogOut, Languages, Moon, Sun, Pencil, Trash2, Save, X, Settings2, ChevronDown, ScrollText, FileSpreadsheet, FileDown } from 'lucide-react';
+import { CalendarDays, Users, Plus, LogOut, Languages, Moon, Sun, Pencil, Trash2, Save, X, Settings2, ChevronDown, ScrollText, FileSpreadsheet, FileDown, Menu } from 'lucide-react';
 import { LoginModal } from './components/LoginModal';
 import { WeeklyShiftSchedule } from './components/WeeklyShiftSchedule';
 import { NotificationCenter } from './components/NotificationCenter';
@@ -11,6 +11,7 @@ import { INITIAL_EMPLOYEES, INITIAL_SHIFTS } from './mockData';
 import { authHeaders, errorToMessage, extractApiError, parseResponse } from './utils/errors';
 import { getTheme, subscribeTheme, toggleTheme, type Theme } from './utils/theme';
 import { HolidayRange, LeaveRange } from './utils/scheduleStatus';
+import { TechSourceLogo } from './components/TechSourceLogo';
 
 const ADMIN_ID = 'emp-002';
 const ADMIN_EMAIL = 'ahmed.mahmoud@techsource-gds.com';
@@ -410,14 +411,44 @@ export default function App() {
   }
 
   return <main className="min-h-screen bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-100" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
-    <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 backdrop-blur dark:border-slate-800 dark:bg-slate-900/95">
-      <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-2 px-3 py-1.5 sm:px-5">
-        <div className="flex min-w-0 items-center">
-          <h1 className="truncate text-xs font-extrabold sm:text-sm">{lang === 'ar' ? 'نظام جداول الورديات' : 'Shift Scheduling'}</h1>
+    <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur dark:border-slate-800 dark:bg-slate-900/95">
+      <div className="mx-auto flex w-full max-w-[1600px] items-center justify-between gap-2 px-2 py-2 sm:px-5">
+        <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
+          <TechSourceLogo size="sm" withBg />
+          <div className="min-w-0">
+            <h1 className="truncate text-xs font-extrabold sm:text-sm">{lang === 'ar' ? 'TECH SOURCE' : 'TECH SOURCE'}</h1>
+            <p className="truncate text-[10px] text-slate-500 dark:text-slate-400">{lang === 'ar' ? currentUser.nameAr : currentUser.nameEn}</p>
+          </div>
         </div>
-        <div className="flex shrink-0 items-center gap-1.5 sm:gap-2"><span className="hidden text-xs font-bold lg:inline">{lang === 'ar' ? currentUser.nameAr : currentUser.nameEn}</span>{/* In-app notification center (self-polling) — break-change approvals, swap updates, leaves. */}<div className="rounded-lg bg-slate-900 dark:bg-slate-800"><NotificationCenter currentUserId={currentUser.id} lang={lang} /></div>{isLeader && <button onClick={() => { setShowEmployeeSettings(v => !v); setShowPreferencesMenu(false); }} aria-expanded={showEmployeeSettings} className="rounded-lg border px-3 py-2 text-sm dark:border-slate-700 dark:text-slate-100"><Settings2 className="mr-1 inline h-4 w-4" />{lang === 'ar' ? 'الإعدادات' : 'Settings'}</button>}<div className="relative"><button type="button" aria-haspopup="menu" aria-expanded={showPreferencesMenu} onClick={() => setShowPreferencesMenu(v => !v)} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-bold dark:border-slate-700 dark:text-slate-100"><Settings2 className="h-4 w-4" /><span>{lang === 'ar' ? 'التفضيلات' : 'Preferences'}</span><ChevronDown className={`h-4 w-4 transition-transform ${showPreferencesMenu ? 'rotate-180' : ''}`} /></button>{showPreferencesMenu && <><button aria-label={lang === 'ar' ? 'إغلاق القائمة' : 'Close menu'} className="fixed inset-0 z-30 cursor-default" onClick={() => setShowPreferencesMenu(false)} /><div role="menu" className="absolute end-0 top-full z-40 mt-2 w-56 rounded-xl border border-slate-200 bg-white p-2 shadow-xl dark:border-slate-700 dark:bg-slate-900"><button role="menuitem" onClick={() => { changeLanguage(); setShowPreferencesMenu(false); }} className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-start text-sm font-semibold hover:bg-slate-100 dark:hover:bg-slate-800"><Languages className="h-4 w-4" /><span className="flex-1">{lang === 'ar' ? 'اللغة' : 'Language'}</span><span className="text-xs text-slate-500">{lang === 'ar' ? 'العربية' : 'English'}</span></button>{isLeader && <button role="menuitem" onClick={() => { setShowActivityLog(true); setShowPreferencesMenu(false); }} className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-start text-sm font-semibold hover:bg-slate-100 dark:hover:bg-slate-800"><ScrollText className="h-4 w-4" /><span>{lang === 'ar' ? 'سجل النشاط' : 'Activity Log'}</span></button>}{isLeader && <button role="menuitem" onClick={() => { setShowSheetSync(true); setShowPreferencesMenu(false); }} className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-start text-sm font-semibold hover:bg-slate-100 dark:hover:bg-slate-800"><FileSpreadsheet className="h-4 w-4" /><span>{lang === 'ar' ? 'ربط Google Sheets' : 'Google Sheets sync'}</span></button>}{isLeader && <button role="menuitem" onClick={() => { setShowDashboardImport(true); setShowPreferencesMenu(false); }} className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-start text-sm font-semibold hover:bg-slate-100 dark:hover:bg-slate-800"><FileDown className="h-4 w-4" /><span>{lang === 'ar' ? 'استيراد الداش بورد (Excel)' : 'Excel dashboard import'}</span></button>}<button role="menuitem" onClick={() => { toggleTheme(); setShowPreferencesMenu(false); }} className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-start text-sm font-semibold hover:bg-slate-100 dark:hover:bg-slate-800">{theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}<span className="flex-1">{theme === 'dark' ? (lang === 'ar' ? 'الوضع الفاتح' : 'Light mode') : (lang === 'ar' ? 'الوضع الداكن' : 'Dark mode')}</span></button><div className="my-1 border-t border-slate-200 dark:border-slate-700" /><button role="menuitem" onClick={() => { setShowPreferencesMenu(false); setShowEmployeeSettings(false); localStorage.removeItem('logged_in_user'); try { sessionStorage.removeItem('auth_pin'); } catch {} setCurrentUser(null); setLoginNotice(''); setLoginOpen(true); }} className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-start text-sm font-semibold text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10"><LogOut className="h-4 w-4" /><span>{lang === 'ar' ? 'تسجيل الخروج' : 'Log out'}</span></button></div></>}</div></div>
+        <div className="flex shrink-0 items-center gap-2">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-900 dark:bg-slate-800">
+            <NotificationCenter currentUserId={currentUser.id} lang={lang} />
+          </div>
+          <div className="relative">
+            <button type="button" aria-label={lang === 'ar' ? 'القائمة' : 'Menu'} aria-haspopup="menu" aria-expanded={showPreferencesMenu} onClick={() => setShowPreferencesMenu(v => !v)} className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-800 shadow-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
+              {showPreferencesMenu ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            </button>
+            {showPreferencesMenu && <>
+              <button aria-label={lang === 'ar' ? 'إغلاق القائمة' : 'Close menu'} className="fixed inset-0 z-40 cursor-default" onClick={() => setShowPreferencesMenu(false)} />
+              <div role="menu" className="absolute end-0 top-full z-50 mt-2 w-64 max-w-[calc(100vw-1rem)] rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+                <div className="border-b border-slate-100 px-3 py-2 dark:border-slate-800">
+                  <p className="text-xs font-black">{lang === 'ar' ? 'الإعدادات والتفضيلات' : 'Settings & Preferences'}</p>
+                  <p className="mt-1 truncate text-[11px] text-slate-500">{lang === 'ar' ? currentUser.nameAr : currentUser.nameEn}</p>
+                </div>
+                {isLeader && <button role="menuitem" onClick={() => { setShowEmployeeSettings(v => !v); setShowPreferencesMenu(false); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-start text-sm font-semibold hover:bg-slate-100 dark:hover:bg-slate-800"><Settings2 className="h-4 w-4" /><span>{lang === 'ar' ? 'إدارة الموظفين والإعدادات' : 'Employee settings'}</span></button>}
+                <button role="menuitem" onClick={() => { changeLanguage(); setShowPreferencesMenu(false); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-start text-sm font-semibold hover:bg-slate-100 dark:hover:bg-slate-800"><Languages className="h-4 w-4" /><span className="flex-1">{lang === 'ar' ? 'اللغة' : 'Language'}</span><span className="text-xs text-slate-500">{lang === 'ar' ? 'العربية' : 'English'}</span></button>
+                {isLeader && <button role="menuitem" onClick={() => { setShowActivityLog(true); setShowPreferencesMenu(false); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-start text-sm font-semibold hover:bg-slate-100 dark:hover:bg-slate-800"><ScrollText className="h-4 w-4" /><span>{lang === 'ar' ? 'سجل النشاط' : 'Activity Log'}</span></button>}
+                {isLeader && <button role="menuitem" onClick={() => { setShowSheetSync(true); setShowPreferencesMenu(false); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-start text-sm font-semibold hover:bg-slate-100 dark:hover:bg-slate-800"><FileSpreadsheet className="h-4 w-4" /><span>{lang === 'ar' ? 'ربط Google Sheets' : 'Google Sheets sync'}</span></button>}
+                {isLeader && <button role="menuitem" onClick={() => { setShowDashboardImport(true); setShowPreferencesMenu(false); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-start text-sm font-semibold hover:bg-slate-100 dark:hover:bg-slate-800"><FileDown className="h-4 w-4" /><span>{lang === 'ar' ? 'استيراد الداش بورد (Excel)' : 'Excel dashboard import'}</span></button>}
+                <button role="menuitem" onClick={() => { toggleTheme(); setShowPreferencesMenu(false); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-start text-sm font-semibold hover:bg-slate-100 dark:hover:bg-slate-800">{theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}<span>{theme === 'dark' ? (lang === 'ar' ? 'الوضع الفاتح' : 'Light mode') : (lang === 'ar' ? 'الوضع الداكن' : 'Dark mode')}</span></button>
+                <div className="my-1 border-t border-slate-200 dark:border-slate-700" />
+                <button role="menuitem" onClick={() => { setShowPreferencesMenu(false); setShowEmployeeSettings(false); localStorage.removeItem('logged_in_user'); try { sessionStorage.removeItem('auth_pin'); } catch {} setCurrentUser(null); setLoginNotice(''); setLoginOpen(true); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-start text-sm font-semibold text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10"><LogOut className="h-4 w-4" /><span>{lang === 'ar' ? 'تسجيل الخروج' : 'Log out'}</span></button>
+              </div>
+            </>}
+          </div>
+        </div>
       </div>
-    </header>
+    </header>der>
     <div className={`mx-auto grid w-full max-w-none gap-2 p-1 sm:p-2 ${showEmployeeSettings ? "grid-cols-1 lg:grid-cols-[minmax(0,1fr)_340px]" : "grid-cols-1"}`}>
       <section className="min-w-0"><WeeklyShiftSchedule employees={visibleEmployees} shifts={shifts} dailyShiftAssignments={assignments} leaveRequests={leaveRequests} holidays={holidays} currentUser={currentUser} lang={lang} onAddShift={handleAddShift} onUpdateShift={handleUpdateShift} onDeleteShift={handleDeleteShift} onAuthFailure={forceReLogin} settingsOpen={showEmployeeSettings} /></section>
       {isLeader && showEmployeeSettings && <aside role="dialog" aria-label={lang === "ar" ? "إعدادات الموظفين" : "Employee settings"} className="relative z-10 h-fit max-h-[calc(100dvh-88px)] w-full overflow-y-auto rounded-2xl lg:sticky lg:top-[76px] lg:w-[340px] border border-slate-200 bg-white p-4 shadow-2xl dark:border-slate-800 dark:bg-slate-900">
