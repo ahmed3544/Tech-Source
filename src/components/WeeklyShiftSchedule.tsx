@@ -121,7 +121,7 @@ const validShadowing = (raw: any): raw is ShadowingInfo =>
     /^\d{1,2}:\d{2}$/.test(String(raw.startTime ?? '')) &&
     /^\d{1,2}:\d{2}$/.test(String(raw.endTime ?? '')) &&
     timeToMinutes(String(raw.endTime)) > timeToMinutes(String(raw.startTime)));
-const normShadowing = (raw: any): ShadowingInfo | null => (validShadowing(raw) ? { traineeId: raw.traineeId || undefined, startTime: String(raw.startTime).slice(0, 5), endTime: String(raw.endTime).slice(0, 5) } : null);
+const normShadowing = (raw: any): ShadowingInfo | null => (validShadowing(raw) ? { kind: raw.kind === 'training' ? 'training' : 'shadowing', traineeId: raw.kind === 'training' ? undefined : (raw.traineeId || undefined), startTime: String(raw.startTime).slice(0, 5), endTime: String(raw.endTime).slice(0, 5) } : null);
 
 /* ------------------------------------------------------------------ */
 /* Teleopti WFM palette — matches the reference design exactly.        */
@@ -185,7 +185,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
   // null = removed, object = set. Applied to the payload by saveWeek.
   const [shadowDraft, setShadowDraft] = useState<Record<string, ShadowingInfo | null | undefined>>({});
   const [shadowEditor, setShadowEditor] = useState<{ dateKey: string; dayName: string } | null>(null);
-  const [shadowForm, setShadowForm] = useState<{ enabled: boolean; traineeId: string; startTime: string; endTime: string }>({ enabled: false, traineeId: '', startTime: '13:00', endTime: '17:00' });
+  const [shadowForm, setShadowForm] = useState<{ enabled: boolean; kind: 'shadowing' | 'training'; traineeId: string; startTime: string; endTime: string }>({ enabled: false, kind: 'shadowing', traineeId: '', startTime: '13:00', endTime: '17:00' });
   const [shadowError, setShadowError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'week' | 'month' | 'day'>(() => ['leader', 'admin', 'company_admin', 'platform_admin'].includes(String(suppliedUser?.role || '').toLowerCase()) ? 'week' : 'day');
   const [dayDate, setDayDate] = useState(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; });
@@ -363,7 +363,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
     for (const a of assignments as any[]) {
       if (sameId(a.employeeId, meId) || String(a.date ?? '').slice(0, 10) !== key) continue;
       const info = normShadowing(a.shadowing);
-      if (info?.traineeId && sameId(info.traineeId, meId)) return { ...info, trainerId: String(a.employeeId) };
+      if (info?.kind !== 'training' && info?.traineeId && sameId(info.traineeId, meId)) return { ...info, trainerId: String(a.employeeId) };
     }
     return null;
   };
@@ -378,10 +378,11 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
   );
 
   const openShadowEditor = (day: { key: string; en: string; ar: string }) => {
-    if (!employee || !isAdmin) return;
+    if (!employee || !isLeader) return;
     const existing = shadowingFor(day.key);
     setShadowForm({
       enabled: Boolean(existing),
+      kind: existing?.kind === 'training' ? 'training' : 'shadowing',
       traineeId: existing?.traineeId || '',
       startTime: existing?.startTime || '13:00',
       endTime: existing?.endTime || '17:00',
@@ -406,7 +407,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
       setShadowError(lang === 'ar' ? 'وقت النهاية لازم يكون بعد وقت البداية (مثال: من 1 ل 5 = من 13:00 ل 17:00)' : 'End time must be after start time (e.g. 1 to 5 = 13:00 to 17:00)');
       return;
     }
-    setShadowDraft(prev => ({ ...prev, [shadowEditor.dateKey]: { ...(shadowForm.traineeId ? { traineeId: shadowForm.traineeId } : {}), startTime: shadowForm.startTime, endTime: shadowForm.endTime } }));
+    setShadowDraft(prev => ({ ...prev, [shadowEditor.dateKey]: { kind: shadowForm.kind, ...(shadowForm.kind === 'shadowing' && shadowForm.traineeId ? { traineeId: shadowForm.traineeId } : {}), startTime: shadowForm.startTime, endTime: shadowForm.endTime } }));
     setShadowEditor(null);
   };
 
@@ -439,7 +440,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
   const weekResults = useMemo(() => days.map(day => ({ day, resolved: resolveFor(day.key) })), [days, employee, shifts, assignments, breaksByDate, suppliedLeaves, suppliedHolidays, draft]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const saveWeek = async () => {
-    if (!employee || !isAdmin) return;
+    if (!employee || !isLeader) return;
     setSaving(true); setError(null); setMessage(null);
     try {
       const now = new Date().toISOString();
@@ -950,30 +951,32 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
           );
         });
       });
-      // Sky-blue Shadowing (training) window — drawn above the shift bar so the
-      // trained hours stand out in سماوي. Shows who is training whom.
+      // Shadowing and standalone Training share the same sky-blue timeline lane.
       const shadowWindow = validShadowing(opts.shadowing) ? opts.shadowing : null;
       const traineeWindow = validShadowing(opts.traineeShadowing) ? opts.traineeShadowing : null;
       if (shadowWindow || traineeWindow) {
         const info = shadowWindow ?? (traineeWindow as ShadowingInfo);
         const isTraineeSide = Boolean(traineeWindow && !shadowWindow);
-        const partnerName = isTraineeSide ? employeeName((traineeWindow as any).trainerId) : (shadowWindow?.traineeId ? employeeName(shadowWindow.traineeId) : '');
-        const shadowTitle = isTraineeSide
-          ? (lang === 'ar' ? `شادوينج مع ${partnerName}` : `Shadowing with ${partnerName}`)
-          : (partnerName ? (lang === 'ar' ? `شادوينج — تدريب ${partnerName}` : `Shadowing — training ${partnerName}`) : (lang === 'ar' ? 'شادوينج — تدريب نيو ايجنت' : 'Shadowing — new-agent training'));
+        const isTraining = info.kind === 'training';
+        const partnerName = isTraining ? '' : (isTraineeSide ? employeeName((traineeWindow as any).trainerId) : (shadowWindow?.traineeId ? employeeName(shadowWindow.traineeId) : ''));
+        const activityLabel = isTraining ? (lang === 'ar' ? 'تدريب' : 'Training') : (lang === 'ar' ? 'شادوينج' : 'Shadowing');
+        const activityTitle = isTraining
+          ? (lang === 'ar' ? 'تدريب' : 'Training')
+          : (isTraineeSide ? (lang === 'ar' ? `شادوينج مع ${partnerName}` : `Shadowing with ${partnerName}`) : (partnerName ? (lang === 'ar' ? `شادوينج — تدريب ${partnerName}` : `Shadowing — training ${partnerName}`) : (lang === 'ar' ? 'شادوينج — تدريب نيو ايجنت' : 'Shadowing — new-agent training')));
         blocksFor(info.startTime, info.endTime).forEach((seg, idx) => {
           const timeRange = mobile
             ? `${fmt12(timeToMinutes(info.startTime), lang)} - ${fmt12(timeToMinutes(info.endTime), lang)}`
             : `${info.startTime}–${info.endTime}`;
           blocks.push(
             <div
-              key={`shadow-${idx}-${isTraineeSide ? 't' : 'm'}`}
-              data-shadowing-block={isTraineeSide ? 'trainee' : 'trainer'}
+              key={`training-${idx}-${isTraineeSide ? 't' : 'm'}`}
+              data-training-block={isTraining ? 'training' : 'shadowing'}
+              data-shadowing-block={!isTraining ? (isTraineeSide ? 'trainee' : 'trainer') : undefined}
               className={`absolute inset-x-0.5 z-[5] flex flex-col items-center justify-center gap-0.5 overflow-hidden rounded-md px-1 pt-1 text-center shadow-sm ring-1 ring-sky-300/80 ${TEO.shadowing}`}
               style={{ top: `${seg.top}%`, height: `${seg.height}%` }}
-              title={shadowTitle}
+              title={activityTitle}
             >
-              <span className="truncate text-[10px] font-black leading-tight">{lang === 'ar' ? 'شادوينج' : 'Shadowing'}</span>
+              <span className="truncate text-[10px] font-black leading-tight">{activityLabel}</span>
               {seg.height > 10 && <span dir="ltr" className="truncate font-mono text-[9px] font-black leading-tight">{timeRange}</span>}
               {seg.height > 20 && partnerName && <span className="truncate text-[9px] font-bold leading-tight">{isTraineeSide ? (lang === 'ar' ? `مع ${partnerName}` : `with ${partnerName}`) : (lang === 'ar' ? `تدريب ${partnerName}` : `training ${partnerName}`)}</span>}
             </div>
@@ -1154,7 +1157,10 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
               </div>
             </div>
             {isLeader && resolved.status === 'working' && (
-              <button type="button" onClick={() => openBreakEditor(day)} className="absolute bottom-3 end-3 flex h-11 w-11 items-center justify-center rounded-full bg-blue-600 text-white shadow-lg hover:bg-blue-700" aria-label={lang === 'ar' ? 'تعديل الاستراحات' : 'Edit breaks'}><Plus className="h-5 w-5" /></button>
+              <div className="absolute bottom-3 end-3 flex items-center gap-2">
+                <button type="button" onClick={() => openBreakEditor(day)} className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-600 text-white shadow-lg hover:bg-blue-700" aria-label={lang === 'ar' ? 'تعديل الاستراحات' : 'Edit breaks'}><Coffee className="h-4 w-4" /></button>
+                <button type="button" onClick={() => openShadowEditor(day)} className="flex h-10 w-10 items-center justify-center rounded-full bg-sky-500 text-white shadow-lg hover:bg-sky-600" aria-label={lang === 'ar' ? 'إضافة تدريب أو شادوينج' : 'Add Training or Shadowing'}><Users className="h-4 w-4" /></button>
+              </div>
             )}
           </div>
         );
@@ -1269,8 +1275,8 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
         </>
       )}
 
-      {isAdmin && employee && (
-        <div id="employee-shift-assignment" className="hidden rounded-xl border-2 border-blue-200 bg-white shadow-sm dark:border-blue-500/30 dark:bg-slate-950 lg:block">
+      {isLeader && employee && (
+        <div id="employee-shift-assignment" className="block rounded-xl border-2 border-blue-200 bg-white shadow-sm dark:border-blue-500/30 dark:bg-slate-950">
           <button type="button" onClick={() => setEditPanelOpen(v => !v)} className="flex w-full items-center justify-between px-4 py-2.5 text-xs font-black text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800/60">
             <span className="flex items-center gap-2"><Pencil className="h-4 w-4" />{lang === 'ar' ? 'تعيين الشيفت لكل موظف ولكل يوم' : 'Assign shifts per employee and day'}</span>
             <ChevronLeft className={`h-4 w-4 transition-transform ${editPanelOpen ? '-rotate-90' : 'rotate-0 rtl:rotate-180'}`} />
@@ -1304,10 +1310,10 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
                             onClick={() => openShadowEditor(day)}
                             disabled={!isWorking}
                             className={`inline-flex h-7 w-full items-center justify-center gap-1 rounded-lg text-[9px] font-black transition ${!isWorking ? 'cursor-not-allowed bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500' : active ? 'bg-sky-400 text-white shadow hover:bg-sky-500 dark:bg-sky-500 dark:hover:bg-sky-400' : 'bg-sky-50 text-sky-700 hover:bg-sky-100 dark:bg-sky-500/15 dark:text-sky-300 dark:hover:bg-sky-500/25'}`}
-                            title={isWorking ? (lang === 'ar' ? 'شادوينج — تدريب نيو ايجنت لفترة محددة' : 'Shadowing — train a new agent for a time window') : (lang === 'ar' ? 'الشادوينج لأيام الدوام فقط' : 'Shadowing only on working days')}
+                            title={isWorking ? (sw?.kind === 'training' ? (lang === 'ar' ? 'تدريب مستقل لفترة محددة' : 'Standalone Training time window') : (lang === 'ar' ? 'شادوينج — تدريب نيو ايجنت لفترة محددة' : 'Shadowing — train a new agent for a time window')) : (lang === 'ar' ? 'التدريب لأيام الدوام فقط' : 'Training only on working days')}
                           >
                             <Users className="h-3 w-3" />
-                            {active ? `${lang === 'ar' ? 'شادوينج' : 'Shadowing'} ${sw!.startTime}–${sw!.endTime}` : (lang === 'ar' ? 'شادوينج' : 'Shadowing')}
+                            {active ? `${sw!.kind === 'training' ? (lang === 'ar' ? 'تدريب' : 'Training') : (lang === 'ar' ? 'شادوينج' : 'Shadowing')} ${sw!.startTime}–${sw!.endTime}` : (lang === 'ar' ? 'نشاط تدريب' : 'Training activity')}
                           </button>
                         );
                       })()}
@@ -1401,12 +1407,18 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
 
             <label className="mt-4 flex cursor-pointer items-center gap-3 rounded-xl border border-sky-200 bg-sky-50 px-3 py-3 dark:border-sky-500/40 dark:bg-sky-500/10">
               <input type="checkbox" checked={shadowForm.enabled} onChange={e => { setShadowForm(prev => ({ ...prev, enabled: e.target.checked })); setShadowError(null); }} className="h-4 w-4 accent-sky-600" data-shadowing-toggle />
-              <span className="text-xs font-black text-sky-800 dark:text-sky-300">{lang === 'ar' ? 'تشغيل الشادوينج في هذا اليوم' : 'Enable Shadowing on this day'}</span>
+              <span className="text-xs font-black text-sky-800 dark:text-sky-300">{lang === 'ar' ? 'تفعيل النشاط في هذا اليوم' : 'Enable activity on this day'}</span>
             </label>
 
             {shadowForm.enabled && (
               <>
-                <p className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-[11px] font-bold text-slate-600 dark:bg-slate-900/60 dark:text-slate-300">{lang === 'ar' ? 'الايجنت هيتدرب معاه نيو ايجنت على الشغل في الفترة دي — هتظهر باللون السماوي في الجدول.' : 'The agent will train a new agent during this window — it appears in sky blue on the schedule.'}</p>
+                <label className="mt-3 flex flex-col gap-1 text-[10px] font-black text-slate-500 dark:text-slate-400">{lang === 'ar' ? 'نوع التدريب' : 'Activity type'}
+                  <select value={shadowForm.kind} onChange={e => setShadowForm(prev => ({ ...prev, kind: e.target.value as 'shadowing' | 'training', traineeId: e.target.value === 'training' ? '' : prev.traineeId }))} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:border-sky-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
+                    <option value="shadowing">Shadowing / شادوينج</option>
+                    <option value="training">Training / تدريب</option>
+                  </select>
+                </label>
+                <p className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-[11px] font-bold text-slate-600 dark:bg-slate-900/60 dark:text-slate-300">{shadowForm.kind === 'training' ? (lang === 'ar' ? 'تدريب مستقل للموظف بدون ربطه بمدرب أو متدرب.' : 'Standalone training time for this employee, with no trainer/trainee pairing.') : (lang === 'ar' ? 'الايجنت هيتدرب معاه نيو ايجنت على الشغل في الفترة دي — هتظهر باللون السماوي في الجدول.' : 'The agent will train a new agent during this window — it appears in sky blue on the schedule.')}</p>
                 <div className="mt-3 grid grid-cols-2 gap-2">
                   <label className="flex flex-col gap-1 text-[10px] font-black text-slate-500 dark:text-slate-400">{lang === 'ar' ? 'من (ساعة)' : 'From (hour)'}
                     <input type="time" value={shadowForm.startTime} onChange={e => { setShadowForm(prev => ({ ...prev, startTime: e.target.value })); setShadowError(null); }} data-shadowing-start className="rounded-lg border border-slate-200 bg-white px-2 py-2 font-mono text-sm text-slate-800 outline-none focus:border-sky-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100" required />
@@ -1421,14 +1433,14 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
                   </span>
                   <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500">{lang === 'ar' ? 'مثال: من 1 ل 5 = 13:00 → 17:00' : 'e.g. 1 to 5 = 13:00 → 17:00'}</span>
                 </div>
-                <label className="mt-3 flex flex-col gap-1 text-[10px] font-black text-slate-500 dark:text-slate-400">{lang === 'ar' ? 'النيو ايجنت (اختياري — يظهر عنداه الشادوينج بالسماوي)' : 'New agent / trainee (optional — they see the same sky-blue window)'}
+                {shadowForm.kind === 'shadowing' && <label className="mt-3 flex flex-col gap-1 text-[10px] font-black text-slate-500 dark:text-slate-400">{lang === 'ar' ? 'النيو ايجنت (اختياري — يظهر عنداه الشادوينج بالسماوي)' : 'New agent / trainee (optional — they see the same sky-blue window)'}
                   <select value={shadowForm.traineeId} onChange={e => setShadowForm(prev => ({ ...prev, traineeId: e.target.value }))} data-shadowing-trainee className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs font-bold text-slate-800 outline-none focus:border-sky-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
                     <option value="">{lang === 'ar' ? '— بدون تحديد —' : '— none —'}</option>
                     {visibleEmployees.filter(p => !sameId(p.id, employee.id)).map(person => (
                       <option key={person.id} value={person.id}>{person.code ? person.code + ' - ' : ''}{lang === 'ar' ? person.nameAr : person.nameEn}</option>
                     ))}
                   </select>
-                </label>
+                </label>}
               </>
             )}
 
@@ -1437,7 +1449,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
               <button type="button" onClick={() => setShadowEditor(null)} className="rounded-xl bg-slate-100 px-4 py-2 text-xs font-black text-slate-700 dark:bg-slate-800/70 dark:text-slate-200">{lang === 'ar' ? 'إلغاء' : 'Cancel'}</button>
               <button type="button" onClick={applyShadowDraft} data-shadowing-apply className={`inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-black text-white shadow-sm ${shadowForm.enabled ? 'bg-sky-500 hover:bg-sky-600' : 'bg-red-500 hover:bg-red-600'}`}>
                 <Save className="h-3.5 w-3.5" />
-                {shadowForm.enabled ? (lang === 'ar' ? 'حفظ الشادوينج' : 'Save shadowing') : (lang === 'ar' ? 'إزالة الشادوينج' : 'Remove shadowing')}
+                {shadowForm.enabled ? (lang === 'ar' ? 'حفظ النشاط' : 'Save activity') : (lang === 'ar' ? 'إزالة النشاط' : 'Remove activity')}
               </button>
             </div>
             <p className="mt-2 text-center text-[10px] font-bold text-slate-400 dark:text-slate-500">{lang === 'ar' ? 'التعديل بيتسجل مع حفظ الأسبوع (حفظ الأسبوع / حفظ التعديلات)' : 'Applied when the week is saved (Save week / Save changes)'}</p>

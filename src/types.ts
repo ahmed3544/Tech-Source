@@ -74,6 +74,8 @@ export interface Shift {
  *  Stored on the TRAINER's daily assignment; the trainee's row renders the same
  *  window in sky blue by looking up assignments where traineeId matches. */
 export interface ShadowingInfo {
+  /** Activity type; omitted on older saved records means Shadowing. */
+  kind?: 'shadowing' | 'training';
   /** Optional id of the new agent being trained (shows the pairing on both rows). */
   traineeId?: string;
   /** HH:mm — e.g. "13:00" for "1". Must be earlier than endTime (same day). */
