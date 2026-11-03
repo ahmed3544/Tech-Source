@@ -38,14 +38,16 @@ const minutesOfTime = (value: any): number => {
 /** Parses + validates an optional shadowing (training) window.
  *  TRI-STATE: key absent → undefined (keep stored value), null/invalid → null
  *  (remove), object → set. Protects sessions from older clients/importers. */
-function normalizeShadowing(raw: any): { traineeId?: string; startTime: string; endTime: string } | null | undefined {
+function normalizeShadowing(raw: any): { kind?: 'shadowing' | 'training'; traineeId?: string; startTime: string; endTime: string } | null | undefined {
   if (raw === undefined) return undefined;
   if (!raw || typeof raw !== 'object') return null;
   const start = minutesOfTime(raw.startTime ?? raw.start_time ?? raw.start);
   const end = minutesOfTime(raw.endTime ?? raw.end_time ?? raw.end);
   if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return null;
-  const traineeId = String(raw.traineeId ?? raw.trainee_id ?? '').trim();
+  const kind = raw.kind === 'training' ? 'training' : 'shadowing';
+  const traineeId = kind === 'shadowing' ? String(raw.traineeId ?? raw.trainee_id ?? '').trim() : '';
   return {
+    kind,
     ...(traineeId ? { traineeId } : {}),
     startTime: String(raw.startTime ?? raw.start_time ?? raw.start).trim().slice(0, 5).padStart(5, '0'),
     endTime: String(raw.endTime ?? raw.end_time ?? raw.end).trim().slice(0, 5).padStart(5, '0'),
