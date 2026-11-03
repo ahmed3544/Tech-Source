@@ -1157,7 +1157,10 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
               </div>
             </div>
             {isLeader && resolved.status === 'working' && (
-              <button type="button" onClick={() => openBreakEditor(day)} className="absolute bottom-3 end-3 flex h-11 w-11 items-center justify-center rounded-full bg-blue-600 text-white shadow-lg hover:bg-blue-700" aria-label={lang === 'ar' ? 'تعديل الاستراحات' : 'Edit breaks'}><Plus className="h-5 w-5" /></button>
+              <div className="absolute bottom-3 end-3 flex items-center gap-2">
+                <button type="button" onClick={() => openBreakEditor(day)} className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-600 text-white shadow-lg hover:bg-blue-700" aria-label={lang === 'ar' ? 'تعديل الاستراحات' : 'Edit breaks'}><Coffee className="h-4 w-4" /></button>
+                <button type="button" onClick={() => openShadowEditor(day)} className="flex h-10 w-10 items-center justify-center rounded-full bg-sky-500 text-white shadow-lg hover:bg-sky-600" aria-label={lang === 'ar' ? 'إضافة تدريب أو شادوينج' : 'Add Training or Shadowing'}><Users className="h-4 w-4" /></button>
+              </div>
             )}
           </div>
         );
@@ -1307,7 +1310,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
                             onClick={() => openShadowEditor(day)}
                             disabled={!isWorking}
                             className={`inline-flex h-7 w-full items-center justify-center gap-1 rounded-lg text-[9px] font-black transition ${!isWorking ? 'cursor-not-allowed bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500' : active ? 'bg-sky-400 text-white shadow hover:bg-sky-500 dark:bg-sky-500 dark:hover:bg-sky-400' : 'bg-sky-50 text-sky-700 hover:bg-sky-100 dark:bg-sky-500/15 dark:text-sky-300 dark:hover:bg-sky-500/25'}`}
-                            title={isWorking ? (lang === 'ar' ? 'شادوينج — تدريب نيو ايجنت لفترة محددة' : 'Shadowing — train a new agent for a time window') : (lang === 'ar' ? 'الشادوينج لأيام الدوام فقط' : 'Shadowing only on working days')}
+                            title={isWorking ? (sw?.kind === 'training' ? (lang === 'ar' ? 'تدريب مستقل لفترة محددة' : 'Standalone Training time window') : (lang === 'ar' ? 'شادوينج — تدريب نيو ايجنت لفترة محددة' : 'Shadowing — train a new agent for a time window')) : (lang === 'ar' ? 'التدريب لأيام الدوام فقط' : 'Training only on working days')}
                           >
                             <Users className="h-3 w-3" />
                             {active ? `${sw!.kind === 'training' ? 'Training' : (lang === 'ar' ? 'شادوينج' : 'Shadowing')} ${sw!.startTime}–${sw!.endTime}` : (lang === 'ar' ? 'نشاط تدريب' : 'Training activity')}
