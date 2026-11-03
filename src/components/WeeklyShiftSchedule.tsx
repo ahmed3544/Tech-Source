@@ -959,7 +959,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
         const isTraineeSide = Boolean(traineeWindow && !shadowWindow);
         const isTraining = info.kind === 'training';
         const partnerName = isTraining ? '' : (isTraineeSide ? employeeName((traineeWindow as any).trainerId) : (shadowWindow?.traineeId ? employeeName(shadowWindow.traineeId) : ''));
-        const activityLabel = isTraining ? (lang === 'ar' ? 'Training' : 'Training') : (lang === 'ar' ? 'شادوينج' : 'Shadowing');
+        const activityLabel = isTraining ? (lang === 'ar' ? 'تدريب' : 'Training') : (lang === 'ar' ? 'شادوينج' : 'Shadowing');
         const activityTitle = isTraining
           ? (lang === 'ar' ? 'تدريب' : 'Training')
           : (isTraineeSide ? (lang === 'ar' ? `شادوينج مع ${partnerName}` : `Shadowing with ${partnerName}`) : (partnerName ? (lang === 'ar' ? `شادوينج — تدريب ${partnerName}` : `Shadowing — training ${partnerName}`) : (lang === 'ar' ? 'شادوينج — تدريب نيو ايجنت' : 'Shadowing — new-agent training')));
@@ -1276,7 +1276,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
       )}
 
       {isLeader && employee && (
-        <div id="employee-shift-assignment" className="hidden rounded-xl border-2 border-blue-200 bg-white shadow-sm dark:border-blue-500/30 dark:bg-slate-950 lg:block">
+        <div id="employee-shift-assignment" className="block rounded-xl border-2 border-blue-200 bg-white shadow-sm dark:border-blue-500/30 dark:bg-slate-950">
           <button type="button" onClick={() => setEditPanelOpen(v => !v)} className="flex w-full items-center justify-between px-4 py-2.5 text-xs font-black text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800/60">
             <span className="flex items-center gap-2"><Pencil className="h-4 w-4" />{lang === 'ar' ? 'تعيين الشيفت لكل موظف ولكل يوم' : 'Assign shifts per employee and day'}</span>
             <ChevronLeft className={`h-4 w-4 transition-transform ${editPanelOpen ? '-rotate-90' : 'rotate-0 rtl:rotate-180'}`} />
@@ -1313,7 +1313,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
                             title={isWorking ? (sw?.kind === 'training' ? (lang === 'ar' ? 'تدريب مستقل لفترة محددة' : 'Standalone Training time window') : (lang === 'ar' ? 'شادوينج — تدريب نيو ايجنت لفترة محددة' : 'Shadowing — train a new agent for a time window')) : (lang === 'ar' ? 'التدريب لأيام الدوام فقط' : 'Training only on working days')}
                           >
                             <Users className="h-3 w-3" />
-                            {active ? `${sw!.kind === 'training' ? 'Training' : (lang === 'ar' ? 'شادوينج' : 'Shadowing')} ${sw!.startTime}–${sw!.endTime}` : (lang === 'ar' ? 'نشاط تدريب' : 'Training activity')}
+                            {active ? `${sw!.kind === 'training' ? (lang === 'ar' ? 'تدريب' : 'Training') : (lang === 'ar' ? 'شادوينج' : 'Shadowing')} ${sw!.startTime}–${sw!.endTime}` : (lang === 'ar' ? 'نشاط تدريب' : 'Training activity')}
                           </button>
                         );
                       })()}
