@@ -1310,7 +1310,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
                             title={isWorking ? (lang === 'ar' ? 'شادوينج — تدريب نيو ايجنت لفترة محددة' : 'Shadowing — train a new agent for a time window') : (lang === 'ar' ? 'الشادوينج لأيام الدوام فقط' : 'Shadowing only on working days')}
                           >
                             <Users className="h-3 w-3" />
-                            {active ? `${lang === 'ar' ? 'شادوينج' : 'Shadowing'} ${sw!.startTime}–${sw!.endTime}` : (lang === 'ar' ? 'شادوينج' : 'Shadowing')}
+                            {active ? `${sw!.kind === 'training' ? 'Training' : (lang === 'ar' ? 'شادوينج' : 'Shadowing')} ${sw!.startTime}–${sw!.endTime}` : (lang === 'ar' ? 'نشاط تدريب' : 'Training activity')}
                           </button>
                         );
                       })()}
@@ -1404,7 +1404,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
 
             <label className="mt-4 flex cursor-pointer items-center gap-3 rounded-xl border border-sky-200 bg-sky-50 px-3 py-3 dark:border-sky-500/40 dark:bg-sky-500/10">
               <input type="checkbox" checked={shadowForm.enabled} onChange={e => { setShadowForm(prev => ({ ...prev, enabled: e.target.checked })); setShadowError(null); }} className="h-4 w-4 accent-sky-600" data-shadowing-toggle />
-              <span className="text-xs font-black text-sky-800 dark:text-sky-300">{lang === 'ar' ? 'تشغيل الشادوينج في هذا اليوم' : 'Enable Shadowing on this day'}</span>
+              <span className="text-xs font-black text-sky-800 dark:text-sky-300">{lang === 'ar' ? 'تفعيل النشاط في هذا اليوم' : 'Enable activity on this day'}</span>
             </label>
 
             {shadowForm.enabled && (
@@ -1446,7 +1446,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
               <button type="button" onClick={() => setShadowEditor(null)} className="rounded-xl bg-slate-100 px-4 py-2 text-xs font-black text-slate-700 dark:bg-slate-800/70 dark:text-slate-200">{lang === 'ar' ? 'إلغاء' : 'Cancel'}</button>
               <button type="button" onClick={applyShadowDraft} data-shadowing-apply className={`inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-black text-white shadow-sm ${shadowForm.enabled ? 'bg-sky-500 hover:bg-sky-600' : 'bg-red-500 hover:bg-red-600'}`}>
                 <Save className="h-3.5 w-3.5" />
-                {shadowForm.enabled ? (lang === 'ar' ? 'حفظ الشادوينج' : 'Save shadowing') : (lang === 'ar' ? 'إزالة الشادوينج' : 'Remove shadowing')}
+                {shadowForm.enabled ? (lang === 'ar' ? 'حفظ النشاط' : 'Save activity') : (lang === 'ar' ? 'إزالة النشاط' : 'Remove activity')}
               </button>
             </div>
             <p className="mt-2 text-center text-[10px] font-bold text-slate-400 dark:text-slate-500">{lang === 'ar' ? 'التعديل بيتسجل مع حفظ الأسبوع (حفظ الأسبوع / حفظ التعديلات)' : 'Applied when the week is saved (Save week / Save changes)'}</p>
