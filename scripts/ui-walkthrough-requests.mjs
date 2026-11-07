@@ -3,7 +3,7 @@
 //   2. Break change request — employee submits, admin sees pending + approves
 //   3. Shift swap panel visible for everyone (restored after "الاسواب شفت اتشالت")
 //   4. Notification click navigates to the requests card (flash + tab)
-//   5. Day view — one day sized to screen with prev/next navigation
+//   5. Team day view — ALL agents side by side for a picked day (shifts / OFF / annual / breaks, Teleopti style)
 //   6. Import Excel — round-trip of the weekly export with one modified cell
 // Run while scripts/ui-demo-env.mjs is up on :3112.
 import { chromium } from 'playwright';
@@ -25,16 +25,26 @@ page.on('pageerror', (e) => errors.push(String(e)));
 const exportBtn = page.getByRole('button', { name: /تصدير Excel|Export to Excel/ });
 const requestsToggle = page.getByRole('button', { name: /^(تبديل الشيفت|Shift swap)$/ });
 const breakTab = page.getByRole('button', { name: /^(تغيير البريك|Break change)$/ });
-const settingsToggle = page.locator('header').getByRole('button', { name: /^(الإعدادات|Settings)$/ });
+// Upstream renamed the preferences toggle to Menu (القائمة) — it opens the
+// fixed-width dropdown with the leader-only panels (Excel, logs, sync…).
+const settingsToggle = page.locator('header').getByRole('button', { name: /^(القائمة|Menu)$/ });
 
-// Excel import/export now lives inside the leader-only "Schedule settings"
-// panel — open it (via the header Settings toggle) before using its buttons.
+// Excel import/export lives inside the leader-only "Schedule settings" panel.
+// Since upstream moved it behind the fixed-width preferences dropdown, opening
+// it takes TWO clicks: the header Menu (القائمة) → "Employee settings" item.
+const employeeSettingsItem = page.getByRole('menuitem', { name: /إدارة الموظفين والإعدادات|Employee settings/ });
 const openExcelSection = async () => {
-  if (!(await exportBtn.isVisible().catch(() => false))) await settingsToggle.click();
+  if (!(await exportBtn.isVisible().catch(() => false))) {
+    await settingsToggle.click();
+    await employeeSettingsItem.click();
+  }
   await exportBtn.waitFor({ state: 'visible', timeout: 25000 });
 };
 const closeExcelSection = async () => {
-  if (await exportBtn.isVisible().catch(() => false)) await settingsToggle.click(); // loud: surface interceptors
+  if (await exportBtn.isVisible().catch(() => false)) {
+    await settingsToggle.click();
+    await employeeSettingsItem.click(); // loud: surface interceptors
+  }
   await exportBtn.waitFor({ state: 'hidden', timeout: 10000 }).catch(() => {});
 };
 
@@ -177,6 +187,32 @@ check('day navigation moves to next day', label1 !== label2, `${label1} → ${la
 await page.getByRole('button', { name: 'اليوم', exact: true }).last().click();
 await page.waitForTimeout(400);
 await page.screenshot({ path: `${SHOTS}/day-view.png`, fullPage: false });
+// ---- TEAM DAY VIEW: every agent side by side with shifts / OFF / annual / breaks ----
+const teamCols = await page.locator('[data-team-day-col]').count();
+check('team day grid renders agent columns', teamCols >= 2, `cols=${teamCols}`);
+check('team day counts row visible', await page.locator('[data-team-day-counts]').isVisible());
+check('team day search box visible', await page.locator('[data-team-day-search]').isVisible());
+const teamBadges = await page.locator('[data-team-day-badge]').count();
+check('team day status badges render per column', teamBadges >= teamCols, `badges=${teamBadges} cols=${teamCols}`);
+const teamData = await (await fetch(`${BASE}/api/data`)).json();
+const targetEmp = (teamData.employees || []).find((e) => String(e.code).toUpperCase() === 'EMP101');
+if (targetEmp) {
+  await page.locator('[data-team-day-search]').fill(String(targetEmp.code));
+  await page.waitForTimeout(350);
+  const filtered = await page.locator('[data-team-day-col]').count();
+  check('team day search filters columns by name/code', filtered >= 1 && filtered < teamCols, `all=${teamCols} filtered=${filtered}`);
+  await page.locator('[data-team-day-search]').fill('');
+  await page.waitForTimeout(350);
+} else {
+  check('team day search fixture (EMP101)', false, 'EMP101 missing');
+}
+await page.setViewportSize({ width: 390, height: 844 });
+await page.waitForTimeout(300);
+await page.locator('[data-team-day-date]').scrollIntoViewIfNeeded();
+await page.waitForTimeout(300);
+await page.screenshot({ path: `${SHOTS}/day-view-mobile.png`, fullPage: false });
+await page.setViewportSize({ width: 1440, height: 900 });
+await page.waitForTimeout(200);
 await page.getByRole('button', { name: /^(أسبوع|Week)$/ }).click();
 await page.waitForTimeout(300);
 
@@ -240,7 +276,7 @@ check('shadowing persisted server-side', shadowingSaved.status === 200 && shadow
 // "الاسواب شفت اتشالت" regression fix: the swap + break request card must be
 // visible to employees again (they submit swaps, targets accept/reject).
 // The leader/admin-only rule applies to the Excel import boxes only.
-await page.getByRole('button', { name: /التفضيلات|Preferences/ }).click();
+await settingsToggle.click();
 await page.getByRole('menuitem', { name: /تسجيل الخروج|Log out/ }).click();
 await page.waitForSelector('input', { timeout: 15000 });
 await login('EMP101', '1234', { leader: false });
@@ -296,11 +332,15 @@ check('notification center opens in header', await page.locator('[role="dialog"]
 await page.screenshot({ path: `${SHOTS}/notification-bell.png`, fullPage: false });
 
 // ---- Shadowing trainee side: EMP102 (the new agent) sees the same window ----
-await page.getByRole('button', { name: /التفضيلات|Preferences/ }).click();
+await settingsToggle.click();
 await page.getByRole('menuitem', { name: /تسجيل الخروج|Log out/ }).click();
 await page.waitForSelector('input', { timeout: 15000 });
 await login('EMP102', '1234', { leader: false });
 await page.waitForTimeout(800);
+// Employees now START in the team day view (upstream change) — the shadowing
+// window lives on the fixture day (Sunday), so switch to the week grid first.
+await page.getByRole('button', { name: /^(أسبوع|Week)$/ }).click();
+await page.waitForTimeout(400);
 const traineeBlock = page.locator('[data-shadowing-block="trainee"]').first();
 check('trainee (new agent) sees the sky-blue shadowing window', await traineeBlock.isVisible().catch(() => false));
 check('trainee block also uses the sky-400 palette', ((await traineeBlock.getAttribute('class').catch(() => '')) || '').includes('bg-sky-400'));
@@ -321,7 +361,7 @@ if (swapState) {
 
 // ---- Leader (EMP011): the dropdown works for leaders too, but the direct
 // swap tool is ADMIN-ONLY ("بدون الرجوع للاداره" applies to the admin).
-await page.getByRole('button', { name: /التفضيلات|Preferences/ }).click();
+await settingsToggle.click();
 await page.getByRole('menuitem', { name: /تسجيل الخروج|Log out/ }).click();
 await page.waitForSelector('input', { timeout: 15000 });
 await login('EMP011', 'leader123', { leader: false });
@@ -353,7 +393,7 @@ console.log('Sample row:', JSON.stringify(rosterRows[1]).slice(0, 220));
 
 // ---- Import Excel: round-trip the week export with one modified cell ----
 // Back to admin (import is leader-only), then upload a modified workbook.
-await page.getByRole('button', { name: /التفضيلات|Preferences/ }).click();
+await settingsToggle.click();
 await page.getByRole('menuitem', { name: /تسجيل الخروج|Log out/ }).click();
 await page.waitForSelector('input', { timeout: 15000 });
 await login('EMP002', '1234');
@@ -392,10 +432,25 @@ const importWb = XLSX.readFile(weekFile);
 const importSheet = importWb.Sheets[importWb.SheetNames[0]];
 const importAoa = XLSX.utils.sheet_to_json(importSheet, { header: 1, defval: '' });
 const tmrLabel = `${String(tomorrow.getDate()).padStart(2, '0')}/${String(tomorrow.getMonth() + 1).padStart(2, '0')}`;
-let shiftCol = -1;
-(importAoa[0] || []).forEach((h, i) => { if (i >= 2 && String(h).includes(tmrLabel) && !String(h).includes('بريكات') && !/breaks?/i.test(String(h))) shiftCol = i; });
+// Prefer the TOMORROW column; when the walkthrough runs on the exported week's
+// last day (e.g. Saturday) tomorrow is not in the sheet — fall back to the
+// LAST date column so the round-trip stays testable on every weekday.
+const dateCols = [];
+(importAoa[0] || []).forEach((h, i) => { if (i >= 2 && !String(h).includes('بريكات') && !/breaks?/i.test(String(h)) && /\d{2}\/\d{2}/.test(String(h))) dateCols.push({ idx: i, label: String(h) }); });
+let fixture = null;
+const tmrCol = dateCols.find((c) => c.label.includes(tmrLabel));
+const weekStartMatch = String(weekDownload.suggestedFilename() || '').match(/Week-(\d{4})-(\d{2})-(\d{2})/);
+if (tmrCol) {
+  fixture = { idx: tmrCol.idx, dateKey: tomorrowKey };
+} else if (weekStartMatch && dateCols.length) {
+  const ws = new Date(Number(weekStartMatch[1]), Number(weekStartMatch[2]) - 1, Number(weekStartMatch[3]));
+  const last = new Date(ws); last.setDate(last.getDate() + dateCols.length - 1);
+  fixture = { idx: dateCols[dateCols.length - 1].idx, dateKey: `${last.getFullYear()}-${String(last.getMonth() + 1).padStart(2, '0')}-${String(last.getDate()).padStart(2, '0')}` };
+}
+const shiftCol = fixture ? fixture.idx : -1;
+const fixtureDateKey = fixture ? fixture.dateKey : '';
 const empRowIdx = importAoa.findIndex((r, i) => i > 0 && String(r[0]).includes('EMP101'));
-check('import fixture: found EMP101 row + tomorrow column', empRowIdx > 0 && shiftCol > 1, `row=${empRowIdx}, col=${shiftCol}, header=${String(importAoa[0]?.[shiftCol])}`);
+check('import fixture: found EMP101 row + a date column', empRowIdx > 0 && shiftCol > 1, `row=${empRowIdx}, col=${shiftCol}, date=${fixtureDateKey}`);
 if (empRowIdx > 0 && shiftCol > 1) {
   importAoa[empRowIdx][shiftCol] = 'OFF — راحة أسبوعية';
   if (shiftCol + 1 < importAoa[empRowIdx].length) importAoa[empRowIdx][shiftCol + 1] = '—';
@@ -413,7 +468,7 @@ if (empRowIdx > 0 && shiftCol > 1) {
   const employeesJson = await (await fetch(`${BASE}/api/data`)).json();
   const emp101 = (employeesJson.employees || []).find((e) => String(e.code).toUpperCase() === 'EMP101');
   const syncJson = await (await fetch(`${BASE}/api/schedule-sync`)).json();
-  const row = (syncJson.dailyShiftAssignments || []).find((a) => emp101 && String(a.employeeId) === String(emp101.id) && String(a.date).slice(0, 10) === tomorrowKey);
+  const row = (syncJson.dailyShiftAssignments || []).find((a) => emp101 && String(a.employeeId) === String(emp101.id) && String(a.date).slice(0, 10) === fixtureDateKey);
   check('imported OFF persisted server-side', Boolean(row?.isOffDay), JSON.stringify(row));
 } else {
   check('import fixture found', false, 'EMP101 row or date column missing from export');
@@ -450,7 +505,7 @@ check('activity log: rows carry actor + timestamp', logs.length > 0 && logs.ever
 // The employee-management overlay (opened during the import step) covers the
 // dropdown menu — close it first, otherwise the menu item click is intercepted.
 await closeExcelSection();
-await page.getByRole('button', { name: /التفضيلات|Preferences/ }).click();
+await settingsToggle.click();
 await page.getByRole('menuitem', { name: /سجل النشاط|Activity Log/ }).click();
 await page.waitForSelector('[data-testid="activity-log-rows"] > div', { timeout: 15000 });
 const uiRows = await page.locator('[data-testid="activity-log-rows"] > div').count();
@@ -461,11 +516,11 @@ await page.waitForSelector('[data-testid="activity-log-rows"]', { state: 'detach
 check('activity log panel closes', true);
 
 // ---- Google Sheets sync panel: opens, loads config, actions present ----
-await page.getByRole('button', { name: /التفضيلات|Preferences/ }).click();
+await settingsToggle.click();
 await page.getByRole('menuitem', { name: /ربط Google Sheets|Google Sheets sync/ }).click();
 await page.waitForSelector('[role="dialog"][aria-label*="Google Sheets"]', { timeout: 15000 });
 check('sheet sync panel opens from preferences menu', true);
-check('sheet sync setup steps visible', await page.getByText(/خطوات الربط|Setup steps/).first().isVisible().catch(() => false));
+check('sheet sync setup steps visible', await page.getByText(/خطوات الربط|Setup steps/).first().waitFor({ state: 'visible', timeout: 10000 }).then(() => true).catch(() => false));
 check('sheet sync url input present', await page.locator('[role="dialog"][aria-label*="Google Sheets"] input[type="url"]').isVisible());
 check('sheet sync actions present', await page.getByRole('button', { name: /مزامنة الآن|Sync now/ }).isVisible());
 await page.screenshot({ path: `${SHOTS}/sheet-sync-panel.png`, fullPage: false });
@@ -474,7 +529,7 @@ await page.waitForSelector('[role="dialog"][aria-label*="Google Sheets"]', { sta
 check('sheet sync panel closes', true);
 
 // ---- Excel dashboard import panel: opens, upload flow, URL auto-sync section ----
-await page.getByRole('button', { name: /التفضيلات|Preferences/ }).click();
+await settingsToggle.click();
 await page.getByRole('menuitem', { name: /استيراد الداش بورد|Excel dashboard import/ }).click();
 await page.waitForSelector('[role="dialog"][aria-label*="استيراد الداش بورد"]', { timeout: 15000 });
 check('dashboard import panel opens from preferences menu', true);
