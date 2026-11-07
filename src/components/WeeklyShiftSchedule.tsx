@@ -57,6 +57,15 @@ const STATUS_LABELS: Record<string, { en: string; ar: string }> = {
   unassigned: { en: 'UNASSIGNED', ar: 'غير مُعيّن' },
 };
 
+/** Short status badges for the team day view column headers (Teleopti style). */
+const TEAM_BADGE: Record<string, { ar: string; en: string; cls: string }> = {
+  off: { ar: 'راحة', en: 'OFF', cls: 'bg-slate-300 text-slate-700 dark:bg-slate-700 dark:text-slate-200' },
+  annual: { ar: 'سنوية', en: 'ANNUAL', cls: 'bg-yellow-300 text-yellow-900 dark:bg-yellow-500/30 dark:text-yellow-200' },
+  on_leave: { ar: 'إجازة', en: 'LEAVE', cls: 'bg-yellow-200 text-yellow-800 dark:bg-yellow-500/25 dark:text-yellow-200' },
+  holiday: { ar: 'عطلة', en: 'HOLIDAY', cls: 'bg-red-200 text-red-800 dark:bg-red-500/25 dark:text-red-200' },
+  unassigned: { ar: 'غير مجدول', en: 'Not scheduled', cls: 'bg-slate-100 text-slate-400 border border-dashed border-slate-300 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-500' },
+};
+
 const normalizeShift = (raw: any): Shift => ({
   ...raw,
   id: String(raw?.id ?? ''),
@@ -319,24 +328,25 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
     return () => window.removeEventListener('techsource:navigate-notification', onNavigate);
   }, []);
 
-  // Day view: breaks for the selected date (fetched when not already cached
-  // from the visible-week load — e.g. after navigating to another week).
+  // Team day view: employee-specific breaks for EVERY visible employee on the
+  // selected date, refetched whenever the day view opens or the date changes
+  // ("اجيب اليوم ويظهرلي كل الايجنت بجوار بعضهم" — one day, all agents).
   const dayViewKey = dateKey(dayDate);
+  const [teamDayBreaks, setTeamDayBreaks] = useState<Record<string, ScheduleBreak[]>>({});
+  const [teamSearch, setTeamSearch] = useState('');
   useEffect(() => {
-    if (viewMode !== 'day' || !employee || breaksByDate[dayViewKey]) return;
+    if (viewMode !== 'day' || !visibleEmployees.length) return;
     let cancelled = false;
     const load = async () => {
-      try {
-        const response = await fetch(`/api/employee-breaks?employeeId=${encodeURIComponent(employee.id)}&from=${dayViewKey}&to=${dayViewKey}`, { cache: 'no-store', headers: { Accept: 'application/json' } });
-        if (!response.ok) return;
-        const data = await parseResponse(response);
-        const forDay = data?.breaksByDate?.[dayViewKey];
-        if (!cancelled && data?.success && Array.isArray(forDay)) setBreaksByDate(prev => ({ ...prev, [dayViewKey]: forDay }));
-      } catch { /* employee-specific breaks are optional */ }
+      const map = await fetchExportBreaks(dayViewKey, dayViewKey);
+      if (cancelled) return;
+      const flat: Record<string, ScheduleBreak[]> = {};
+      for (const [id, byDate] of Object.entries(map)) flat[id] = byDate?.[dayViewKey] ?? [];
+      setTeamDayBreaks(flat);
     };
     void load();
     return () => { cancelled = true; };
-  }, [viewMode, dayViewKey, employee?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [viewMode, dayViewKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const valueFor = (key: string) => {
     if (draft[key] !== undefined) return draft[key];
@@ -364,6 +374,19 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
       if (sameId(a.employeeId, meId) || String(a.date ?? '').slice(0, 10) !== key) continue;
       const info = normShadowing(a.shadowing);
       if (info?.kind !== 'training' && info?.traineeId && sameId(info.traineeId, meId)) return { ...info, trainerId: String(a.employeeId) };
+    }
+    return null;
+  };
+  /** Team day view: trainer-side shadowing window for ANY employee. */
+  const teamOwnShadowingFor = (employeeId: string, key: string): ShadowingInfo | null =>
+    normShadowing((assignmentFor(employeeId, key) as any)?.shadowing);
+  /** Team day view: trainee-side shadowing window for ANY employee. */
+  const teamTraineeShadowingFor = (employeeId: string, key: string): (ShadowingInfo & { trainerId: string }) | null => {
+    if (!employeeId) return null;
+    for (const a of assignments as any[]) {
+      if (sameId(a.employeeId, employeeId) || String(a.date ?? '').slice(0, 10) !== key) continue;
+      const info = normShadowing(a.shadowing);
+      if (info?.kind !== 'training' && info?.traineeId && sameId(info.traineeId, employeeId)) return { ...info, trainerId: String(a.employeeId) };
     }
     return null;
   };
@@ -521,6 +544,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
       if (!response.ok || data?.success === false) throw new Error(extractApiError(data, lang === 'ar' ? 'تعذر حفظ الاستراحات' : 'Could not save breaks'));
       const saved = normalizeBreaks(data?.breaks);
       setBreaksByDate(prev => ({ ...prev, [breakEditor.dateKey]: saved }));
+      setTeamDayBreaks(prev => ({ ...prev, [employee.id]: saved }));
       setMessage(lang === 'ar' ? `تم حفظ استراحات ${breakEditor.dayName} لهذا الموظف` : `Breaks for ${breakEditor.dayName} saved for this employee`);
       setBreakEditor(null);
     } catch (err: unknown) {
@@ -774,7 +798,10 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
       const response = await fetch(`/api/employee-breaks?employeeId=${encodeURIComponent(employeeId)}&from=${date}&to=${date}`, { cache: 'no-store', headers: { Accept: 'application/json' } });
       if (!response.ok) return;
       const data = await parseResponse(response);
-      if (data?.success && data?.breaksByDate) setBreaksByDate((prev) => ({ ...prev, ...data.breaksByDate }));
+      if (data?.success && data?.breaksByDate) {
+        setBreaksByDate((prev) => ({ ...prev, ...data.breaksByDate }));
+        setTeamDayBreaks((prev) => ({ ...prev, [employeeId]: data.breaksByDate[date] ?? [] }));
+      }
     } catch { /* ignore */ }
   };
 
@@ -799,8 +826,58 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
     return { start: min, end: max };
   }, [weekResults]);
 
-  const span = Math.max(1, timeWindow.end - timeWindow.start);
-  const pctTop = (minutes: number) => ((minutes - timeWindow.start) / span) * 100;
+  /* Team day view: resolve every visible employee for the selected date once —
+     shared by the columns, the status badges, and the counts row. */
+  const teamDayResults = useMemo(() => visibleEmployees.map(person => ({
+    person,
+    resolved: resolveDayStatus({
+      dateKey: dayViewKey,
+      employeeId: person.id,
+      assignment: { ...(assignmentFor(person.id, dayViewKey) ?? {}), __employeeBreaks: teamDayBreaks[person.id] },
+      shifts,
+      leaves: suppliedLeaves,
+      holidays: suppliedHolidays,
+    }),
+  })), [visibleEmployees, assignments, teamDayBreaks, shifts, suppliedLeaves, suppliedHolidays, dayViewKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const teamDayCounts = useMemo(() => {
+    const c = { working: 0, off: 0, annual: 0, holiday: 0, unassigned: 0 };
+    for (const { resolved } of teamDayResults) {
+      if (resolved.status === 'working') c.working++;
+      else if (resolved.status === 'off') c.off++;
+      else if (resolved.status === 'annual') c.annual++;
+      else if (resolved.status === 'holiday') c.holiday++;
+      else c.unassigned++;
+    }
+    return c;
+  }, [teamDayResults]);
+
+  /* Team day timeline window across ALL agents (same rules as the week window). */
+  const teamDayWindow = useMemo(() => {
+    let min = 6 * 60, max = 22 * 60, overnight = false;
+    for (const { resolved } of teamDayResults) {
+      if (resolved.status !== 'working' || !resolved.shift) continue;
+      const s = timeToMinutes(resolved.shift.startTime);
+      const e = timeToMinutes(resolved.shift.endTime);
+      if (isOvernightShift(resolved.shift.startTime, resolved.shift.endTime)) { overnight = true; continue; }
+      min = Math.min(min, s); max = Math.max(max, e);
+      for (const b of resolved.effectiveBreaks) {
+        min = Math.min(min, timeToMinutes(b.startTime));
+        max = Math.max(max, timeToMinutes(b.endTime));
+      }
+    }
+    if (overnight) return { start: 0, end: 24 * 60 };
+    min = Math.floor(min / 60) * 60;
+    max = Math.ceil(max / 60) * 60;
+    if (max - min < 240) max = Math.min(24 * 60, min + 240);
+    return { start: min, end: max };
+  }, [teamDayResults]);
+
+  /* Shared timeline helpers follow the ACTIVE view's window: the week window
+     on week/month, the team day window inside the day view. */
+  const activeWindow = viewMode === 'day' ? teamDayWindow : timeWindow;
+  const span = Math.max(1, activeWindow.end - activeWindow.start);
+  const pctTop = (minutes: number) => ((minutes - activeWindow.start) / span) * 100;
   const pctHeight = (startMin: number, endMin: number) => ((endMin - startMin) / span) * 100;
   /** Blocks for a time range clipped to the window; overnight ranges split in two. */
   const blocksFor = (startTime: string, endTime: string) => {
@@ -808,8 +885,8 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
     const ranges = e > s ? [[s, e]] : [[s, 24 * 60], [0, e]];
     const out: Array<{ top: number; height: number }> = [];
     for (const [a, b] of ranges) {
-      const clippedStart = Math.max(a, timeWindow.start);
-      const clippedEnd = Math.min(b, timeWindow.end);
+      const clippedStart = Math.max(a, activeWindow.start);
+      const clippedEnd = Math.min(b, activeWindow.end);
       if (clippedEnd - clippedStart < 5) continue; // skip slivers
       out.push({ top: pctTop(clippedStart), height: pctHeight(clippedStart, clippedEnd) });
     }
@@ -818,13 +895,12 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
   const axisHours = useMemo(() => {
     const stepHours = 1;
     const list: number[] = [];
-    for (let h = Math.ceil(timeWindow.start / 60); h <= Math.floor(timeWindow.end / 60); h += stepHours) list.push(h * 60);
+    for (let h = Math.ceil(activeWindow.start / 60); h <= Math.floor(activeWindow.end / 60); h += stepHours) list.push(h * 60);
     return list;
-  }, [timeWindow, span]);
+  }, [activeWindow]);
 
   const gridHeightDesktop = (span / 60) * HOUR_PX_DESKTOP;
   const gridHeightMobile = (span / 60) * HOUR_PX_MOBILE;
-  const gridHeightDay = (span / 60) * 72;
   const todayKey = dateKey(new Date());
   const mobileDay = weekResults[Math.min(6, Math.max(0, mobileDayIndex))] ?? weekResults[0];
   const monthName = new Intl.DateTimeFormat(lang === 'ar' ? 'ar-EG' : 'en', { month: 'long' }).format(days[0].date);
@@ -855,7 +931,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
      day timeline so colors/positions stay identical. */
   const renderTimelineBlocks = (
     resolved: ReturnType<typeof resolveFor>,
-    opts: { mobile?: boolean; dayKey: string; dayLabel: string; shadowing?: ShadowingInfo | null; traineeShadowing?: (ShadowingInfo & { trainerId: string }) | null }
+    opts: { mobile?: boolean; detailsOnly?: boolean; dayKey: string; dayLabel: string; shadowing?: ShadowingInfo | null; traineeShadowing?: (ShadowingInfo & { trainerId: string }) | null }
   ) => {
     const { resolved: r } = { resolved };
     const mobile = Boolean(opts.mobile);
@@ -939,7 +1015,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
             <button
               type="button"
               key={`brk-${item.id}-${sIdx}`}
-              onClick={() => (isLeader ? openBreakEditor({ key: opts.dayKey, en: opts.dayLabel, ar: opts.dayLabel }) : setSelectedBreak({ name: breakName, startTime: item.startTime, endTime: item.endTime, durationMinutes: item.durationMinutes || 0 }))}
+              onClick={() => (isLeader && !opts.detailsOnly ? openBreakEditor({ key: opts.dayKey, en: opts.dayLabel, ar: opts.dayLabel }) : setSelectedBreak({ name: breakName, startTime: item.startTime, endTime: item.endTime, durationMinutes: item.durationMinutes || 0 }))}
               className={`absolute inset-x-1 z-10 flex cursor-pointer flex-col items-center justify-center overflow-hidden rounded-sm px-0.5 text-center shadow-md ring-1 ring-red-300/60 focus:outline-none focus:ring-2 focus:ring-red-400 ${TEO.breakBar}`}
               style={{ top: `${seg.top}%`, height: `${barHeightPct}%`, minHeight: 8 }}
               title={`${lang === 'ar' ? 'البريك' : 'Break'}: ${timeRange}`}
@@ -1115,53 +1191,85 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
           </div>
         </div>
       ) : viewMode === 'day' ? (() => {
-        /* ---------------- DAY VIEW (one day, full screen size) ---------------- */
+        /* ------------- TEAM DAY VIEW (Teleopti style: all agents side by side) -------------
+           "اجيب اليوم ويظهرلي كل الايجنت بجوار بعضهم في اليوم ده بالشفتات ومين اوف او انيوال
+           والبريكات" — pick a day and see every agent as a column: shift badge, OFF /
+           ANNUAL / HOLIDAY state, breaks and shadowing windows on a shared time axis. */
         const day = { key: dayViewKey, date: dayDate, ar: DAY_NAMES_AR[dayDate.getDay()], en: DAY_NAMES_EN[dayDate.getDay()] };
-        const resolved = resolveFor(day.key);
-        const shift = resolved.shift;
-        const bannerSub = resolved.status === 'working' && shift
-          ? `${lang === 'ar' ? 'وردية' : 'Shift'} ${fmt12(timeToMinutes(shift.startTime), lang)} - ${fmt12(timeToMinutes(shift.endTime), lang)}`
-          : lang === 'ar' ? (STATUS_LABELS[resolved.label] ?? STATUS_LABELS.unassigned).ar : (STATUS_LABELS[resolved.label] ?? STATUS_LABELS.unassigned).en;
+        const q = teamSearch.trim().toLowerCase();
+        const columns = teamDayResults.filter(({ person }) => !q
+          || String(person.nameEn || '').toLowerCase().includes(q)
+          || String(person.nameAr || '').toLowerCase().includes(q)
+          || String(person.code || '').toLowerCase().includes(q));
+        const colCount = Math.max(1, columns.length);
+        const gridTemplate = `48px repeat(${colCount}, minmax(0, 112px))`;
+        const badgeFor = (resolved: ReturnType<typeof resolveDayStatus>) => {
+          if (resolved.status === 'working' && resolved.shift) {
+            const s = resolved.shift;
+            const name = lang === 'ar' ? (s.nameAr || s.name) : (s.nameEn || s.name);
+            return <span data-team-day-badge className="inline-block max-w-[104px] truncate rounded bg-green-500 px-1.5 py-0.5 text-[8px] font-black text-white" title={`${name} ${s.startTime}–${s.endTime}`}>{name}</span>;
+          }
+          const b = TEAM_BADGE[resolved.label] ?? TEAM_BADGE.unassigned;
+          return <span data-team-day-badge className={`inline-block max-w-[104px] truncate rounded px-1.5 py-0.5 text-[8px] font-black ${b.cls}`}>{lang === 'ar' ? b.ar : b.en}</span>;
+        };
+        const countChips: Array<{ id: string; label: string; value: number; cls: string; dot: string }> = [
+          { id: 'working', label: lang === 'ar' ? 'دوام' : 'On shift', value: teamDayCounts.working, cls: 'bg-green-50 text-green-700 dark:bg-green-500/15 dark:text-green-300', dot: 'bg-green-500' },
+          { id: 'off', label: lang === 'ar' ? 'راحة أسبوعية' : 'Weekly off', value: teamDayCounts.off, cls: 'bg-slate-100 text-slate-600 dark:bg-slate-700/40 dark:text-slate-300', dot: 'bg-slate-400' },
+          { id: 'annual', label: lang === 'ar' ? 'إجازة سنوية' : 'Annual leave', value: teamDayCounts.annual, cls: 'bg-yellow-50 text-yellow-800 dark:bg-yellow-500/15 dark:text-yellow-300', dot: 'bg-yellow-400' },
+          { id: 'holiday', label: lang === 'ar' ? 'عطلة رسمية' : 'Holiday', value: teamDayCounts.holiday, cls: 'bg-red-50 text-red-700 dark:bg-red-500/15 dark:text-red-300', dot: 'bg-red-400' },
+          { id: 'unassigned', label: lang === 'ar' ? 'غير مجدول' : 'Not scheduled', value: teamDayCounts.unassigned, cls: 'bg-slate-50 text-slate-400 dark:bg-slate-800/40 dark:text-slate-400', dot: 'bg-slate-300' },
+        ];
         return (
-          <div className="relative rounded-xl border border-slate-200 p-2 touch-pan-y dark:border-slate-700" onTouchStart={e => setTouchStartX(e.touches[0]?.clientX ?? null)} onTouchEnd={e => { if (touchStartX === null) return; const delta = e.changedTouches[0].clientX - touchStartX; if (Math.abs(delta) > 55) goToDate(addDays(dayDate, delta < 0 ? 1 : -1)); setTouchStartX(null); }}>
-            <div className="mb-2 flex items-center justify-center gap-2">
+          <div className="space-y-2 rounded-xl border border-slate-200 p-2 dark:border-slate-700">
+            {/* Date navigation — prev/next arrows + date picker + Today */}
+            <div className="flex flex-wrap items-center justify-center gap-2">
               <button type="button" onClick={() => goToDate(addDays(dayDate, -1))} className="shrink-0 rounded-lg border border-slate-300 bg-white p-2 text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800/70" aria-label={lang === 'ar' ? 'اليوم السابق' : 'Previous day'}><ChevronRight className="h-4 w-4" /></button>
-              <span className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-2 py-2 text-center text-xs font-black text-slate-800 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100">{lang === 'ar' ? day.ar : day.en} · <span dir="ltr" className="font-mono">{fmtDMY(dayDate)}</span></span>
+              <span data-team-day-date className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-2 py-2 text-center text-xs font-black text-slate-800 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100">{lang === 'ar' ? day.ar : day.en} · <span dir="ltr" className="font-mono">{fmtDMY(dayDate)}</span></span>
               <button type="button" onClick={() => goToDate(addDays(dayDate, 1))} className="shrink-0 rounded-lg border border-slate-300 bg-white p-2 text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800/70" aria-label={lang === 'ar' ? 'اليوم التالي' : 'Next day'}><ChevronLeft className="h-4 w-4" /></button>
+              <input type="date" data-team-day-input value={dayViewKey} onChange={e => { if (e.target.value) goToDate(new Date(`${e.target.value}T00:00:00`)); }} aria-label={lang === 'ar' ? 'اختيار التاريخ' : 'Pick a date'} className="h-9 rounded-lg border border-slate-300 bg-white px-2 font-mono text-xs font-black text-slate-800 outline-none focus:border-blue-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100" />
               <button type="button" onClick={() => goToDate(new Date())} className="shrink-0 rounded-lg border border-blue-300 bg-blue-50 px-3 py-2 text-xs font-black text-blue-700 hover:bg-blue-100 dark:border-blue-500/40 dark:bg-blue-500/15 dark:text-blue-300">{lang === 'ar' ? 'اليوم' : 'Today'}</button>
             </div>
-            <div className="mb-2 rounded-lg bg-blue-600 px-3 py-2 text-center text-white">
-              <div className="text-sm font-black tracking-wide">{(lang === 'ar' ? day.ar : day.en).toUpperCase()} {dayDate.getDate()}</div>
-              <div className="text-[11px] font-bold opacity-95">{resolved.status === 'working' && shift ? <span dir="ltr">{fmt12(timeToMinutes(shift.startTime), lang)} - {fmt12(timeToMinutes(shift.endTime), lang)}</span> : bannerSub}</div>
-              {(() => {
-                const sw = validShadowing(shadowingFor(day.key)) ? shadowingFor(day.key) : null;
-                const tw = sw ? null : traineeShadowingFor(day.key);
-                const win = sw ?? tw;
-                if (!win) return null;
-                const partner = sw ? (sw.traineeId ? employeeName(sw.traineeId) : '') : employeeName((tw as any).trainerId);
-                return (
-                  <div className="mt-0.5 inline-block rounded bg-sky-400 px-2 py-0.5 text-[10px] font-black text-white shadow" dir="ltr">
-                    {lang === 'ar' ? 'شادوينج' : 'Shadowing'} {fmt12(timeToMinutes(win.startTime), lang)} - {fmt12(timeToMinutes(win.endTime), lang)}{partner ? (lang === 'ar' ? ` · ${sw ? 'تدريب' : 'مع'} ${partner}` : ` · ${sw ? 'training' : 'with'} ${partner}`) : ''}
-                  </div>
-                );
-              })()}
-            </div>
-            <div className="relative flex" dir="ltr">
-              <div className="relative w-12 shrink-0" style={{ height: gridHeightDay }}>
-                {axisHours.map(minutes => (
-                  <span key={minutes} className="absolute -translate-y-1/2 text-end font-mono text-[9px] font-bold text-slate-400 dark:text-slate-500" style={{ top: `${pctTop(minutes)}%`, right: 4, width: '100%' }}>{fmt12(minutes, lang)}</span>
+            {/* Status counts + name search (Teleopti "Search name") */}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div data-team-day-counts className="flex flex-wrap items-center gap-1.5">
+                {countChips.map(chip => (
+                  <span key={chip.id} className={`inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[10px] font-black ${chip.cls}`}><span className={`h-2 w-2 rounded-full ${chip.dot}`} />{chip.label}: {chip.value}</span>
                 ))}
               </div>
-              <div className={`relative flex-1 rounded-md border border-slate-200 bg-slate-50/60 dark:border-slate-800 dark:bg-slate-900/60 ${isDayDirty(day.key) ? 'ring-2 ring-inset ring-blue-400' : ''}`} style={{ height: gridHeightDay }}>
-                {renderTimelineBlocks(resolved, { mobile: true, dayKey: day.key, dayLabel: lang === 'ar' ? day.ar : day.en, shadowing: shadowingFor(day.key), traineeShadowing: traineeShadowingFor(day.key) })}
+              <input type="search" data-team-day-search value={teamSearch} onChange={e => setTeamSearch(e.target.value)} placeholder={lang === 'ar' ? 'بحث باسم الايجنت' : 'Search name'} className="h-9 w-full max-w-[220px] rounded-lg border border-slate-300 bg-white px-3 text-xs font-bold text-slate-800 outline-none focus:border-blue-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100" />
+            </div>
+            {/* Agents side by side: time axis + one column per agent */}
+            <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700" dir="ltr">
+              <div style={{ width: 48 + colCount * 112, minWidth: '100%' }}>
+                <div className="grid border-b border-slate-200 dark:border-slate-700" style={{ gridTemplateColumns: gridTemplate }}>
+                  <div className="flex items-end justify-center border-e border-slate-200 bg-slate-50 pb-1 text-center text-[9px] font-black uppercase tracking-wide text-slate-400 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-500">{lang === 'ar' ? 'الوقت' : 'Time'}</div>
+                  {columns.map(({ person, resolved }) => (
+                    <div key={person.id} className="border-e border-slate-200 bg-slate-50 px-1 py-1.5 text-center last:border-e-0 dark:border-slate-800 dark:bg-slate-900/60" title={lang === 'ar' ? person.nameAr : person.nameEn}>
+                      <div className="truncate text-[10px] font-black text-slate-700 dark:text-slate-200">{lang === 'ar' ? person.nameAr : person.nameEn}</div>
+                      <div className="text-[8px] font-bold text-slate-400">{person.code}</div>
+                      {badgeFor(resolved)}
+                    </div>
+                  ))}
+                </div>
+                <div className="grid" style={{ gridTemplateColumns: gridTemplate }}>
+                  <div className="relative border-e border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/60" style={{ height: gridHeightMobile }}>
+                    {axisHours.map(minutes => (
+                      <span key={minutes} className="absolute -translate-y-1/2 pe-1 text-end font-mono text-[9px] font-bold text-slate-400 dark:text-slate-500" style={{ top: `${pctTop(minutes)}%`, right: 2, width: '100%' }}>{fmt12(minutes, lang)}</span>
+                    ))}
+                  </div>
+                  {columns.map(({ person, resolved }) => {
+                    const sw = teamOwnShadowingFor(person.id, day.key);
+                    const tw = sw ? null : teamTraineeShadowingFor(person.id, day.key);
+                    return (
+                      <div key={person.id} data-team-day-col={person.id} className={`relative border-e border-slate-200 last:border-e-0 dark:border-slate-800 ${day.key === todayKey ? 'bg-blue-50/40 dark:bg-blue-500/10' : 'bg-white dark:bg-slate-900'}`} style={{ height: gridHeightMobile }}>
+                        {renderTimelineBlocks(resolved, { mobile: true, detailsOnly: true, dayKey: day.key, dayLabel: lang === 'ar' ? day.ar : day.en, shadowing: sw, traineeShadowing: tw })}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
-            {isLeader && resolved.status === 'working' && (
-              <div className="absolute bottom-3 end-3 flex items-center gap-2">
-                <button type="button" onClick={() => openBreakEditor(day)} className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-600 text-white shadow-lg hover:bg-blue-700" aria-label={lang === 'ar' ? 'تعديل الاستراحات' : 'Edit breaks'}><Coffee className="h-4 w-4" /></button>
-                <button type="button" onClick={() => openShadowEditor(day)} className="flex h-10 w-10 items-center justify-center rounded-full bg-sky-500 text-white shadow-lg hover:bg-sky-600" aria-label={lang === 'ar' ? 'إضافة تدريب أو شادوينج' : 'Add Training or Shadowing'}><Users className="h-4 w-4" /></button>
-              </div>
-            )}
+            {columns.length === 0 && <div className="rounded-lg border border-dashed border-slate-300 p-6 text-center text-xs font-bold text-slate-400 dark:border-slate-600 dark:text-slate-500">{lang === 'ar' ? 'لا يوجد ايجنت بالاسم ده' : 'No agent matches this name'}</div>}
           </div>
         );
       })() : (
