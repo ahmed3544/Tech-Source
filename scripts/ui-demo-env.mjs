@@ -75,7 +75,11 @@ await client.query(`INSERT INTO employees (id, code, name_ar, name_en, pin, role
   ('emp-101', 'EMP101', 'مروة السيد', 'Marwa Elsayed', '1234', 'employee', 'active', 'shift-1', 'tech-source', 'emp-011'),
   ('emp-102', 'EMP102', 'كريم عبد الله', 'Karim Abdullah', '1234', 'employee', 'active', 'shift-1', 'tech-source', 'emp-011')`);
 await client.query(`INSERT INTO shifts (id, company_id, name, start_time, end_time, duration_minutes, break_minutes, grace_period_minutes)
-  VALUES ('shift-1', 'tech-source', 'Morning Shift', '09:00', '17:00', 480, 0, 10)`);
+  VALUES ('shift-1', 'tech-source', 'Morning Shift', '09:00', '17:00', 480, 0, 10),
+         ('shift-eve', 'tech-source', 'Evening Shift', '15:00', '23:00', 480, 0, 10),
+         ('shift-early', 'tech-source', 'Early Shift', '06:00', '14:00', 480, 0, 10)`);
+// NOTE: seed order is deliberately NON-ascending (09:00 → 15:00 → 06:00) so the
+// "عايزك تنظم الشفتات تصاعدي" walkthrough check proves the UI sorts ascending.
 
 // Weekly schedule: working days, Friday OFF for both agents
 const assignments = [];

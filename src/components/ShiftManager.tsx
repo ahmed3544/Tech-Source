@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Plus, Edit2, Trash2, X, Save, Coffee } from 'lucide-react';
 import { Shift, ShiftBreak, Language } from '../types';
+import { sortShiftsAscending } from '../utils/shiftSort';
 
 interface ShiftManagerProps {
   shifts: Shift[];
@@ -159,12 +160,12 @@ export const ShiftManager: React.FC<ShiftManagerProps> = ({
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {shifts.map(shift => (
-          <div key={shift.id} className="border border-gray-200 rounded-lg p-4 bg-white dark:bg-slate-900 dark:border-gray-700">
+        {sortShiftsAscending(shifts).map(shift => (
+          <div key={shift.id} data-shift-card className="border border-gray-200 rounded-lg p-4 bg-white dark:bg-slate-900 dark:border-gray-700">
             <div className="flex justify-between items-start mb-3">
               <div>
                 <h4 className="font-bold text-gray-900 dark:text-gray-100">{lang === 'ar' ? shift.nameAr : shift.nameEn}</h4>
-                <p className="text-sm text-gray-600 dark:text-gray-300">{shift.startTime} - {shift.endTime}</p>
+                <p data-shift-card-time className="text-sm text-gray-600 dark:text-gray-300">{shift.startTime} - {shift.endTime}</p>
                 {(shift.startDate || shift.endDate) && (
                   <p className="text-xs text-emerald-700 mt-1 font-semibold dark:text-emerald-300">
                     {lang === 'ar' ? 'الفترة: ' : 'Period: '}{shift.startDate || '—'} {lang === 'ar' ? 'إلى' : 'to'} {shift.endDate || '—'}

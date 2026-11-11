@@ -5,6 +5,7 @@ import { ShiftManager } from './ShiftManager';
 import { ShiftSwapPanel } from './ShiftSwapPanel';
 import { BreakRequestPanel } from './BreakRequestPanel';
 import { authHeaders, errorToMessage, extractApiError, parseResponse } from '../utils/errors';
+import { sortShiftsAscending } from '../utils/shiftSort';
 import { exportScheduleToExcel } from '../utils/scheduleExport';
 import { ImportPreview, parseScheduleWorkbook } from '../utils/scheduleImport';
 import {
@@ -1112,9 +1113,9 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
       <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-2 dark:border-slate-700 dark:bg-slate-900/60">
         {viewMode !== 'day' && (
         <div className="flex items-center justify-center gap-2">
-          <button type="button" onClick={() => { if (viewMode === 'day') goToDate(addDays(dayDate, -1)); else setWeekStart(addDays(weekStart, -7)); }} className="shrink-0 rounded-lg border border-slate-300 bg-white p-2 text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800/70" aria-label={viewMode === 'day' ? (lang === 'ar' ? 'اليوم السابق' : 'Previous day') : (lang === 'ar' ? 'الأسبوع السابق' : 'Previous week')}><ChevronRight className="h-4 w-4" /></button>
+          <button type="button" onClick={() => setWeekStart(addDays(weekStart, -7))} className="shrink-0 rounded-lg border border-slate-300 bg-white p-2 text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800/70" aria-label={lang === 'ar' ? 'الأسبوع السابق' : 'Previous week'}><ChevronRight className="h-4 w-4" /></button>
           <span data-range-label className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-2 py-2 text-center font-mono text-xs font-black text-slate-800 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100">{toolbarRangeLabel}</span>
-          <button type="button" onClick={() => { if (viewMode === 'day') goToDate(addDays(dayDate, 1)); else setWeekStart(addDays(weekStart, 7)); }} className="shrink-0 rounded-lg border border-slate-300 bg-white p-2 text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800/70" aria-label={viewMode === 'day' ? (lang === 'ar' ? 'اليوم التالي' : 'Next day') : (lang === 'ar' ? 'الأسبوع التالي' : 'Next week')}><ChevronLeft className="h-4 w-4" /></button>
+          <button type="button" onClick={() => setWeekStart(addDays(weekStart, 7))} className="shrink-0 rounded-lg border border-slate-300 bg-white p-2 text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800/70" aria-label={lang === 'ar' ? 'الأسبوع التالي' : 'Next week'}><ChevronLeft className="h-4 w-4" /></button>
         </div>
         )}
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1393,7 +1394,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
                         <option value={OFF}>{lang === 'ar' ? 'راحة أسبوعية (OFF)' : 'OFF'}</option>
                         <option value={ANNUAL}>{lang === 'ar' ? 'إجازة سنوية' : 'Annual Leave'}</option>
                         <option value={HOLIDAY}>{lang === 'ar' ? 'عطلة رسمية' : 'Holiday'}</option>
-                        {shifts.map(s => <option key={s.id} value={s.id}>{lang === 'ar' ? s.nameAr || s.name : s.nameEn || s.name} — {s.startTime ? fmt24(timeToMinutes(s.startTime), lang) : '--'}–{s.endTime ? fmt24(timeToMinutes(s.endTime), lang) : '--'}</option>)}
+                        {sortShiftsAscending(shifts).map(s => <option key={s.id} value={s.id}>{lang === 'ar' ? s.nameAr || s.name : s.nameEn || s.name} — {s.startTime ? fmt24(timeToMinutes(s.startTime), lang) : '--'}–{s.endTime ? fmt24(timeToMinutes(s.endTime), lang) : '--'}</option>)}
                       </select>
                       <div className="mt-2 grid grid-cols-2 gap-2">
                         <button type="button" onClick={() => openBreakEditor(day)} disabled={resolveFor(day.key).status !== 'working'} className="inline-flex h-10 items-center justify-center gap-1.5 rounded-lg bg-red-100 px-3 text-xs font-black text-red-700 disabled:opacity-40 dark:bg-red-500/15 dark:text-red-300"><Coffee className="h-4 w-4" />{lang === 'ar' ? 'البريكات' : 'Breaks'}</button>
@@ -1441,7 +1442,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
                         <option value={OFF}>{lang === 'ar' ? 'راحة أسبوعية (OFF)' : 'OFF'}</option>
                         <option value={ANNUAL}>{lang === 'ar' ? 'إجازة سنوية (Annual Leave)' : 'Annual Leave'}</option>
                         <option value={HOLIDAY}>{lang === 'ar' ? 'عطلة رسمية (Holiday)' : 'Holiday'}</option>
-                        {shifts.map(s => <option key={s.id} value={s.id}>{lang === 'ar' ? s.nameAr || s.name : s.nameEn || s.name} — {s.startTime ? fmt24(timeToMinutes(s.startTime), lang) : '--'}–{s.endTime ? fmt24(timeToMinutes(s.endTime), lang) : '--'}</option>)}
+                        {sortShiftsAscending(shifts).map(s => <option key={s.id} value={s.id}>{lang === 'ar' ? s.nameAr || s.name : s.nameEn || s.name} — {s.startTime ? fmt24(timeToMinutes(s.startTime), lang) : '--'}–{s.endTime ? fmt24(timeToMinutes(s.endTime), lang) : '--'}</option>)}
                       </select>
                       <button type="button" onClick={() => openBreakEditor(day)} disabled={!isWorking} className={`inline-flex h-7 w-full items-center justify-center gap-1 rounded-lg text-[9px] font-black transition ${isWorking ? 'bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-500/15 dark:text-red-300 dark:hover:bg-red-500/25' : 'cursor-not-allowed bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500'}`} title={isWorking ? (lang === 'ar' ? 'تعديل استراحات هذا اليوم' : "Edit this day's breaks") : (lang === 'ar' ? 'الاستراحات لأيام الدوام فقط' : 'Breaks only on working days')}>
                         <Coffee className="h-3 w-3" />{lang === 'ar' ? 'الاستراحات' : 'Breaks'}
