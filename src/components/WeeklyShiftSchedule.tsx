@@ -267,6 +267,17 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
     return rosterEmployees;
   }, [rosterEmployees, isLeader, currentUser]);
 
+  /* Day view roster (Calabrio style: "My Schedule" next to the rest of the
+     agents who have shifts that day — "اضيف ماي اسكدول وجمبه باقي الاجنت الي
+     نازلين شفتات في نفس اليوم"): the logged-in user's own column FIRST (admins
+     and leaders included — rosterEmployees excludes management accounts), then
+     the rest of the roster. Week/month views keep their existing visibility. */
+  const dayViewPeople = useMemo(() => {
+    const me = employees.find(e => sameId(e.id, currentUser?.id)) || null;
+    const rest = rosterEmployees.filter(e => !me || !sameId(e.id, me.id));
+    return me ? [me, ...rest] : rest;
+  }, [employees, rosterEmployees, currentUser]);
+
   const employee = visibleEmployees.find(e => sameId(e.id, selectedEmployeeId)) || visibleEmployees[0] || null;
 
   useEffect(() => {
@@ -335,10 +346,10 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
   const [teamDayBreaks, setTeamDayBreaks] = useState<Record<string, ScheduleBreak[]>>({});
   const [teamSearch, setTeamSearch] = useState('');
   useEffect(() => {
-    if (viewMode !== 'day' || !visibleEmployees.length) return;
+    if (viewMode !== 'day' || !dayViewPeople.length) return;
     let cancelled = false;
     const load = async () => {
-      const map = await fetchExportBreaks(dayViewKey, dayViewKey);
+      const map = await fetchExportBreaks(dayViewKey, dayViewKey, dayViewPeople);
       if (cancelled) return;
       const flat: Record<string, ScheduleBreak[]> = {};
       for (const [id, byDate] of Object.entries(map)) flat[id] = byDate?.[dayViewKey] ?? [];
@@ -346,7 +357,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
     };
     void load();
     return () => { cancelled = true; };
-  }, [viewMode, dayViewKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [viewMode, dayViewKey, dayViewPeople]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const valueFor = (key: string) => {
     if (draft[key] !== undefined) return draft[key];
@@ -664,10 +675,11 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
     ? `${lang === 'ar' ? DAY_NAMES_AR[dayDate.getDay()] : DAY_NAMES_EN[dayDate.getDay()]} · ${fmtDMY(dayDate)}`
     : rangeLabel;
 
-  /** Fetches employee-specific breaks for every visible employee over [from,to]. */
-  const fetchExportBreaks = async (from: string, to: string) => {
+  /** Fetches employee-specific breaks for every visible employee over [from,to].
+   *  The day view passes its own roster ("My Schedule" + the whole team). */
+  const fetchExportBreaks = async (from: string, to: string, people: Employee[] = visibleEmployees) => {
     const map: Record<string, Record<string, ScheduleBreak[]>> = {};
-    await Promise.all(visibleEmployees.map(async (person) => {
+    await Promise.all(people.map(async (person) => {
       try {
         const response = await fetch(`/api/employee-breaks?employeeId=${encodeURIComponent(person.id)}&from=${from}&to=${to}`, { cache: 'no-store', headers: { Accept: 'application/json' } });
         if (!response.ok) return;
@@ -828,7 +840,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
 
   /* Team day view: resolve every visible employee for the selected date once —
      shared by the columns, the status badges, and the counts row. */
-  const teamDayResults = useMemo(() => visibleEmployees.map(person => ({
+  const teamDayResults = useMemo(() => dayViewPeople.map(person => ({
     person,
     resolved: resolveDayStatus({
       dateKey: dayViewKey,
@@ -838,7 +850,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
       leaves: suppliedLeaves,
       holidays: suppliedHolidays,
     }),
-  })), [visibleEmployees, assignments, teamDayBreaks, shifts, suppliedLeaves, suppliedHolidays, dayViewKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  })), [dayViewPeople, assignments, teamDayBreaks, shifts, suppliedLeaves, suppliedHolidays, dayViewKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const teamDayCounts = useMemo(() => {
     const c = { working: 0, off: 0, annual: 0, holiday: 0, unassigned: 0 };
@@ -1243,13 +1255,17 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
               <div style={{ width: 48 + colCount * 112, minWidth: '100%' }}>
                 <div className="grid border-b border-slate-200 dark:border-slate-700" style={{ gridTemplateColumns: gridTemplate }}>
                   <div className="flex items-end justify-center border-e border-slate-200 bg-slate-50 pb-1 text-center text-[9px] font-black uppercase tracking-wide text-slate-400 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-500">{lang === 'ar' ? 'الوقت' : 'Time'}</div>
-                  {columns.map(({ person, resolved }) => (
-                    <div key={person.id} className="border-e border-slate-200 bg-slate-50 px-1 py-1.5 text-center last:border-e-0 dark:border-slate-800 dark:bg-slate-900/60" title={lang === 'ar' ? person.nameAr : person.nameEn}>
-                      <div className="truncate text-[10px] font-black text-slate-700 dark:text-slate-200">{lang === 'ar' ? person.nameAr : person.nameEn}</div>
-                      <div className="text-[8px] font-bold text-slate-400">{person.code}</div>
-                      {badgeFor(resolved)}
-                    </div>
-                  ))}
+                  {columns.map(({ person, resolved }) => {
+                    const isMe = sameId(person.id, currentUser?.id);
+                    return (
+                      <div key={person.id} className={`border-e border-slate-200 px-1 py-1.5 text-center last:border-e-0 dark:border-slate-800 ${isMe ? 'bg-indigo-50 ring-1 ring-inset ring-indigo-300 dark:bg-indigo-500/20 dark:ring-indigo-500/40' : 'bg-slate-50 dark:bg-slate-900/60'}`} title={lang === 'ar' ? person.nameAr : person.nameEn}>
+                        <div className={`truncate text-[10px] font-black ${isMe ? 'text-indigo-700 dark:text-indigo-200' : 'text-slate-700 dark:text-slate-200'}`}>{lang === 'ar' ? person.nameAr : person.nameEn}</div>
+                        <div className={`text-[8px] font-bold ${isMe ? 'text-indigo-400 dark:text-indigo-300/80' : 'text-slate-400'}`}>{person.code}</div>
+                        {isMe && <div data-my-schedule-chip className="mt-0.5 inline-block rounded bg-indigo-600 px-1.5 py-0.5 text-[8px] font-black text-white">{lang === 'ar' ? 'جدولي' : 'My Schedule'}</div>}
+                        {badgeFor(resolved)}
+                      </div>
+                    );
+                  })}
                 </div>
                 <div className="grid" style={{ gridTemplateColumns: gridTemplate }}>
                   <div className="relative border-e border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/60" style={{ height: gridHeightMobile }}>
@@ -1260,8 +1276,9 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
                   {columns.map(({ person, resolved }) => {
                     const sw = teamOwnShadowingFor(person.id, day.key);
                     const tw = sw ? null : teamTraineeShadowingFor(person.id, day.key);
+                    const isMe = sameId(person.id, currentUser?.id);
                     return (
-                      <div key={person.id} data-team-day-col={person.id} className={`relative border-e border-slate-200 last:border-e-0 dark:border-slate-800 ${day.key === todayKey ? 'bg-blue-50/40 dark:bg-blue-500/10' : 'bg-white dark:bg-slate-900'}`} style={{ height: gridHeightMobile }}>
+                      <div key={person.id} data-team-day-col={person.id} {...(isMe ? { 'data-my-schedule-col': person.id } : {})} className={`relative border-e border-slate-200 last:border-e-0 dark:border-slate-800 ${isMe ? 'bg-indigo-50/50 dark:bg-indigo-500/10' : day.key === todayKey ? 'bg-blue-50/40 dark:bg-blue-500/10' : 'bg-white dark:bg-slate-900'}`} style={{ height: gridHeightMobile }}>
                         {renderTimelineBlocks(resolved, { mobile: true, detailsOnly: true, dayKey: day.key, dayLabel: lang === 'ar' ? day.ar : day.en, shadowing: sw, traineeShadowing: tw })}
                       </div>
                     );
