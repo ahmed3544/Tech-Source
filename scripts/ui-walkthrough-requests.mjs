@@ -57,7 +57,8 @@ const login = async (code, pin, { leader = true } = {}) => {
   if (leader) await openExcelSection();
   // Employees see the schedule-requests card again — wait for the schedule
   // toolbar as their login-complete signal (same as before the regression).
-  else await page.locator('[data-range-label]').first().waitFor({ state: 'visible', timeout: 25000 });
+  // Employee default view = day → their toolbar signal is the day date bar.
+  else await page.locator('[data-team-day-date], [data-range-label]').first().waitFor({ state: 'visible', timeout: 25000 });
 };
 
 // ---- Login as admin ----
@@ -179,11 +180,18 @@ if (await firstNotif.count()) {
 await page.getByRole('button', { name: /^(يوم|Day)$/ }).click();
 await page.waitForTimeout(500);
 check('day view opens from toggle', await page.getByRole('button', { name: /اليوم السابق|Previous day/ }).first().isVisible());
-const label1 = (await page.locator('[data-range-label]').innerText()).trim();
+const label1 = (await page.locator('[data-team-day-date]').innerText()).trim();
 await page.getByRole('button', { name: /اليوم التالي|Next day/ }).first().click();
 await page.waitForTimeout(400);
-const label2 = (await page.locator('[data-range-label]').innerText()).trim();
+const label2 = (await page.locator('[data-team-day-date]').innerText()).trim();
 check('day navigation moves to next day', label1 !== label2, `${label1} → ${label2}`);
+// "دي متكرره مرتين" — the date bar + Today used to render TWICE in day view
+// (main toolbar + day toolbar). The day toolbar now owns them alone.
+const dayDateBars = await page.locator('[data-team-day-date]').count();
+const rangeBars = await page.locator('[data-range-label]').count();
+check('day view date bar renders EXACTLY once', dayDateBars === 1 && rangeBars === 0, `day-date=${dayDateBars} range-label=${rangeBars}`);
+const todayButtons = await page.locator('button').filter({ hasText: /^اليوم$/ }).count();
+check('day view shows exactly ONE Today button', todayButtons === 1, `today=${todayButtons}`);
 await page.getByRole('button', { name: 'اليوم', exact: true }).last().click();
 await page.waitForTimeout(400);
 // "لما ادوس علي توداي يجبلي جدولي بس" — Today scope = the selected person's schedule ONLY
@@ -236,6 +244,7 @@ await page.setViewportSize({ width: 1440, height: 900 });
 await page.waitForTimeout(200);
 await page.getByRole('button', { name: /^(أسبوع|Week)$/ }).click();
 await page.waitForTimeout(300);
+check('week view keeps a single range bar', await page.locator('[data-range-label]').count() === 1, `range-label=${await page.locator('[data-range-label]').count()}`);
 
 // ---- Month export ----
 await page.getByRole('button', { name: /^شهر$|^Month$/ }).click();
@@ -312,7 +321,7 @@ check('employee does NOT see the direct swap tool (admin-only)', !(await page.lo
 check('employee sees break tab', await page.getByRole('button', { name: /تغيير البريك|Break change/ }).first().isVisible().catch(() => false));
 check('employee sees the swap submit form (date + target + send)', await page.getByText(/تاريخ التبديل|Swap Date/).first().isVisible().catch(() => false) && await page.getByText(/التبديل مع|Swap With/).first().isVisible().catch(() => false));
 check('employee does NOT see the Excel import boxes (admin-only)', !(await exportBtn.isVisible().catch(() => false)));
-check('employee still sees their schedule', await page.locator('[data-range-label]').first().isVisible());
+check('employee still sees their schedule', await page.locator('[data-team-day-date], [data-range-label]').first().isVisible());
 await page.screenshot({ path: `${SHOTS}/requests-panel-employee.png`, fullPage: false });
 
 // ---- Shift swap e2e part 1/3: employee submits a REAL swap from the UI ----
