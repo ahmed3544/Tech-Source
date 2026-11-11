@@ -194,6 +194,12 @@ check('team day counts row visible', await page.locator('[data-team-day-counts]'
 check('team day search box visible', await page.locator('[data-team-day-search]').isVisible());
 const teamBadges = await page.locator('[data-team-day-badge]').count();
 check('team day status badges render per column', teamBadges >= teamCols, `badges=${teamBadges} cols=${teamCols}`);
+// ---- "My Schedule" first column (Calabrio style): my column, then the rest of the agents ----
+check('my schedule chip renders for admin (جدولي)', await page.locator('[data-my-schedule-chip]').first().isVisible().catch(() => false));
+const myColAttr = await page.locator('[data-my-schedule-col]').first().getAttribute('data-my-schedule-col').catch(() => null);
+const firstTeamCol = await page.locator('[data-team-day-col]').first().getAttribute('data-team-day-col').catch(() => null);
+check('my schedule is the FIRST column (admin)', myColAttr !== null && myColAttr === firstTeamCol, `first=${firstTeamCol} mine=${myColAttr}`);
+check('my schedule sits next to the rest of the agents (>=3 cols)', teamCols >= 3, `cols=${teamCols}`);
 const teamData = await (await fetch(`${BASE}/api/data`)).json();
 const targetEmp = (teamData.employees || []).find((e) => String(e.code).toUpperCase() === 'EMP101');
 if (targetEmp) {
@@ -337,6 +343,13 @@ await page.getByRole('menuitem', { name: /تسجيل الخروج|Log out/ }).cl
 await page.waitForSelector('input', { timeout: 15000 });
 await login('EMP102', '1234', { leader: false });
 await page.waitForTimeout(800);
+// Employees start in the day view: "My Schedule" (جدولي) first + the rest of the agents
+check('agent sees own My Schedule chip (EMP102)', await page.locator('[data-my-schedule-chip]').first().isVisible().catch(() => false));
+const empMyCol = await page.locator('[data-my-schedule-col]').first().getAttribute('data-my-schedule-col').catch(() => null);
+const empFirstCol = await page.locator('[data-team-day-col]').first().getAttribute('data-team-day-col').catch(() => null);
+check('agent My Schedule is the FIRST column', empMyCol !== null && empMyCol === empFirstCol, `first=${empFirstCol} mine=${empMyCol}`);
+const empCols = await page.locator('[data-team-day-col]').count();
+check('agent sees the rest of the agents next to My Schedule', empCols >= 2, `cols=${empCols}`);
 // Employees now START in the team day view (upstream change) — the shadowing
 // window lives on the fixture day (Sunday), so switch to the week grid first.
 await page.getByRole('button', { name: /^(أسبوع|Week)$/ }).click();
