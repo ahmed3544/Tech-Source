@@ -246,6 +246,33 @@ await page.getByRole('button', { name: /^(أسبوع|Week)$/ }).click();
 await page.waitForTimeout(300);
 check('week view keeps a single range bar', await page.locator('[data-range-label]').count() === 1, `range-label=${await page.locator('[data-range-label]').count()}`);
 
+// ---- "عايزك تنظم الشفتات تصاعدي" — shift lists sorted ascending by start ----
+// Demo seed inserts shifts as 09:00 → 15:00 → 06:00 (non-ascending on purpose);
+// the UI must display 06:00 → 09:00 → 15:00 everywhere shifts are listed.
+await openExcelSection();
+const shiftCardTimes = (await page.locator('[data-shift-card-time]').allInnerTexts()).map(t => t.trim());
+const shiftStartMinutes = shiftCardTimes
+  .map(t => t.match(/^(\d{1,2}):(\d{2})/))
+  .filter(Boolean)
+  .map(m => Number(m[1]) * 60 + Number(m[2]));
+check('shift cards render ASCENDING by start time (seed 09:00→15:00→06:00)', shiftStartMinutes.length >= 3 && shiftStartMinutes.every((v, i) => i === 0 || shiftStartMinutes[i - 1] <= v), shiftCardTimes.join(' | '));
+const allOptionTexts = await page.locator('select option').allInnerTexts();
+// fmt24 renders 12h with Arabic ص/م (or AM/PM) suffixes — "9:00 ص–5:00 م" —
+// so convert suffix hours to minutes before asserting the order.
+const to24Minutes = (h, m, suffix) => {
+  let mins = (Number(h) % 12) * 60 + Number(m);
+  if (/م|PM/i.test(suffix || '')) mins += 720;
+  return mins;
+};
+const dropdownStarts = allOptionTexts
+  .map(t => t.match(/— (\d{1,2}):(\d{2}) ?(ص|م|AM|PM)?[–-](\d{1,2}):(\d{2}) ?(ص|م|AM|PM)?/))
+  .filter(Boolean)
+  .map(m => to24Minutes(m[1], m[2], m[3]));
+// Every day-select repeats the same sorted list, so assert on the unique
+// first-occurrence order (06:00 → 09:00 → 15:00) instead of the flat sequence.
+const uniqStarts = [...new Set(dropdownStarts)];
+check('day-editor shift dropdown options ASCENDING (06:00 → 09:00 → 15:00)', uniqStarts.length >= 3 && uniqStarts.every((v, i) => i === 0 || uniqStarts[i - 1] <= v), `uniq=${uniqStarts.join(' | ')} (${dropdownStarts.length} shift options from ${allOptionTexts.length})`);
+
 // ---- Month export ----
 await page.getByRole('button', { name: /^شهر$|^Month$/ }).click();
 await page.waitForTimeout(400);
