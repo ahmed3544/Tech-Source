@@ -267,18 +267,18 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
     return rosterEmployees;
   }, [rosterEmployees, isLeader, currentUser]);
 
-  /* Day view roster (Calabrio style: "My Schedule" next to the rest of the
-     agents who have shifts that day — "اضيف ماي اسكدول وجمبه باقي الاجنت الي
-     نازلين شفتات في نفس اليوم"): the logged-in user's own column FIRST (admins
-     and leaders included — rosterEmployees excludes management accounts), then
-     the rest of the roster. Week/month views keep their existing visibility. */
-  const dayViewPeople = useMemo(() => {
-    const me = employees.find(e => sameId(e.id, currentUser?.id)) || null;
-    const rest = rosterEmployees.filter(e => !me || !sameId(e.id, me.id));
-    return me ? [me, ...rest] : rest;
-  }, [employees, rosterEmployees, currentUser]);
-
   const employee = visibleEmployees.find(e => sameId(e.id, selectedEmployeeId)) || visibleEmployees[0] || null;
+
+  /* Day view roster (Calabrio style): the SELECTED employee's column FIRST (the
+     top employee dropdown — "خلي الي محطوط سلكت عليه هو الي يبقي ده شفته"), then
+     the rest of the agents. Management accounts (admin/leader) are supervisors
+     only — they never get a personal column ("وشيل اي اسكدوال لادمن اول ليدر").
+     For agents the selection is always themselves. Week/month views unchanged. */
+  const dayViewPeople = useMemo(() => {
+    const highlight = employee || null;
+    if (!highlight) return rosterEmployees;
+    return [highlight, ...rosterEmployees.filter(e => !sameId(e.id, highlight.id))];
+  }, [employee, rosterEmployees]);
 
   useEffect(() => {
     if (employee && !visibleEmployees.some(e => sameId(e.id, selectedEmployeeId))) setSelectedEmployeeId(employee.id);
@@ -345,6 +345,9 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
   const dayViewKey = dateKey(dayDate);
   const [teamDayBreaks, setTeamDayBreaks] = useState<Record<string, ScheduleBreak[]>>({});
   const [teamSearch, setTeamSearch] = useState('');
+  /* Day view scope — 'team' (My Schedule: selected person + the rest of the
+     agents) or 'self' (Today: the selected person's schedule ONLY). */
+  const [dayScope, setDayScope] = useState<'self' | 'team'>('team');
   useEffect(() => {
     if (viewMode !== 'day' || !dayViewPeople.length) return;
     let cancelled = false;
@@ -1110,7 +1113,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
         </div>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-2">
-            <button type="button" onClick={() => { goToDate(new Date()); setViewMode('day'); }} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800/70">📅 {lang === 'ar' ? 'اليوم' : 'Today'}</button>
+            <button type="button" onClick={() => { goToDate(new Date()); setViewMode('day'); setDayScope('self'); }} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800/70">📅 {lang === 'ar' ? 'اليوم' : 'Today'}</button>
             {isAdmin && dirtyCount > 0 && (
               <button type="button" onClick={saveWeek} disabled={saving} className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs font-black text-white hover:bg-blue-700 disabled:opacity-50"><Save className="h-3.5 w-3.5" />{saving ? (lang === 'ar' ? 'جاري الحفظ...' : 'Saving...') : (lang === 'ar' ? `حفظ التعديلات (${dirtyCount})` : `Save changes (${dirtyCount})`)}</button>
             )}
@@ -1209,12 +1212,18 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
            ANNUAL / HOLIDAY state, breaks and shadowing windows on a shared time axis. */
         const day = { key: dayViewKey, date: dayDate, ar: DAY_NAMES_AR[dayDate.getDay()], en: DAY_NAMES_EN[dayDate.getDay()] };
         const q = teamSearch.trim().toLowerCase();
-        const columns = teamDayResults.filter(({ person }) => !q
-          || String(person.nameEn || '').toLowerCase().includes(q)
-          || String(person.nameAr || '').toLowerCase().includes(q)
-          || String(person.code || '').toLowerCase().includes(q));
+        /* Scope: 'self' (Today) = the selected person's schedule ONLY;
+           'team' (My Schedule) = their column first + the rest of the agents. */
+        const columns = dayScope === 'self'
+          ? teamDayResults.filter(({ person }) => sameId(person.id, employee?.id))
+          : teamDayResults.filter(({ person }) => !q
+            || String(person.nameEn || '').toLowerCase().includes(q)
+            || String(person.nameAr || '').toLowerCase().includes(q)
+            || String(person.code || '').toLowerCase().includes(q));
         const colCount = Math.max(1, columns.length);
-        const gridTemplate = `48px repeat(${colCount}, minmax(0, 112px))`;
+        /* Columns stretch to fill the row width ("اظبط الحجم") — minWidth keeps
+           horizontal scrolling on phones instead of a half-empty desktop grid. */
+        const gridTemplate = `48px repeat(${colCount}, minmax(112px, 1fr))`;
         const badgeFor = (resolved: ReturnType<typeof resolveDayStatus>) => {
           if (resolved.status === 'working' && resolved.shift) {
             const s = resolved.shift;
@@ -1232,16 +1241,18 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
           { id: 'unassigned', label: lang === 'ar' ? 'غير مجدول' : 'Not scheduled', value: teamDayCounts.unassigned, cls: 'bg-slate-50 text-slate-400 dark:bg-slate-800/40 dark:text-slate-400', dot: 'bg-slate-300' },
         ];
         return (
-          <div className="space-y-2 rounded-xl border border-slate-200 p-2 dark:border-slate-700">
-            {/* Date navigation — prev/next arrows + date picker + Today */}
+          <div data-day-scope={dayScope} className="space-y-2 rounded-xl border border-slate-200 p-2 dark:border-slate-700">
+            {/* Date navigation — prev/next arrows + date picker + scope buttons */}
             <div className="flex flex-wrap items-center justify-center gap-2">
               <button type="button" onClick={() => goToDate(addDays(dayDate, -1))} className="shrink-0 rounded-lg border border-slate-300 bg-white p-2 text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800/70" aria-label={lang === 'ar' ? 'اليوم السابق' : 'Previous day'}><ChevronRight className="h-4 w-4" /></button>
               <span data-team-day-date className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-2 py-2 text-center text-xs font-black text-slate-800 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100">{lang === 'ar' ? day.ar : day.en} · <span dir="ltr" className="font-mono">{fmtDMY(dayDate)}</span></span>
               <button type="button" onClick={() => goToDate(addDays(dayDate, 1))} className="shrink-0 rounded-lg border border-slate-300 bg-white p-2 text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800/70" aria-label={lang === 'ar' ? 'اليوم التالي' : 'Next day'}><ChevronLeft className="h-4 w-4" /></button>
               <input type="date" data-team-day-input value={dayViewKey} onChange={e => { if (e.target.value) goToDate(new Date(`${e.target.value}T00:00:00`)); }} aria-label={lang === 'ar' ? 'اختيار التاريخ' : 'Pick a date'} className="h-9 rounded-lg border border-slate-300 bg-white px-2 font-mono text-xs font-black text-slate-800 outline-none focus:border-blue-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100" />
-              <button type="button" onClick={() => goToDate(new Date())} className="shrink-0 rounded-lg border border-blue-300 bg-blue-50 px-3 py-2 text-xs font-black text-blue-700 hover:bg-blue-100 dark:border-blue-500/40 dark:bg-blue-500/15 dark:text-blue-300">{lang === 'ar' ? 'اليوم' : 'Today'}</button>
+              <button type="button" data-day-scope-self onClick={() => { setDayScope('self'); goToDate(new Date()); }} className={`shrink-0 rounded-lg px-3 py-2 text-xs font-black transition ${dayScope === 'self' ? 'bg-blue-600 text-white' : 'border border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 dark:border-blue-500/40 dark:bg-blue-500/15 dark:text-blue-300'}`}>{lang === 'ar' ? 'اليوم' : 'Today'}</button>
+              <button type="button" data-day-scope-team onClick={() => setDayScope('team')} className={`shrink-0 rounded-lg px-3 py-2 text-xs font-black transition ${dayScope === 'team' ? 'bg-indigo-600 text-white' : 'border border-indigo-300 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:border-indigo-500/40 dark:bg-indigo-500/15 dark:text-indigo-300'}`}>{lang === 'ar' ? 'ماي اسكدول' : 'My Schedule'}</button>
             </div>
-            {/* Status counts + name search (Teleopti "Search name") */}
+            {/* Status counts + name search (Teleopti "Search name") — team scope only */}
+            {dayScope === 'team' && (
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div data-team-day-counts className="flex flex-wrap items-center gap-1.5">
                 {countChips.map(chip => (
@@ -1250,18 +1261,20 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
               </div>
               <input type="search" data-team-day-search value={teamSearch} onChange={e => setTeamSearch(e.target.value)} placeholder={lang === 'ar' ? 'بحث باسم الايجنت' : 'Search name'} className="h-9 w-full max-w-[220px] rounded-lg border border-slate-300 bg-white px-3 text-xs font-bold text-slate-800 outline-none focus:border-blue-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100" />
             </div>
+            )}
             {/* Agents side by side: time axis + one column per agent */}
             <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700" dir="ltr">
-              <div style={{ width: 48 + colCount * 112, minWidth: '100%' }}>
+              <div style={{ minWidth: 48 + colCount * 112 }}>
                 <div className="grid border-b border-slate-200 dark:border-slate-700" style={{ gridTemplateColumns: gridTemplate }}>
                   <div className="flex items-end justify-center border-e border-slate-200 bg-slate-50 pb-1 text-center text-[9px] font-black uppercase tracking-wide text-slate-400 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-500">{lang === 'ar' ? 'الوقت' : 'Time'}</div>
                   {columns.map(({ person, resolved }) => {
+                    const isSel = sameId(person.id, employee?.id);
                     const isMe = sameId(person.id, currentUser?.id);
                     return (
-                      <div key={person.id} className={`border-e border-slate-200 px-1 py-1.5 text-center last:border-e-0 dark:border-slate-800 ${isMe ? 'bg-indigo-50 ring-1 ring-inset ring-indigo-300 dark:bg-indigo-500/20 dark:ring-indigo-500/40' : 'bg-slate-50 dark:bg-slate-900/60'}`} title={lang === 'ar' ? person.nameAr : person.nameEn}>
-                        <div className={`truncate text-[10px] font-black ${isMe ? 'text-indigo-700 dark:text-indigo-200' : 'text-slate-700 dark:text-slate-200'}`}>{lang === 'ar' ? person.nameAr : person.nameEn}</div>
-                        <div className={`text-[8px] font-bold ${isMe ? 'text-indigo-400 dark:text-indigo-300/80' : 'text-slate-400'}`}>{person.code}</div>
-                        {isMe && <div data-my-schedule-chip className="mt-0.5 inline-block rounded bg-indigo-600 px-1.5 py-0.5 text-[8px] font-black text-white">{lang === 'ar' ? 'جدولي' : 'My Schedule'}</div>}
+                      <div key={person.id} className={`border-e border-slate-200 px-1 py-1.5 text-center last:border-e-0 dark:border-slate-800 ${isSel ? 'bg-indigo-50 ring-1 ring-inset ring-indigo-300 dark:bg-indigo-500/20 dark:ring-indigo-500/40' : 'bg-slate-50 dark:bg-slate-900/60'}`} title={lang === 'ar' ? person.nameAr : person.nameEn}>
+                        <div className={`truncate text-[10px] font-black ${isSel ? 'text-indigo-700 dark:text-indigo-200' : 'text-slate-700 dark:text-slate-200'}`}>{lang === 'ar' ? person.nameAr : person.nameEn}</div>
+                        <div className={`text-[8px] font-bold ${isSel ? 'text-indigo-400 dark:text-indigo-300/80' : 'text-slate-400'}`}>{person.code}</div>
+                        {isSel && isMe && <div data-my-schedule-chip className="mt-0.5 inline-block rounded bg-indigo-600 px-1.5 py-0.5 text-[8px] font-black text-white">{lang === 'ar' ? 'جدولي' : 'My Schedule'}</div>}
                         {badgeFor(resolved)}
                       </div>
                     );
@@ -1276,9 +1289,9 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
                   {columns.map(({ person, resolved }) => {
                     const sw = teamOwnShadowingFor(person.id, day.key);
                     const tw = sw ? null : teamTraineeShadowingFor(person.id, day.key);
-                    const isMe = sameId(person.id, currentUser?.id);
+                    const isSel = sameId(person.id, employee?.id);
                     return (
-                      <div key={person.id} data-team-day-col={person.id} {...(isMe ? { 'data-my-schedule-col': person.id } : {})} className={`relative border-e border-slate-200 last:border-e-0 dark:border-slate-800 ${isMe ? 'bg-indigo-50/50 dark:bg-indigo-500/10' : day.key === todayKey ? 'bg-blue-50/40 dark:bg-blue-500/10' : 'bg-white dark:bg-slate-900'}`} style={{ height: gridHeightMobile }}>
+                      <div key={person.id} data-team-day-col={person.id} {...(isSel ? { 'data-my-schedule-col': person.id } : {})} className={`relative border-e border-slate-200 last:border-e-0 dark:border-slate-800 ${isSel ? 'bg-indigo-50/50 dark:bg-indigo-500/10' : day.key === todayKey ? 'bg-blue-50/40 dark:bg-blue-500/10' : 'bg-white dark:bg-slate-900'}`} style={{ height: gridHeightMobile }}>
                         {renderTimelineBlocks(resolved, { mobile: true, detailsOnly: true, dayKey: day.key, dayLabel: lang === 'ar' ? day.ar : day.en, shadowing: sw, traineeShadowing: tw })}
                       </div>
                     );
