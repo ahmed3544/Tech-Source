@@ -186,6 +186,17 @@ const label2 = (await page.locator('[data-range-label]').innerText()).trim();
 check('day navigation moves to next day', label1 !== label2, `${label1} → ${label2}`);
 await page.getByRole('button', { name: 'اليوم', exact: true }).last().click();
 await page.waitForTimeout(400);
+// "لما ادوس علي توداي يجبلي جدولي بس" — Today scope = the selected person's schedule ONLY
+const todaySelfCols = await page.locator('[data-team-day-col]').count();
+check('Today button shows ONLY the selected schedule (self scope)', todaySelfCols === 1, `cols=${todaySelfCols}`);
+check('self scope hides the team counts row', !(await page.locator('[data-team-day-counts]').isVisible().catch(() => false)));
+const selfColId = await page.locator('[data-team-day-col]').first().getAttribute('data-team-day-col').catch(() => null);
+const selAttrSelf = await page.locator('[data-my-schedule-col]').first().getAttribute('data-my-schedule-col').catch(() => null);
+check('self scope column is the selected/highlighted one', selfColId !== null && selfColId === selAttrSelf, `col=${selfColId} sel=${selAttrSelf}`);
+await page.screenshot({ path: `${SHOTS}/day-view-today-self.png`, fullPage: false });
+// "لما ادوس علي ماي اسكدول يجبلي جدولي وجمبه باقي الايجنت بتةع اليوم" — back to team scope
+await page.locator('[data-day-scope-team]').click();
+await page.waitForTimeout(400);
 await page.screenshot({ path: `${SHOTS}/day-view.png`, fullPage: false });
 // ---- TEAM DAY VIEW: every agent side by side with shifts / OFF / annual / breaks ----
 const teamCols = await page.locator('[data-team-day-col]').count();
@@ -194,12 +205,16 @@ check('team day counts row visible', await page.locator('[data-team-day-counts]'
 check('team day search box visible', await page.locator('[data-team-day-search]').isVisible());
 const teamBadges = await page.locator('[data-team-day-badge]').count();
 check('team day status badges render per column', teamBadges >= teamCols, `badges=${teamBadges} cols=${teamCols}`);
-// ---- "My Schedule" first column (Calabrio style): my column, then the rest of the agents ----
-check('my schedule chip renders for admin (جدولي)', await page.locator('[data-my-schedule-chip]').first().isVisible().catch(() => false));
+// ---- Selected employee is the highlighted FIRST column (Calabrio style) ----
+// "خلي الي محطوط سلكت عليه هو الي يبقي ده شفته": admin selected employee (default =
+// first roster agent) is highlighted + first; "وشيل اي اسكدوال لادمن اول ليدر":
+// supervisors get NO personal column of their own.
 const myColAttr = await page.locator('[data-my-schedule-col]').first().getAttribute('data-my-schedule-col').catch(() => null);
 const firstTeamCol = await page.locator('[data-team-day-col]').first().getAttribute('data-team-day-col').catch(() => null);
-check('my schedule is the FIRST column (admin)', myColAttr !== null && myColAttr === firstTeamCol, `first=${firstTeamCol} mine=${myColAttr}`);
-check('my schedule sits next to the rest of the agents (>=3 cols)', teamCols >= 3, `cols=${teamCols}`);
+check('selected employee is the FIRST highlighted column (admin)', myColAttr !== null && myColAttr === firstTeamCol, `first=${firstTeamCol} selected=${myColAttr}`);
+check('admin has NO personal column (supervisors only)', await page.locator('[data-team-day-col="emp-002"]').count() === 0);
+check('admin gets NO My Schedule chip (supervisors only)', await page.locator('[data-my-schedule-chip]').count() === 0);
+check('selected column sits next to the rest of the agents (>=2 cols)', teamCols >= 2, `cols=${teamCols}`);
 const teamData = await (await fetch(`${BASE}/api/data`)).json();
 const targetEmp = (teamData.employees || []).find((e) => String(e.code).toUpperCase() === 'EMP101');
 if (targetEmp) {
