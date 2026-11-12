@@ -172,4 +172,52 @@ export function registerEmployeeBreaks(app: any) {
       return res.status(500).json({ success: false, error: 'Could not save employee breaks.' });
     }
   });
+
+  // Exchange employee-specific break plans for the same date when their shifts are swapped.
+  app.post('/api/employee-breaks/swap', async (req: any, res: any) => {
+    try {
+      const manager = await requireManager(req, (status, body) => res.status(status).json(body));
+      if (!manager) return;
+      const employeeAId = String(req.body?.employeeAId ?? '').trim();
+      const employeeBId = String(req.body?.employeeBId ?? '').trim();
+      const date = String(req.body?.date ?? '').trim();
+      if (!employeeAId || !employeeBId || employeeAId === employeeBId || !DATE_RE.test(date)) {
+        return res.status(400).json({ success: false, error: 'Two different employee IDs and a valid date are required.' });
+      }
+      const [employeeA, employeeB] = await Promise.all([findEmployeeById(employeeAId), findEmployeeById(employeeBId)]);
+      if (!employeeA || !employeeB) return res.status(404).json({ success: false, error: 'Employee not found.' });
+      if (!canManageEmployee(manager, employeeA) || !canManageEmployee(manager, employeeB)) {
+        return res.status(403).json({ success: false, error: 'You can only swap breaks for employees in your own team.' });
+      }
+      const rowsA = await db.select().from(schema.employeeBreaks).where(and(eq(schema.employeeBreaks.employeeId, employeeAId), eq(schema.employeeBreaks.date, date)));
+      const rowsB = await db.select().from(schema.employeeBreaks).where(and(eq(schema.employeeBreaks.employeeId, employeeBId), eq(schema.employeeBreaks.date, date)));
+      const now = new Date().toISOString();
+      await db.transaction(async (tx: any) => {
+        await tx.delete(schema.employeeBreaks).where(and(eq(schema.employeeBreaks.date, date), eq(schema.employeeBreaks.employeeId, employeeAId)));
+        await tx.delete(schema.employeeBreaks).where(and(eq(schema.employeeBreaks.date, date), eq(schema.employeeBreaks.employeeId, employeeBId)));
+        const moved = [
+          ...rowsA.map((row: any) => ({ ...row, employeeId: employeeBId, updatedAt: now })),
+          ...rowsB.map((row: any) => ({ ...row, employeeId: employeeAId, updatedAt: now })),
+        ];
+        if (moved.length) await tx.insert(schema.employeeBreaks).values(moved);
+      });
+      logActivity({
+        actorId: manager.id,
+        actorName: (manager as any).nameAr || (manager as any).nameEn || manager.id,
+        actorRole: manager.role,
+        action: 'breaks.swap',
+        entityType: 'breaks',
+        entityId: `${employeeAId}|${employeeBId}|${date}`,
+        entityLabel: `${employeeA.nameAr || employeeA.nameEn} ↔ ${employeeB.nameAr || employeeB.nameEn} — ${date}`,
+        details: { employeeAId, employeeBId, date, breaksMoved: rowsA.length + rowsB.length },
+        companyId: employeeA.companyId ?? 'tech-source',
+      });
+      res.setHeader('Cache-Control', 'no-store');
+      return res.json({ success: true, employeeAId, employeeBId, date, breaksMoved: rowsA.length + rowsB.length });
+    } catch (error: any) {
+      console.error('[EMPLOYEE-BREAKS] swap failed:', error?.message || error);
+      return res.status(500).json({ success: false, error: 'Could not swap employee breaks.' });
+    }
+  });
+
 }
