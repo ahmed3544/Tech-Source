@@ -140,31 +140,16 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ currentU
   useEffect(() => {
     void load();
     if (!currentUserId) return;
-    let hasLiveStream = false;
-    const mergeIncoming = (incoming: Notification) => {
-      if (String(incoming.recipientId).trim() !== String(currentUserId).trim()) return;
-      hasLiveStream = true; // SSE actually delivered something
-      setItems((current) => normalize([incoming, ...current], currentUserId).map((item) => readOverridesRef.current.has(item.id) ? { ...item, isRead: true } : item));
-    };
-    // SSE gives instant delivery where the runtime supports it (Express/Render).
-    const stream = new EventSource(`/api/notifications/stream?userId=${encodeURIComponent(String(currentUserId).trim())}`);
-    stream.addEventListener('notification', (event) => {
-      try { mergeIncoming(JSON.parse((event as MessageEvent).data) as Notification); } catch (err: unknown) { void load(true); }
-    });
-    stream.onerror = () => { /* EventSource reconnects on its own */ };
-    // CRITICAL: on Vercel serverless the SSE endpoint can only emit ready +
-    // heartbeats (it never sees events produced in other lambda instances),
-    // so polling must ALWAYS run — it is the only guaranteed delivery path.
-    // A slower cadence is enough now that SSE handles instant delivery on
-    // long-running deployments; visibility/focus refreshes cover the rest.
-    const timer = window.setInterval(() => { if (!hasLiveStream) void load(true); }, 20000);
+    // Vercel serverless cannot share in-memory SSE subscribers across instances.
+    // Polling is the reliable delivery path there and avoids holding Fluid Compute
+    // instances open for long-lived EventSource connections.
+    const timer = window.setInterval(() => void load(true), 30000);
     const onFocus = () => void load(true);
     const onVisibility = () => { if (document.visibilityState === 'visible') void load(true); };
     window.addEventListener('focus', onFocus);
     document.addEventListener('visibilitychange', onVisibility);
     return () => {
       window.clearInterval(timer);
-      stream.close();
       window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', onVisibility);
     };
