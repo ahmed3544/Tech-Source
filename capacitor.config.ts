@@ -5,10 +5,9 @@ const config: CapacitorConfig = {
   appName: 'Tech Source Attendance',
   webDir: 'dist',
   server: {
-    // The APK must use the live Vercel app so all relative /api/*
-    // requests (login, data, punch, sync, shifts, leaves, etc.) reach
-    // the Express backend instead of the local Capacitor WebView.
-    url: 'https://tech-source.vercel.app',
+    // The new APK opens the Cloudflare Worker frontend. Its /api/* bridge
+    // currently forwards requests to the existing Vercel production backend.
+    url: 'https://tech-source.tech-source.workers.dev',
     androidScheme: 'https'
   }
 };
