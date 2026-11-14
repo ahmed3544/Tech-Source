@@ -197,6 +197,31 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
+    // Temporary Android compatibility bridge:
+    // The installed Capacitor APK still opens tech-source.vercel.app. Once
+    // that origin redirects the WebView to Cloudflare, keep every API call
+    // on the existing production Express backend until the remaining routes
+    // and production database are fully migrated. This avoids splitting
+    // reads/writes between the preview database and production.
+    if (url.pathname.startsWith("/api/")) {
+      const upstream = new URL(url.pathname + url.search, "https://tech-source.vercel.app");
+      try {
+        const proxyRequest = new Request(upstream.toString(), request);
+        const upstreamResponse = await fetch(proxyRequest);
+        const headers = new Headers(upstreamResponse.headers);
+        headers.set("Cache-Control", "no-store, max-age=0");
+        headers.set("X-Tech-Source-Api-Backend", "vercel-compatibility-bridge");
+        return new Response(upstreamResponse.body, {
+          status: upstreamResponse.status,
+          statusText: upstreamResponse.statusText,
+          headers,
+        });
+      } catch (error) {
+        console.error("[api compatibility bridge] upstream request failed:", error);
+        return json({ success: false, error: "API_UPSTREAM_UNAVAILABLE" }, 502);
+      }
+    }
+
     if (url.pathname === "/api/health") {
       try {
         const database = await withClient(env, async (client) => {
