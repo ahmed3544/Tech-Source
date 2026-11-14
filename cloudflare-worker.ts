@@ -350,6 +350,182 @@ export default {
       }
     }
 
+
+    // Monthly roster persistence: keep the legacy settings snapshot contract
+    // used by the current React client while enforcing manager authentication.
+    if (url.pathname === "/api/schedule-sync" && request.method === "GET") {
+      try {
+        const assignments = await withClient(env, async (client) => {
+          const result = await client.query("SELECT value FROM settings WHERE key = $1 LIMIT 1", ["dailyShiftAssignments"]);
+          const value = result.rows[0]?.value;
+          return Array.isArray(value) ? value : [];
+        });
+        return json({ success: true, dailyShiftAssignments: assignments });
+      } catch (error) {
+        console.error("[preview schedule-sync] GET failed:", error);
+        return json({ success: false, error: "DIRECT_SCHEDULE_READ_FAILED" }, 500);
+      }
+    }
+
+    if (url.pathname === "/api/schedule-sync" && request.method === "POST") {
+      let body: any;
+      try { body = await request.json(); }
+      catch { return json({ success: false, error: "INVALID_JSON" }, 400); }
+      const authId = String(request.headers.get("x-auth-employee-id") || "").trim();
+      const authPin = normalizeDigits(request.headers.get("x-auth-pin") || "");
+      if (!authId || !authPin) return json({ success: false, error: "Authentication required." }, 401);
+      if (!Array.isArray(body?.dailyShiftAssignments)) {
+        return json({ success: false, error: "dailyShiftAssignments must be an array" }, 400);
+      }
+      const dateKey = (value: any) => {
+        const raw = String(value ?? "").trim();
+        if (/^\\d{4}-\\d{2}-\\d{2}$/.test(raw)) return raw;
+        const parsed = new Date(raw);
+        return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString().slice(0, 10);
+      };
+      const incoming = body.dailyShiftAssignments.map((item: any) => {
+        const status = String(item?.status || "").toUpperCase();
+        const clear = Boolean(item?.clear || item?.isClear || item?.is_clear || status === "CLEAR");
+        const rawShift = String(item?.shiftId ?? item?.shift_id ?? "").trim();
+        const off = !clear && !rawShift && (Boolean(item?.isOffDay ?? item?.is_off_day) || status === "OFF");
+        return {
+          employeeId: String(item?.employeeId ?? item?.employee_id ?? "").trim(),
+          date: dateKey(item?.date ?? item?.scheduleDate ?? item?.schedule_date),
+          shiftId: clear || off ? "" : rawShift,
+          isOffDay: off,
+          clear,
+          shadowing: item && Object.prototype.hasOwnProperty.call(item, "shadowing") ? item.shadowing : undefined,
+          assignedBy: String(item?.assignedBy ?? item?.assigned_by ?? body?.assignedBy ?? "").trim(),
+          updatedAt: String(item?.updatedAt ?? item?.updated_at ?? new Date().toISOString()),
+        };
+      });
+      const invalid = incoming.find((x: any) => !x.employeeId || !/^\\d{4}-\\d{2}-\\d{2}$/.test(x.date) || (!x.clear && !x.isOffDay && !x.shiftId));
+      if (invalid) return json({ success: false, code: "INVALID_SCHEDULE_PAYLOAD", message: "Each schedule assignment requires employee, date and shift or OFF." }, 400);
+      try {
+        const saved = await withClient(env, async (client) => {
+          const authRows = await client.query("SELECT * FROM employees WHERE id = $1 LIMIT 1", [authId]);
+          const manager = authRows.rows[0] ? camelize(authRows.rows[0]) : null;
+          if (!manager || String(manager.status ?? "active").toLowerCase() === "inactive" || !passwordMatches(manager, authPin)) {
+            return { error: "AUTH", status: 401 };
+          }
+          const role = normalize(manager.role);
+          if (!["admin", "company_admin", "platform_admin", "leader"].includes(role)) return { error: "PERMISSION", status: 403 };
+          const ids = Array.from(new Set(incoming.map((x: any) => x.employeeId)));
+          const targetRows = await client.query("SELECT id, role, team_leader_id FROM employees WHERE id = ANY($1::text[])", [ids]);
+          const targets = new Map(targetRows.rows.map((x: any) => [String(x.id), camelize(x)]));
+          for (const id of ids) {
+            const target: any = targets.get(id);
+            if (!target) return { error: "EMPLOYEE_NOT_FOUND", status: 404 };
+            if (role === "leader" && (["admin", "company_admin", "platform_admin"].includes(normalize(target.role)) || (target.teamLeaderId && String(target.teamLeaderId) !== authId))) {
+              return { error: "TEAM_SCOPE", status: 403 };
+            }
+          }
+          const currentResult = await client.query("SELECT value FROM settings WHERE key = $1 LIMIT 1", ["dailyShiftAssignments"]);
+          const current = Array.isArray(currentResult.rows[0]?.value) ? currentResult.rows[0].value : [];
+          const map = new Map<string, any>();
+          for (const raw of current) {
+            const employeeId = String(raw?.employeeId ?? raw?.employee_id ?? "");
+            const date = dateKey(raw?.date ?? raw?.scheduleDate ?? raw?.schedule_date);
+            if (employeeId && date) map.set(employeeId + "|" + date, { ...raw, employeeId, date });
+          }
+          const stamp = new Date().toISOString();
+          for (const item of incoming) {
+            const key = item.employeeId + "|" + item.date;
+            const previous = map.get(key);
+            if (previous?.updatedAt && Date.parse(item.updatedAt) < Date.parse(String(previous.updatedAt))) continue;
+            if (item.clear) { map.delete(key); continue; }
+            const next: any = { employeeId: item.employeeId, date: item.date, shiftId: item.shiftId, isOffDay: item.isOffDay, assignedBy: item.assignedBy || authId, updatedAt: item.updatedAt || stamp };
+            if (item.shadowing !== undefined) next.shadowing = item.shadowing;
+            else if (previous && Object.prototype.hasOwnProperty.call(previous, "shadowing")) next.shadowing = previous.shadowing;
+            map.set(key, next);
+          }
+          const assignments = Array.from(map.values());
+          await client.query(
+            "INSERT INTO settings(key,value) VALUES($1,$2::jsonb) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value",
+            ["dailyShiftAssignments", JSON.stringify(assignments)],
+          );
+          return { assignments, stamp };
+        });
+        if ("error" in saved) return json({ success: false, error: saved.error }, saved.status);
+        return json({ success: true, dailyShiftAssignments: saved.assignments, lastUpdated: Date.now(), updatedAt: saved.stamp });
+      } catch (error) {
+        console.error("[preview schedule-sync] POST failed:", error);
+        return json({ success: false, error: "DIRECT_SCHEDULE_SYNC_FAILED" }, 500);
+      }
+    }
+
+    if (url.pathname === "/api/rotation-patterns" && request.method === "GET") {
+      try {
+        return await withClient(env, async (client) => {
+          const [patterns, items] = await Promise.all([
+            client.query("SELECT * FROM rotation_patterns ORDER BY created_at"),
+            client.query("SELECT * FROM rotation_pattern_items ORDER BY pattern_id, sequence"),
+          ]);
+          return json({ success: true, rotationPatterns: patterns.rows.map(camelize), rotationPatternItems: items.rows.map(camelize) });
+        });
+      } catch (error) {
+        console.error("[preview rotation-patterns] GET failed:", error);
+        return json({ success: false, error: "ROTATION_PATTERNS_READ_FAILED" }, 500);
+      }
+    }
+
+    if (url.pathname === "/api/rotation-patterns" && request.method === "POST") {
+      let body: any;
+      try { body = await request.json(); }
+      catch { return json({ success: false, error: "INVALID_JSON" }, 400); }
+      const authId = String(request.headers.get("x-auth-employee-id") || "").trim();
+      const authPin = normalizeDigits(request.headers.get("x-auth-pin") || "");
+      if (!authId || !authPin) return json({ success: false, error: "Authentication required." }, 401);
+      try {
+        const snapshot = await withClient(env, async (client) => {
+          const authRows = await client.query("SELECT * FROM employees WHERE id=$1 LIMIT 1", [authId]);
+          const manager = authRows.rows[0] ? camelize(authRows.rows[0]) : null;
+          if (!manager || !passwordMatches(manager, authPin)) return { error: "AUTH", status: 401 };
+          if (!["admin", "company_admin", "platform_admin", "leader"].includes(normalize(manager.role))) return { error: "PERMISSION", status: 403 };
+          await client.query("BEGIN");
+          try {
+            const patterns = Array.isArray(body?.rotationPatterns) ? body.rotationPatterns : (body?.pattern ? [body.pattern] : []);
+            const items = Array.isArray(body?.rotationPatternItems) ? body.rotationPatternItems : [];
+            for (const raw of patterns) {
+              const id = String(raw?.id || "").trim(), name = String(raw?.name || "").trim();
+              if (!id || !name) continue;
+              const now = new Date().toISOString();
+              await client.query(
+                "INSERT INTO rotation_patterns(id,company_id,name,shift_ids,created_by,created_at,updated_at) VALUES($1,$2,$3,$4::jsonb,$5,$6,$6) ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name,shift_ids=EXCLUDED.shift_ids,updated_at=EXCLUDED.updated_at",
+                [id, manager.companyId ?? "tech-source", name, JSON.stringify(Array.isArray(raw.shiftIds) ? raw.shiftIds : []), authId, now],
+              );
+            }
+            for (const raw of items) {
+              const id = String(raw?.id || "").trim(), patternId = String(raw?.patternId ?? raw?.pattern_id ?? "").trim(), shiftId = String(raw?.shiftId ?? raw?.shift_id ?? "").trim(), sequence = Number(raw?.sequence ?? 0);
+              if (!id || !patternId || !shiftId || !Number.isInteger(sequence)) continue;
+              await client.query(
+                "INSERT INTO rotation_pattern_items(id,company_id,pattern_id,shift_id,sequence) VALUES($1,$2,$3,$4,$5) ON CONFLICT(id) DO UPDATE SET pattern_id=EXCLUDED.pattern_id,shift_id=EXCLUDED.shift_id,sequence=EXCLUDED.sequence",
+                [id, manager.companyId ?? "tech-source", patternId, shiftId, sequence],
+              );
+            }
+            for (const id of (Array.isArray(body?.deletedRotationPatternItemIds) ? body.deletedRotationPatternItemIds : []).map(String).filter(Boolean)) {
+              await client.query("DELETE FROM rotation_pattern_items WHERE id=$1", [id]);
+            }
+            for (const id of (Array.isArray(body?.deletedRotationPatternIds) ? body.deletedRotationPatternIds : []).map(String).filter(Boolean)) {
+              await client.query("DELETE FROM rotation_pattern_items WHERE pattern_id=$1", [id]);
+              await client.query("DELETE FROM rotation_patterns WHERE id=$1", [id]);
+            }
+            await client.query("COMMIT");
+          } catch (error) { await client.query("ROLLBACK"); throw error; }
+          const [patternsResult, itemsResult] = await Promise.all([
+            client.query("SELECT * FROM rotation_patterns ORDER BY created_at"),
+            client.query("SELECT * FROM rotation_pattern_items ORDER BY pattern_id, sequence"),
+          ]);
+          return { rotationPatterns: patternsResult.rows.map(camelize), rotationPatternItems: itemsResult.rows.map(camelize) };
+        });
+        if ("error" in snapshot) return json({ success: false, error: snapshot.error }, snapshot.status);
+        return json({ success: true, ...snapshot });
+      } catch (error) {
+        console.error("[preview rotation-patterns] POST failed:", error);
+        return json({ success: false, error: "ROTATION_PATTERNS_SAVE_FAILED" }, 500);
+      }
+    }
+
     if (url.pathname === "/api/data" && request.method === "GET") {
       try { return json(await loadAppData(env)); }
       catch (error) {
