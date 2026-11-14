@@ -157,7 +157,8 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ currentU
     // so polling must ALWAYS run — it is the only guaranteed delivery path.
     // A slower cadence is enough now that SSE handles instant delivery on
     // long-running deployments; visibility/focus refreshes cover the rest.
-    const timer = window.setInterval(() => { if (!hasLiveStream) void load(true); }, 20000);
+    // QUOTA FIX: also skip polling while the tab is hidden (zero invocations).
+    const timer = window.setInterval(() => { if (document.visibilityState === 'visible' && !hasLiveStream) void load(true); }, 30000);
     const onFocus = () => void load(true);
     const onVisibility = () => { if (document.visibilityState === 'visible') void load(true); };
     window.addEventListener('focus', onFocus);

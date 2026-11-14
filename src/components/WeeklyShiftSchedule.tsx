@@ -227,6 +227,10 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
 
   // The schedule has its own authoritative sync channel so an employee device
   // receives leader/admin changes even when the general /api/data poll is stale.
+  // QUOTA FIX: this used to poll every 1.5s — 2,400 calls/hour per open tab,
+  // 24/7, which burned the Vercel Hobby allowance (402 DEPLOYMENT_DISABLED).
+  // Now: 30s while the tab is visible, ZERO calls while hidden, and an instant
+  // pull the moment the tab becomes visible/focused again.
   useEffect(() => {
     let cancelled = false;
     const pullSchedule = async () => {
@@ -244,9 +248,13 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
         }
       } catch {}
     };
+    const isVisible = () => document.visibilityState === 'visible';
     void pullSchedule();
-    const interval = window.setInterval(pullSchedule, 1500);
-    return () => { cancelled = true; window.clearInterval(interval); };
+    const interval = window.setInterval(() => { if (isVisible()) void pullSchedule(); }, 30000);
+    const onVisible = () => { if (isVisible()) void pullSchedule(); };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
+    return () => { cancelled = true; window.clearInterval(interval); document.removeEventListener('visibilitychange', onVisible); window.removeEventListener('focus', onVisible); };
   }, []);
 
   // Admins and team leaders are accounts for managing the schedule, not
