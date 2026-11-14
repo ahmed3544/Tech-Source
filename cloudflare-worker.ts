@@ -138,9 +138,19 @@ async function loadAppData(env: Env) {
       ["settings", "settings"],
     ] as const;
 
+    // Keep the employee roster available even if an optional legacy table is
+    // missing or temporarily unavailable on the preview branch. The previous
+    // all-or-nothing Promise.all made /api/data fail completely when ANY one
+    // table failed, leaving the UI with only its admin bootstrap record.
     const loaded = await Promise.all(tables.map(async ([table]) => {
-      const result = await client.query(`SELECT * FROM "${table}"`);
-      return result.rows.map(camelize);
+      try {
+        const result = await client.query(`SELECT * FROM "${table}"`);
+        return result.rows.map(camelize);
+      } catch (error) {
+        if (table === "employees") throw error;
+        console.error(`[preview /api/data] optional table ${table} unavailable:`, error);
+        return [];
+      }
     }));
     const values = new Map<string, any>(
       loaded[7].map((row: any) => [String(row.key), row.value]),
