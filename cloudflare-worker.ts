@@ -225,7 +225,8 @@ export default {
       try {
         const breaksByDate = await withClient(env, async (client) => {
           const result = await client.query(
-            `SELECT id, name, name_ar, name_en, start_time, end_time, duration_minutes, date
+            `SELECT id, name, name_ar, name_en, start_time, end_time, duration_minutes,
+                    to_char(date, 'YYYY-MM-DD') AS date_key
              FROM employee_breaks
              WHERE employee_id = $1 AND date >= $2 AND date <= $3
              ORDER BY date, start_time`,
@@ -233,7 +234,7 @@ export default {
           );
           const grouped: Record<string, any[]> = {};
           for (const row of result.rows) {
-            const date = String(row.date);
+            const date = String(row.date_key);
             (grouped[date] ||= []).push({
               id: String(row.id),
               name: row.name ?? undefined,
