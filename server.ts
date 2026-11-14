@@ -45,8 +45,15 @@ import { INITIAL_EMPLOYEES, INITIAL_ATTENDANCE, INITIAL_LEAVES, INITIAL_SHIFTS, 
 import path from "path";
 import { fileURLToPath } from "url";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// Some serverless runtimes (Cloudflare Workers) emulate node:url without full
+// file-path semantics; __dirname is only needed for the local static branch.
+let __dirname = '';
+try {
+  const __filename = fileURLToPath(import.meta.url);
+  __dirname = path.dirname(__filename);
+} catch {
+  __dirname = process.cwd();
+}
 
 async function dbSnapshot(){
   let [employees,attendanceRecords,leaveRequests,overtimeRequests,shifts,notifications,settings,employeeShiftAssignments]=await Promise.all([db.select().from(schema.employees),db.select().from(schema.attendanceRecords),db.select().from(schema.leaveRequests),db.select().from(schema.overtimeRequests),db.select().from(schema.shifts),db.select().from(schema.notifications),db.select().from(schema.settings),db.select().from(schema.employeeShiftAssignments)]);
@@ -187,7 +194,18 @@ registerDbWriteVerification(app);
 registerDirectScheduleSync(app);
 registerDeviceSyncV2(app);
 
-if (process.env.NODE_ENV !== "production") {
+// JSON answer for unmatched /api/* routes. On Cloudflare Workers only /api/*
+// reaches this app (static assets are served by the ASSETS binding), and the
+// default Express HTML 404 would confuse API clients.
+app.use('/api', (req: any, res: any) => {
+  res.status(404).json({ success: false, error: 'not_found', path: String(req.originalUrl || req.url || '') });
+});
+
+if (process.env.CLOUDFLARE_WORKER === '1') {
+  // Cloudflare Workers: static files are served by the platform ASSETS binding
+  // (run_worker_first is limited to /api/*), so this app must not touch the
+  // emulated node:fs to serve index.html.
+} else if (process.env.NODE_ENV !== "production") {
   const { createServer: createViteServer } = await import("vite");
   const vite = await createViteServer({
     server: { middlewareMode: true, allowedHosts: true },
@@ -205,8 +223,15 @@ if (process.env.NODE_ENV !== "production") {
 export default app;
 export { app };
 
-if (process.env.VERCEL !== '1') app.listen(PORT, '0.0.0.0', ()=>{
-  console.log(`Server running on port ${PORT} | Database: NEON`);
-  // Self-heal additive schema pieces at boot (idempotent, safe to re-run).
-  ensureSchema().then((ok) => { if (!ok) console.warn('[ensure-schema] not verified yet — will retry on first guarded request'); });
-});
+if (process.env.VERCEL !== '1') {
+  // Cloudflare Workers bridges Worker requests into this Node server through
+  // cloudflare:node (httpServerHandler/handleAsNodeRequest); the listen() port
+  // acts as a routing key there and the host variant is not supported.
+  const onListening = () => {
+    console.log(`Server running on port ${PORT} | Database: NEON`);
+    // Self-heal additive schema pieces at boot (idempotent, safe to re-run).
+    ensureSchema().then((ok) => { if (!ok) console.warn('[ensure-schema] not verified yet — will retry on first guarded request'); });
+  };
+  if (process.env.CLOUDFLARE_WORKER === '1') (app.listen as any)(PORT, onListening);
+  else app.listen(PORT, '0.0.0.0', onListening);
+}

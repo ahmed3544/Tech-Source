@@ -313,7 +313,12 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
         const response = await fetch(`/api/employee-breaks?employeeId=${encodeURIComponent(employee.id)}&from=${from}&to=${to}`, { cache: 'no-store', headers: { Accept: 'application/json' } });
         if (!response.ok) return;
         const data = await parseResponse(response);
-        if (!cancelled && data?.success && data?.breaksByDate) setBreaksByDate(data.breaksByDate);
+        if (!cancelled && data?.success && data?.breaksByDate) {
+          const normalized = Object.fromEntries(
+            Object.entries(data.breaksByDate as Record<string, any[]>).map(([key, rows]) => [key, normalizeBreaks(rows)]),
+          );
+          setBreaksByDate(normalized);
+        }
       } catch { /* employee-specific breaks are optional; shift fallback still applies */ }
     };
     void loadBreaks();
@@ -568,6 +573,10 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
       const saved = normalizeBreaks(data?.breaks);
       setBreaksByDate(prev => ({ ...prev, [breakEditor.dateKey]: saved }));
       setTeamDayBreaks(prev => ({ ...prev, [employee.id]: saved }));
+      // Re-read the exact saved day from the same API used by the schedule grid.
+      // This keeps the green work segments and red break bars in sync with the
+      // persisted employee-specific plan, rather than relying only on POST echo.
+      await refreshBreaksFor(employee.id, breakEditor.dateKey);
       setMessage(lang === 'ar' ? `تم حفظ استراحات ${breakEditor.dayName} لهذا الموظف` : `Breaks for ${breakEditor.dayName} saved for this employee`);
       setBreakEditor(null);
     } catch (err: unknown) {
