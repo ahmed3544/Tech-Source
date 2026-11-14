@@ -379,7 +379,7 @@ export default {
       }
       const dateKey = (value: any) => {
         const raw = String(value ?? "").trim();
-        if (/^\\d{4}-\\d{2}-\\d{2}$/.test(raw)) return raw;
+        if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
         const parsed = new Date(raw);
         return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString().slice(0, 10);
       };
@@ -399,7 +399,7 @@ export default {
           updatedAt: String(item?.updatedAt ?? item?.updated_at ?? new Date().toISOString()),
         };
       });
-      const invalid = incoming.find((x: any) => !x.employeeId || !/^\\d{4}-\\d{2}-\\d{2}$/.test(x.date) || (!x.clear && !x.isOffDay && !x.shiftId));
+      const invalid = incoming.find((x: any) => !x.employeeId || !/^\d{4}-\d{2}-\d{2}$/.test(x.date) || (!x.clear && !x.isOffDay && !x.shiftId));
       if (invalid) return json({ success: false, code: "INVALID_SCHEDULE_PAYLOAD", message: "Each schedule assignment requires employee, date and shift or OFF." }, 400);
       try {
         const saved = await withClient(env, async (client) => {
