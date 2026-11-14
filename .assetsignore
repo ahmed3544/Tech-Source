@@ -1,0 +1,3 @@
+# Keep the bundled Node.js server and its source map out of public static assets.
+server.js
+server.js.map
