@@ -8,6 +8,13 @@
   "crons": [
     { "path": "/api/dashboard-import-cron", "schedule": "0 1 * * *" }
   ],
+  "redirects": [
+    {
+      "source": "/((?!api/).*)",
+      "destination": "https://tech-source.tech-source.workers.dev/$1",
+      "permanent": false
+    }
+  ],
   "rewrites": [
     {
       "source": "/((?!api/).*)",
