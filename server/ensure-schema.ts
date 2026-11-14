@@ -82,6 +82,27 @@ const SCHEMA_STATEMENTS: string[] = [
       ON activity_logs (action)`,
   `CREATE INDEX IF NOT EXISTS activity_logs_actor_idx
       ON activity_logs (actor_id)`,
+  // Older writers stored full ISO timestamps ("2026-11-11T00:00:00.000Z") in
+  // employee_breaks.date. Such rows are invisible to day-scoped reads and
+  // unmatched by replace-deletes, so break edits appeared not to stick.
+  // Repair: first drop a zombie whose normalized slot (same employee, day,
+  // start_time) is already occupied by ANOTHER row, then fold every remaining
+  // zombie onto its clean day key. Runs after the table+index statements, so
+  // it is safe on fresh databases and idempotent on every later boot.
+  `DELETE FROM employee_breaks z
+      WHERE z.date::text <> substring(z.date::text from 1 for 10)
+        AND EXISTS (
+          SELECT 1 FROM employee_breaks k
+          WHERE k.id <> z.id
+            AND k.employee_id = z.employee_id
+            AND k.date::text = substring(z.date::text from 1 for 10)
+            AND k.start_time = z.start_time
+        )`,
+  `UPDATE employee_breaks SET date = substring(date::text from 1 for 10)
+      WHERE date::text <> substring(date::text from 1 for 10)`,
+  // Activity logging silently failed on pre-existing activity_logs tables
+  // created before the actor_role column existed — make the self-heal add it.
+  `ALTER TABLE activity_logs ADD COLUMN IF NOT EXISTS actor_role text`,
 ];
 
 const RETRY_COOLDOWN_MS = 30_000;
