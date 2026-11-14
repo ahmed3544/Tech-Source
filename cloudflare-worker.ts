@@ -388,11 +388,13 @@ export default {
         const clear = Boolean(item?.clear || item?.isClear || item?.is_clear || status === "CLEAR");
         const rawShift = String(item?.shiftId ?? item?.shift_id ?? "").trim();
         const off = !clear && !rawShift && (Boolean(item?.isOffDay ?? item?.is_off_day) || status === "OFF");
+        const savedStatus = clear ? "" : off ? "OFF" : ["HOLIDAY", "ANNUAL"].includes(status) ? status : rawShift ? "WORKING" : "";
         return {
           employeeId: String(item?.employeeId ?? item?.employee_id ?? "").trim(),
           date: dateKey(item?.date ?? item?.scheduleDate ?? item?.schedule_date),
-          shiftId: clear || off ? "" : rawShift,
+          shiftId: clear || off || savedStatus === "HOLIDAY" || savedStatus === "ANNUAL" ? "" : rawShift,
           isOffDay: off,
+          status: savedStatus,
           clear,
           shadowing: item && Object.prototype.hasOwnProperty.call(item, "shadowing") ? item.shadowing : undefined,
           assignedBy: String(item?.assignedBy ?? item?.assigned_by ?? body?.assignedBy ?? "").trim(),
@@ -434,7 +436,15 @@ export default {
             const previous = map.get(key);
             if (previous?.updatedAt && Date.parse(item.updatedAt) < Date.parse(String(previous.updatedAt))) continue;
             if (item.clear) { map.delete(key); continue; }
-            const next: any = { employeeId: item.employeeId, date: item.date, shiftId: item.shiftId, isOffDay: item.isOffDay, assignedBy: item.assignedBy || authId, updatedAt: item.updatedAt || stamp };
+            const next: any = {
+              employeeId: item.employeeId,
+              date: item.date,
+              shiftId: item.shiftId,
+              isOffDay: item.isOffDay,
+              status: item.status || (item.isOffDay ? "OFF" : item.shiftId ? "WORKING" : ""),
+              assignedBy: item.assignedBy || authId,
+              updatedAt: item.updatedAt || stamp,
+            };
             if (item.shadowing !== undefined) next.shadowing = item.shadowing;
             else if (previous && Object.prototype.hasOwnProperty.call(previous, "shadowing")) next.shadowing = previous.shadowing;
             map.set(key, next);
