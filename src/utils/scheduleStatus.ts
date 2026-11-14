@@ -64,15 +64,21 @@ export const breakId = (raw: any, index: number) =>
 export const normalizeBreaks = (raw: any): ScheduleBreak[] =>
   (Array.isArray(raw) ? raw : [])
     .filter((item: any) => item && item.startTime && item.endTime)
-    .map((item: any, index: number) => ({
-      id: breakId(item, index),
-      name: String(item?.name ?? ''),
-      nameAr: String(item?.nameAr ?? item?.name ?? ''),
-      nameEn: String(item?.nameEn ?? item?.name ?? ''),
-      startTime: String(item.startTime).slice(0, 5),
-      endTime: String(item.endTime).slice(0, 5),
-      durationMinutes: Number(item?.durationMinutes ?? 0) || Math.max(0, timeToMinutes(String(item.endTime).slice(0, 5)) - timeToMinutes(String(item.startTime).slice(0, 5))),
-    }));
+    .map((item: any, index: number) => {
+      // Accept both API camelCase and raw PostgreSQL snake_case rows so every
+      // schedule surface draws the same employee-specific break intervals.
+      const startTime = String(item?.startTime ?? item?.start_time ?? '').slice(0, 5);
+      const endTime = String(item?.endTime ?? item?.end_time ?? '').slice(0, 5);
+      return {
+        id: breakId({ ...item, startTime, endTime }, index),
+        name: String(item?.name ?? ''),
+        nameAr: String(item?.nameAr ?? item?.name_ar ?? item?.name ?? ''),
+        nameEn: String(item?.nameEn ?? item?.name_en ?? item?.name ?? ''),
+        startTime,
+        endTime,
+        durationMinutes: Number(item?.durationMinutes ?? item?.duration_minutes ?? 0) || Math.max(0, timeToMinutes(endTime) - timeToMinutes(startTime)),
+      };
+    });
 
 const dateInRange = (dateKey: string, start: string, end: string) => {
   const from = String(start ?? '').slice(0, 10);
