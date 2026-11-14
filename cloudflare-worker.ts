@@ -226,10 +226,10 @@ export default {
         const breaksByDate = await withClient(env, async (client) => {
           const result = await client.query(
             `SELECT id, name, name_ar, name_en, start_time, end_time, duration_minutes,
-                    to_char(date, 'YYYY-MM-DD') AS date_key
+                    date::text AS date_key
              FROM employee_breaks
-             WHERE employee_id = $1 AND date >= $2 AND date <= $3
-             ORDER BY date, start_time`,
+             WHERE employee_id = $1 AND date::text >= $2 AND date::text <= $3
+             ORDER BY date::text, start_time`,
             [employeeId, from, to],
           );
           const grouped: Record<string, any[]> = {};
