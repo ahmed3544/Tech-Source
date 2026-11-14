@@ -1,0 +1,37 @@
+name: Render Keep Alive & Health Report
+
+on:
+  schedule:
+    # Ping every 10 minutes to stay below Render's 15-minute idle window.
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  health-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Check Render service
+        env:
+          RENDER_SERVICE_URL: ${{ vars.RENDER_SERVICE_URL }}
+        run: |
+          set -eu
+          if [ -z "${RENDER_SERVICE_URL:-}" ]; then
+            echo "::error::Set the repository variable RENDER_SERVICE_URL to your Render URL (for example https://tech-source.onrender.com)."
+            exit 1
+          fi
+
+          HEALTH_URL="${RENDER_SERVICE_URL%/}/api/health"
+          echo "Checking: $HEALTH_URL"
+          STATUS="$(curl --silent --show-error --location --max-time 45 --output /tmp/render-health.txt --write-out '%{http_code}' "$HEALTH_URL" || true)"
+          BODY="$(cat /tmp/render-health.txt 2>/dev/null || true)"
+          echo "HTTP status: $STATUS"
+          echo "Response: $BODY"
+
+          case "$STATUS" in
+            2*) echo "REPORT: Render health check passed." ;;
+            *) echo "::error::REPORT: Render health check failed (HTTP $STATUS)."; exit 1 ;;
+          esac
