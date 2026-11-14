@@ -334,16 +334,37 @@ export default {
               );
             }
             await client.query("COMMIT");
+            // Return the rows read back from PostgreSQL, not the submitted payload.
+            // This verifies the exact persisted values that the schedule GET uses.
+            const persisted = await client.query(
+              `SELECT id, name, name_ar, name_en, start_time, end_time, duration_minutes
+               FROM employee_breaks
+               WHERE employee_id = $1 AND date::text = $2
+               ORDER BY start_time`,
+              [employeeId, date],
+            );
+            return {
+              employeeId,
+              date,
+              breaks: persisted.rows.map((row: any) => ({
+                id: String(row.id),
+                name: row.name ?? undefined,
+                nameAr: row.name_ar ?? undefined,
+                nameEn: row.name_en ?? undefined,
+                startTime: String(row.start_time),
+                endTime: String(row.end_time),
+                durationMinutes: Number(row.duration_minutes ?? 0),
+              })),
+            };
           } catch (error) {
             await client.query("ROLLBACK");
             throw error;
           }
-          return { employeeId, date };
         });
         if ("error" in saved) {
           return json({ success: false, error: saved.error }, saved.status);
         }
-        return json({ success: true, employeeId, date, breaks, lastUpdated: Date.now() });
+        return json({ success: true, ...saved, lastUpdated: Date.now() });
       } catch (error) {
         console.error("[preview /api/employee-breaks] POST failed:", error);
         return json({ success: false, error: "Could not save employee breaks." }, 500);
