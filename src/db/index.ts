@@ -1,9 +1,61 @@
 import { drizzle } from "drizzle-orm/node-postgres";
-import { Pool } from "pg";
+import { Pool, Client } from "pg";
+import { AsyncLocalStorage } from "node:async_hooks";
 import * as schema from "./schema.js";
 
 declare global {
   var _postgresPool: Pool | undefined;
+}
+
+/**
+ * Request-scoped database client storage for Cloudflare Workers.
+ *
+ * In the Workers runtime, outbound TCP sockets only reliably deliver events
+ * within the request context that created them — a socket reused from a
+ * later request (or from global scope) hangs forever, which is why the
+ * shared pg Pool deadlocks there. The Worker entry (cloudflare-worker.ts)
+ * therefore opens one pg Client per request, stores it here, and closes it
+ * when the response completes. drizzle picks it up transparently through
+ * the facade below; AsyncLocalStorage propagates the binding through the
+ * cloudflare:node bridge into every Express handler.
+ */
+export const requestDbStorage = new AsyncLocalStorage<{ client?: Client }>();
+
+/**
+ * Cloudflare Workers (workerd) replacement for the pg Pool.
+ *
+ * - Inside a request: queries run on the per-request Client stored in
+ *   requestDbStorage (opened + closed by the Worker entry per request).
+ * - Outside any request (boot-time ensureSchema, background work): a fresh
+ *   self-contained Client per query, always created and closed in the same
+ *   async context.
+ *
+ * Verified in workerd (scripts/pg-probe.mjs): sequential, parallel and
+ * after-idle usage all work; pooled/global clients hang across requests.
+ */
+function createWorkersClient(connectionString: string): Pool {
+  const facade = {
+    async query(...args: any[]) {
+      const scoped = requestDbStorage.getStore()?.client;
+      if (scoped) {
+        return await (scoped.query as any)(...args);
+      }
+      const c = new Client({ connectionString });
+      try {
+        await c.connect();
+        return await (c.query as any)(...args);
+      } finally {
+        try { await c.end(); } catch {}
+      }
+    },
+    on: () => {},
+    end: async () => {},
+  };
+
+  // drizzle-orm's node-postgres driver only calls .query() on the client
+  // (see NodePgSession); the structural cast keeps the shared call sites
+  // unchanged for every deployment platform.
+  return facade as unknown as Pool;
 }
 
 export const createPool = () => {
@@ -17,6 +69,11 @@ export const createPool = () => {
       console.warn(
         "DATABASE_URL/SUPABASE_DB_URL is not set. Database operations will fail."
       );
+    }
+
+    if (process.env.CLOUDFLARE_WORKER === "1") {
+      global._postgresPool = createWorkersClient(connectionString || "");
+      return global._postgresPool;
     }
 
     // Serverless instances can scale horizontally. A large pool per instance

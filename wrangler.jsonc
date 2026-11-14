@@ -5,6 +5,21 @@
   "compatibility_date": "2026-11-14",
   "compatibility_flags": ["nodejs_compat"],
   "preview_urls": true,
+  // Fold NODE_ENV to "production" at bundle time so the Vite dev-server branch
+  // in server.ts is dead-code eliminated (vite must never enter the bundle).
+  "define": {
+    "process.env.NODE_ENV": "\"production\""
+  },
+  "alias": {
+    // firebase-admin uses a native gRPC transport that cannot run on Workers;
+    // server/fcm.ts degrades gracefully with these stubs (push disabled,
+    // token-store routes still work against the database).
+    "firebase-admin/app": "./cloudflare-stubs/firebase-app.ts",
+    "firebase-admin/messaging": "./cloudflare-stubs/firebase-messaging.ts",
+    "vite": "./cloudflare-stubs/vite.ts",
+    "dotenv/config": "./cloudflare-stubs/dotenv-config.ts",
+    "pg-native": "./cloudflare-stubs/dotenv-config.ts"
+  },
   "hyperdrive": [
     {
       "binding": "HYPERDRIVE",
