@@ -159,12 +159,17 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ currentU
 
   useEffect(() => {
     if (!open) return;
+    // SSE is gone (serverless-safe lightweight polling), so a stale list could
+    // linger up to a full polling cycle. Refreshing on every open is
+    // user-driven — one call per open — so it stays quota-friendly.
+    void load(true);
     const onPointerDown = (event: PointerEvent) => { if (!ref.current?.contains(event.target as Node)) setOpen(false); };
     const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpen(false); };
     document.addEventListener('pointerdown', onPointerDown);
     document.addEventListener('keydown', onKeyDown);
     return () => { document.removeEventListener('pointerdown', onPointerDown); document.removeEventListener('keydown', onKeyDown); };
-  }, [open]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, currentUserId]);
 
   const unreadCount = useMemo(() => items.filter((notification) => !notification.isRead).length, [items]);
 
