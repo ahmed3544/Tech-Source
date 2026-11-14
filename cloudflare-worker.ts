@@ -1,6 +1,6 @@
-export interface Env {
-  ASSETS: Fetcher;
-}
+type Env = {
+  ASSETS: { fetch(request: Request): Promise<Response> };
+};
 
 const API_NOT_READY = {
   success: false,
