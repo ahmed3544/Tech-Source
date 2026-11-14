@@ -3,6 +3,13 @@
   "name": "tech-source",
   "main": "cloudflare-worker.ts",
   "compatibility_date": "2026-11-14",
+  "compatibility_flags": ["nodejs_compat"],
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "658b8ceb8523437dbda19a42e85ddb7a"
+    }
+  ],
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
