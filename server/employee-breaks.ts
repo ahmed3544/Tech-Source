@@ -1,4 +1,4 @@
-import { and, eq, gte, lte } from 'drizzle-orm';
+import { and, eq, gte, lte, or, sql } from 'drizzle-orm';
 import { db } from '../src/db/index.js';
 import * as schema from '../src/db/schema.js';
 import { canManageEmployee, findEmployeeById, requireManager } from './auth.js';
@@ -18,6 +18,34 @@ import { logActivity } from './activity-logs.js';
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_BREAKS_PER_DAY = 10;
+
+/**
+ * Normalize any stored/incoming date value to a clean YYYY-MM-DD key.
+ *
+ * Older writers (hand-written preview worker, Excel import paths) stored
+ * full ISO timestamps like "2026-11-11T00:00:00.000Z" in the date column;
+ * pg also hands back Date objects for DATE-typed columns. Such "zombie"
+ * rows are invisible to day-scoped reads (lte 'YYYY-MM-DD' fails) and are
+ * never matched by the replace-delete, so edits appeared to not stick.
+ */
+export function toDateKey(value: unknown): string {
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  const s = String(value ?? '').trim();
+  if (/^\d{4}-\d{2}-\d{2}T/.test(s)) return s.slice(0, 10);
+  return s;
+}
+
+/** Replace-delete matcher: exact date OR any value whose day-prefix matches
+ *  (catches ISO-timestamp zombie rows for the same day, on both TEXT and
+ *  DATE-typed columns). */
+const sameDayMatcher = (employeeId: string, date: string) =>
+  and(
+    eq(schema.employeeBreaks.employeeId, employeeId),
+    or(
+      eq(schema.employeeBreaks.date, date),
+      sql`left(${schema.employeeBreaks.date}::text, 10) = ${date}`,
+    ),
+  );
 
 const toMinutes = (value: string) => {
   const [h, m] = String(value ?? '').split(':').map(Number);
@@ -88,7 +116,10 @@ export function registerEmployeeBreaks(app: any) {
 
       const byDate: Record<string, ValidatedBreak[]> = {};
       for (const row of rows) {
-        const list = byDate[String(row.date)] ?? [];
+        // Normalize polluted/DATE-typed date values into clean day keys so
+        // zombie rows are visible and editable instead of silently ignored.
+        const dateKey = toDateKey(row.date);
+        const list = byDate[dateKey] ?? [];
         list.push({
           id: String(row.id),
           name: row.name ?? undefined,
@@ -98,7 +129,7 @@ export function registerEmployeeBreaks(app: any) {
           endTime: String(row.endTime),
           durationMinutes: Number(row.durationMinutes ?? 0),
         });
-        byDate[String(row.date)] = list;
+        byDate[dateKey] = list;
       }
       res.setHeader('Cache-Control', 'no-store');
       return res.json({ success: true, breaksByDate: byDate });
@@ -129,7 +160,9 @@ export function registerEmployeeBreaks(app: any) {
       if (validationError) return res.status(400).json({ success: false, error: validationError });
 
       // Replace-all semantics per employee+date keep saves atomic and simple.
-      await db.delete(schema.employeeBreaks).where(and(eq(schema.employeeBreaks.employeeId, employeeId), eq(schema.employeeBreaks.date, date)));
+      // The same-day matcher also removes ISO-timestamp zombie rows that older
+      // writers stored, so an edit can never leave stale duplicates behind.
+      await db.delete(schema.employeeBreaks).where(sameDayMatcher(employeeId, date));
       if (breaks.length) {
         const now = new Date().toISOString();
         await db.insert(schema.employeeBreaks).values(breaks.map((b) => ({
@@ -165,8 +198,27 @@ export function registerEmployeeBreaks(app: any) {
         });
       }
 
+      // Read the rows back from PostgreSQL and return those — the response
+      // then reflects EXACTLY what the schedule GET will serve, so the UI
+      // never flashes stale times after saving.
+      const persistedRows = (await db
+        .select()
+        .from(schema.employeeBreaks)
+        .where(and(eq(schema.employeeBreaks.employeeId, employeeId), eq(schema.employeeBreaks.date, date)))) as any[];
+      const persistedBreaks: ValidatedBreak[] = persistedRows
+        .map((row) => ({
+          id: String(row.id),
+          name: row.name ?? undefined,
+          nameAr: row.nameAr ?? undefined,
+          nameEn: row.nameEn ?? undefined,
+          startTime: String(row.startTime),
+          endTime: String(row.endTime),
+          durationMinutes: Number(row.durationMinutes ?? 0),
+        }))
+        .sort((a, b) => toMinutes(a.startTime) - toMinutes(b.startTime));
+
       res.setHeader('Cache-Control', 'no-store');
-      return res.json({ success: true, employeeId, date, breaks, lastUpdated: Date.now() });
+      return res.json({ success: true, employeeId, date, breaks: persistedBreaks, lastUpdated: Date.now() });
     } catch (error: any) {
       console.error('[EMPLOYEE-BREAKS] POST failed:', error?.message || error);
       return res.status(500).json({ success: false, error: 'Could not save employee breaks.' });

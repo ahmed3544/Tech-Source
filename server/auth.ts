@@ -109,9 +109,11 @@ export async function requireManager(
 }
 
 /**
- * Admins may manage anyone. Team leaders can manage regular employee accounts
- * across the roster, but cannot manage administrator accounts. Shift assignment
- * remains a separate admin-only UI permission.
+ * Admins may manage anyone. Team leaders manage ONLY members of their own
+ * team (matched by team_leader_id = the leader's id, or team_id = the
+ * leader's team) plus themselves; administrator accounts are always
+ * protected. Employees with no team assignment are admin-managed only.
+ * Shift assignment remains a separate admin-only UI permission.
  */
 export function canManageEmployee(manager: AuthedEmployee, targetEmployee: any): boolean {
   if (isPlatformAdmin(manager.role)) return true;
@@ -122,7 +124,14 @@ export function canManageEmployee(manager: AuthedEmployee, targetEmployee: any):
   if (targetId === manager.id) return true;
   // Keep administrator accounts protected from team-leader CRUD actions.
   if (isPlatformAdmin(targetEmployee?.role)) return false;
-  return true;
+  // Team scoping: a leader only manages members of their own team.
+  const leaderId = String(manager.id ?? '').trim();
+  const leaderTeam = String((manager as any).teamId ?? '').trim();
+  const targetLeader = String(targetEmployee?.teamLeaderId ?? '').trim();
+  const targetTeam = String(targetEmployee?.teamId ?? '').trim();
+  if (targetLeader && targetLeader === leaderId) return true;
+  if (leaderTeam && targetTeam && targetTeam === leaderTeam) return true;
+  return false;
 }
 
 /**

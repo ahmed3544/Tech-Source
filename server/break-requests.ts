@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, or, sql } from 'drizzle-orm';
 import { db } from '../src/db/index.js';
 import * as schema from '../src/db/schema.js';
 import {
@@ -10,7 +10,7 @@ import {
   requireManager,
   type AuthedEmployee,
 } from './auth.js';
-import { validateBreakList } from './employee-breaks.js';
+import { toDateKey, validateBreakList } from './employee-breaks.js';
 import { logActivity } from './activity-logs.js';
 import { ensureNotificationStorage, saveOne } from './notification-system-v2.js';
 import { publishNotification } from './notification-sse.js';
@@ -160,14 +160,23 @@ async function effectiveBreaksFor(employeeId: string, date: string): Promise<Arr
 }
 
 async function writeBreaksForDate(employeeId: string, companyId: string | null, date: string, breaks: Array<Record<string, any>>) {
-  await db.delete(schema.employeeBreaks).where(and(eq(schema.employeeBreaks.employeeId, employeeId), eq(schema.employeeBreaks.date, date)));
+  // Normalize to a clean day key AND sweep ISO-timestamp zombie rows for the
+  // same day (left(date::text,10)) so approvals never leave stale duplicates.
+  const day = toDateKey(date);
+  await db.delete(schema.employeeBreaks).where(and(
+    eq(schema.employeeBreaks.employeeId, employeeId),
+    or(
+      eq(schema.employeeBreaks.date, day),
+      sql`left(${schema.employeeBreaks.date}::text, 10) = ${day}`,
+    ),
+  ));
   if (!breaks.length) return;
   const now = new Date().toISOString();
   await db.insert(schema.employeeBreaks).values(breaks.map((b) => ({
     id: `brk-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
     companyId: companyId ?? 'tech-source',
     employeeId,
-    date,
+    date: day,
     name: b.name ?? null,
     nameAr: b.nameAr ?? null,
     nameEn: b.nameEn ?? null,

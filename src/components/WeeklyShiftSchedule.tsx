@@ -38,6 +38,12 @@ interface WeeklyShiftScheduleProps {
 }
 
 const pad = (n: number) => String(n).padStart(2, '0');
+
+// Break editing must never hang the UI on a stalled request: every
+// /api/employee-breaks fetch carries a hard 20s timeout, so a stuck save
+// surfaces as a clear error instead of an eternal spinner.
+const BREAKS_FETCH_TIMEOUT_MS = 20_000;
+const breaksSignal = () => AbortSignal.timeout(BREAKS_FETCH_TIMEOUT_MS);
 const DAY_NAMES_AR = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
 const DAY_NAMES_EN = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const dateKey = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -310,7 +316,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
     const to = dateKey(days[6].date);
     const loadBreaks = async () => {
       try {
-        const response = await fetch(`/api/employee-breaks?employeeId=${encodeURIComponent(employee.id)}&from=${from}&to=${to}`, { cache: 'no-store', headers: { Accept: 'application/json' } });
+        const response = await fetch(`/api/employee-breaks?employeeId=${encodeURIComponent(employee.id)}&from=${from}&to=${to}`, { cache: 'no-store', headers: { Accept: 'application/json' }, signal: breaksSignal() });
         if (!response.ok) return;
         const data = await parseResponse(response);
         if (!cancelled && data?.success && data?.breaksByDate) {
@@ -514,7 +520,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
         } as any;
       });
       const response = await fetch('/api/schedule-sync', {
-        method: 'POST', credentials: 'include', cache: 'no-store',
+        method: 'POST', credentials: 'include', cache: 'no-store', signal: breaksSignal(),
         headers: authHeaders({ 'Content-Type': 'application/json', Accept: 'application/json', 'Cache-Control': 'no-cache' }),
         body: JSON.stringify({ dailyShiftAssignments: rows, syncTimestamp: now }),
       });
@@ -560,7 +566,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
         .filter(row => row.startTime && row.endTime)
         .map(row => ({ id: row.id?.startsWith('draft-') ? undefined : row.id, name: row.name?.trim() || undefined, startTime: row.startTime, endTime: row.endTime }));
       const response = await fetch('/api/employee-breaks', {
-        method: 'POST', credentials: 'include', cache: 'no-store',
+        method: 'POST', credentials: 'include', cache: 'no-store', signal: breaksSignal(),
         headers: authHeaders({ 'Content-Type': 'application/json', Accept: 'application/json', 'Cache-Control': 'no-cache' }),
         body: JSON.stringify({ employeeId: employee.id, date: breakEditor.dateKey, breaks: payload }),
       });
@@ -655,7 +661,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
           });
           if (status.status !== 'working' || !assignedShift) continue;
           const response = await fetch('/api/employee-breaks', {
-            method: 'POST', credentials: 'include', cache: 'no-store',
+            method: 'POST', credentials: 'include', cache: 'no-store', signal: breaksSignal(),
             headers: authHeaders({ 'Content-Type': 'application/json', Accept: 'application/json', 'Cache-Control': 'no-cache' }),
             body: JSON.stringify({ employeeId: person.id, date: dayKey, breaks: presets[key] }),
           });
@@ -677,7 +683,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
       if (person) {
         const from = '2026-10-25';
         const to = '2026-10-31';
-        const response = await fetch(`/api/employee-breaks?employeeId=${encodeURIComponent(person.id)}&from=${from}&to=${to}`, { cache: 'no-store', headers: { Accept: 'application/json' } });
+        const response = await fetch(`/api/employee-breaks?employeeId=${encodeURIComponent(person.id)}&from=${from}&to=${to}`, { cache: 'no-store', headers: { Accept: 'application/json' }, signal: breaksSignal() });
         if (response.ok) {
           const data = await parseResponse(response);
           if (data?.success && data?.breaksByDate) setBreaksByDate(data.breaksByDate);
@@ -702,7 +708,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
     const map: Record<string, Record<string, ScheduleBreak[]>> = {};
     await Promise.all(people.map(async (person) => {
       try {
-        const response = await fetch(`/api/employee-breaks?employeeId=${encodeURIComponent(person.id)}&from=${from}&to=${to}`, { cache: 'no-store', headers: { Accept: 'application/json' } });
+        const response = await fetch(`/api/employee-breaks?employeeId=${encodeURIComponent(person.id)}&from=${from}&to=${to}`, { cache: 'no-store', headers: { Accept: 'application/json' }, signal: breaksSignal() });
         if (!response.ok) return;
         const data = await parseResponse(response);
         if (data?.success && data?.breaksByDate) map[person.id] = data.breaksByDate;
@@ -801,7 +807,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
       for (const entry of preview.breaks) {
         try {
           const response = await fetch('/api/employee-breaks', {
-            method: 'POST', credentials: 'include', cache: 'no-store',
+            method: 'POST', credentials: 'include', cache: 'no-store', signal: breaksSignal(),
             headers: authHeaders({ 'Content-Type': 'application/json', Accept: 'application/json', 'Cache-Control': 'no-cache' }),
             body: JSON.stringify({ employeeId: entry.employeeId, date: entry.date, breaks: entry.breaks, source: 'excel-import' }),
           });
@@ -828,7 +834,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
   const refreshBreaksFor = async (employeeId: string, date: string) => {
     if (employeeId !== employee?.id) return;
     try {
-      const response = await fetch(`/api/employee-breaks?employeeId=${encodeURIComponent(employeeId)}&from=${date}&to=${date}`, { cache: 'no-store', headers: { Accept: 'application/json' } });
+      const response = await fetch(`/api/employee-breaks?employeeId=${encodeURIComponent(employeeId)}&from=${date}&to=${date}`, { cache: 'no-store', headers: { Accept: 'application/json' }, signal: breaksSignal() });
       if (!response.ok) return;
       const data = await parseResponse(response);
       if (data?.success && data?.breaksByDate) {
