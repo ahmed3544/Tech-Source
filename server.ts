@@ -6,7 +6,6 @@ import * as schema from "./src/db/schema.js";
 import { registerFcmRoutes } from "./server/fcm.js";
 import { ensureNotificationStorage, registerNotificationSystemV2 } from "./server/notification-system-v2.js";
 import { registerRequestNotificationTriggers } from "./server/request-notification-triggers.js";
-import { registerNotificationSse } from "./server/notification-sse.js";
 import { registerAttendanceRealtime } from "./server/attendance-realtime.js";
 import { registerDeviceSyncV2 } from "./server/device-sync-v2.js";
 import { registerScheduleSyncGuard } from "./server/schedule-sync-guard.js";
@@ -28,6 +27,8 @@ app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 registerFcmRoutes(app);
 const PORT = Number(process.env.PORT || 3000);
+// Lightweight health check used by Render's free web service health monitor.
+app.get('/api/health', (_req, res) => res.status(200).json({ status: 'ok' }));
 const TZ = process.env.SERVER_TIME_ZONE || "Africa/Cairo";
 const USE_DATABASE = true;
 
@@ -65,7 +66,6 @@ async function dbSnapshot(){
 return{success:true,employees:sanitizeEmployees(employees),attendanceRecords,leaveRequests,overtimeRequests,shifts:hydratedShifts,notifications,employeeShiftAssignments,dailyShiftAssignments,shiftSwapRequests:localState.shiftSwapRequests,companyNameAr:m.get("companyNameAr")??null,companyNameEn:m.get("companyNameEn")??null,urgentNotice:m.get("urgentNotice")??null,officialHolidays:Array.isArray(m.get("officialHolidays"))?m.get("officialHolidays"):[],lastUpdated:Date.now()};}
 
 registerNotificationSystemV2(app);
-registerNotificationSse(app);
 
 // Employee CRUD + employee-specific breaks (shared handlers, permission-checked).
 app.put('/api/employees/:id', (req:any, res:any) => updateEmployeeHandler(req, res));
