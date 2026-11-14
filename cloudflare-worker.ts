@@ -19,7 +19,7 @@
 // - firebase-admin is aliased to a stub (cloudflare-stubs/) because its gRPC
 //   transport cannot run on Workers; push delivery degrades gracefully and
 //   the in-app notification center (database-backed) keeps working.
-import "./cloudflare-worker-env";
+import { applyDatabaseBindings } from "./cloudflare-worker-env";
 import { handleAsNodeRequest } from "cloudflare:node";
 import { env } from "cloudflare:workers";
 import { Client } from "pg";
@@ -57,6 +57,10 @@ async function databaseHealth(): Promise<"connected" | "unavailable"> {
 
 export default {
   async fetch(request: Request): Promise<Response> {
+    // Request-time only: reading the Hyperdrive binding in global scope fails
+    // deploy validation (error 10021), so the effective DATABASE_URL lands on
+    // process.env here, before the request can touch the database.
+    applyDatabaseBindings();
     const url = new URL(request.url);
 
     // Richer health probe than the Express one: verifies the Hyperdrive/Neon

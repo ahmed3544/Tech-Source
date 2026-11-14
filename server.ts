@@ -230,7 +230,13 @@ if (process.env.VERCEL !== '1') {
   const onListening = () => {
     console.log(`Server running on port ${PORT} | Database: NEON`);
     // Self-heal additive schema pieces at boot (idempotent, safe to re-run).
-    ensureSchema().then((ok) => { if (!ok) console.warn('[ensure-schema] not verified yet — will retry on first guarded request'); });
+    // Skipped on Cloudflare Workers: boot-time database I/O outside a request
+    // context violates deploy validation (error 10021) and sockets created in
+    // the listen callback are unreliable there — authenticateRequest already
+    // self-heals the schema on the first guarded request instead.
+    if (process.env.CLOUDFLARE_WORKER !== '1') {
+      ensureSchema().then((ok) => { if (!ok) console.warn('[ensure-schema] not verified yet — will retry on first guarded request'); });
+    }
   };
   if (process.env.CLOUDFLARE_WORKER === '1') (app.listen as any)(PORT, onListening);
   else app.listen(PORT, '0.0.0.0', onListening);

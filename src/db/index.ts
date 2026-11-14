@@ -33,14 +33,18 @@ export const requestDbStorage = new AsyncLocalStorage<{ client?: Client }>();
  * Verified in workerd (scripts/pg-probe.mjs): sequential, parallel and
  * after-idle usage all work; pooled/global clients hang across requests.
  */
-function createWorkersClient(connectionString: string): Pool {
+function createWorkersClient(getConnectionString: () => string): Pool {
+  // The connection string is read lazily at query time (NOT captured at
+  // creation): on Cloudflare Workers the Hyperdrive binding cannot be read in
+  // global scope (deploy validation, error 10021), so process.env.DATABASE_URL
+  // is only populated on the first request by applyDatabaseBindings().
   const facade = {
     async query(...args: any[]) {
       const scoped = requestDbStorage.getStore()?.client;
       if (scoped) {
         return await (scoped.query as any)(...args);
       }
-      const c = new Client({ connectionString });
+      const c = new Client({ connectionString: getConnectionString() });
       try {
         await c.connect();
         return await (c.query as any)(...args);
@@ -72,7 +76,12 @@ export const createPool = () => {
     }
 
     if (process.env.CLOUDFLARE_WORKER === "1") {
-      global._postgresPool = createWorkersClient(connectionString || "");
+      // Resolve the connection string at query time: on Workers the Hyperdrive
+      // binding is applied to process.env.DATABASE_URL on the first request
+      // (applyDatabaseBindings), never in global scope (deploy validation).
+      global._postgresPool = createWorkersClient(
+        () => process.env.DATABASE_URL || process.env.SUPABASE_DB_URL || ""
+      );
       return global._postgresPool;
     }
 
@@ -102,9 +111,7 @@ export const createPool = () => {
 
 const pool = createPool();
 
-let db: ReturnType<typeof drizzle>;
-if (!process.env.DATABASE_URL && !process.env.SUPABASE_DB_URL) {
-  console.warn('[AI Studio] Database not connected — using mock');
+const createMockDb = () => {
   const createChain = (terminalVal: any) => {
     const fn = () => chain;
     const chain: any = new Proxy(fn, {
@@ -119,8 +126,8 @@ if (!process.env.DATABASE_URL && !process.env.SUPABASE_DB_URL) {
     });
     return chain;
   };
-  
-  db = new Proxy({}, {
+
+  return new Proxy({}, {
     get: (_, prop) => {
        if (prop === 'select') return () => new Proxy({}, { get: () => () => new Proxy({}, { get: () => async () => [] }) });
        if (prop === 'insert') return () => new Proxy({}, { get: () => () => new Proxy({}, { get: () => async () => [] }) });
@@ -129,12 +136,33 @@ if (!process.env.DATABASE_URL && !process.env.SUPABASE_DB_URL) {
        return async () => [];
     }
   }) as any;
-} else {
-  try {
-    db = drizzle(pool, { schema });
-  } catch {
-    db = new Proxy({}, { get: () => async () => [] }) as any;
-  }
-}
+};
 
-export { db };
+let cachedDb: ReturnType<typeof drizzle> | null = null;
+let cachedMode: 'drizzle' | 'mock' | null = null;
+
+// Resolved lazily (never at module scope) so the Cloudflare Worker can receive
+// its Hyperdrive connection string on the first request — Hyperdrive bindings
+// cannot be read in global scope (deploy validation, error 10021). The mode
+// re-evaluates until a database URL appears, then the instance is cached.
+const resolveDb = () => {
+  const mode: 'drizzle' | 'mock' =
+    process.env.DATABASE_URL || process.env.SUPABASE_DB_URL ? 'drizzle' : 'mock';
+  if (cachedMode === mode && cachedDb) return cachedDb;
+  if (mode === 'mock') {
+    console.warn('[AI Studio] Database not connected — using mock');
+    cachedDb = createMockDb();
+  } else {
+    try {
+      cachedDb = drizzle(pool, { schema });
+    } catch {
+      cachedDb = createMockDb();
+    }
+  }
+  cachedMode = mode;
+  return cachedDb;
+};
+
+export const db = new Proxy({} as any, {
+  get: (_, prop) => (resolveDb() as any)[prop],
+}) as ReturnType<typeof drizzle>;
