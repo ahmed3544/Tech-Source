@@ -143,7 +143,9 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ currentU
     // Vercel serverless cannot share in-memory SSE subscribers across instances.
     // Polling is the reliable delivery path there and avoids holding Fluid Compute
     // instances open for long-lived EventSource connections.
-    const timer = window.setInterval(() => void load(true), 30000);
+    // QUOTA FIX: skip polling while the tab is hidden (zero invocations);
+    // the visibility/focus refreshes below cover the return-to-tab case.
+    const timer = window.setInterval(() => { if (document.visibilityState === 'visible') void load(true); }, 30000);
     const onFocus = () => void load(true);
     const onVisibility = () => { if (document.visibilityState === 'visible') void load(true); };
     window.addEventListener('focus', onFocus);
@@ -157,12 +159,17 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ currentU
 
   useEffect(() => {
     if (!open) return;
+    // SSE is gone (serverless-safe lightweight polling), so a stale list could
+    // linger up to a full polling cycle. Refreshing on every open is
+    // user-driven — one call per open — so it stays quota-friendly.
+    void load(true);
     const onPointerDown = (event: PointerEvent) => { if (!ref.current?.contains(event.target as Node)) setOpen(false); };
     const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpen(false); };
     document.addEventListener('pointerdown', onPointerDown);
     document.addEventListener('keydown', onKeyDown);
     return () => { document.removeEventListener('pointerdown', onPointerDown); document.removeEventListener('keydown', onKeyDown); };
-  }, [open]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, currentUserId]);
 
   const unreadCount = useMemo(() => items.filter((notification) => !notification.isRead).length, [items]);
 

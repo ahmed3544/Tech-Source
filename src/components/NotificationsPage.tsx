@@ -114,8 +114,18 @@ export const NotificationsPage: React.FC<Props> = ({ currentUserId, lang, onBack
     if (!currentUserId) return;
     // Use polling on the full notifications page instead of a persistent SSE connection.
     // This avoids Vercel/serverless connection issues that can freeze or break the page.
-    const timer = window.setInterval(() => { void load(true); }, 5000);
-    return () => { window.clearInterval(timer); };
+    // QUOTA FIX: 5s polling burned the Vercel Hobby allowance — now 30s while
+    // visible, zero calls while hidden, instant refresh on return.
+    const isVisible = () => document.visibilityState === 'visible';
+    const timer = window.setInterval(() => { if (isVisible()) void load(true); }, 30000);
+    const onVisible = () => { if (isVisible()) void load(true); };
+    window.addEventListener('focus', onVisible);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', onVisible);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   }, [currentUserId]);
 
   const list = useMemo(() => items, [items]);
