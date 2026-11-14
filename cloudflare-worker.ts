@@ -218,7 +218,7 @@ export default {
       const employeeId = String(url.searchParams.get("employeeId") || "").trim();
       const from = String(url.searchParams.get("from") || "").trim();
       const to = String(url.searchParams.get("to") || "").trim();
-      const dateRe = /^\\d{4}-\\d{2}-\\d{2}$/;
+      const dateRe = /^\d{4}-\d{2}-\d{2}$/;
       if (!employeeId || !dateRe.test(from) || !dateRe.test(to) || from > to) {
         return json({ success: false, error: "employeeId, from and to (YYYY-MM-DD) are required." }, 400);
       }
@@ -261,7 +261,7 @@ export default {
 
       const employeeId = String(body?.employeeId ?? "").trim();
       const date = String(body?.date ?? "").trim();
-      const dateRe = /^\\d{4}-\\d{2}-\\d{2}$/;
+      const dateRe = /^\d{4}-\d{2}-\d{2}$/;
       if (!employeeId || !dateRe.test(date)) {
         return json({ success: false, error: "employeeId and date (YYYY-MM-DD) are required." }, 400);
       }
@@ -280,7 +280,7 @@ export default {
       for (const [index, item] of rawBreaks.entries()) {
         const startTime = String(item?.startTime ?? "").trim();
         const endTime = String(item?.endTime ?? "").trim();
-        if (!/^([01]\\d|2[0-3]):[0-5]\\d$/.test(startTime) || !/^([01]\\d|2[0-3]):[0-5]\\d$/.test(endTime)) {
+        if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(startTime) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(endTime)) {
           return json({ success: false, error: `Break ${index + 1}: start and end times are required in HH:mm format.` }, 400);
         }
         const minutes = (value: string) => Number(value.slice(0, 2)) * 60 + Number(value.slice(3, 5));
