@@ -10,6 +10,14 @@
       "id": "ae292a02fbb3400e8b0fe9eae0b86469"
     }
   ],
+  "previews": {
+    "hyperdrive": [
+      {
+        "binding": "HYPERDRIVE",
+        "id": "ae292a02fbb3400e8b0fe9eae0b86469"
+      }
+    ]
+  },
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
