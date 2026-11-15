@@ -10,7 +10,7 @@ import {
   requireManager,
   type AuthedEmployee,
 } from './auth.js';
-import { toDateKey, validateBreakList } from './employee-breaks.js';
+import { toDateKey, validateBreakList, withBreakSaveLock } from './employee-breaks.js';
 import { logActivity } from './activity-logs.js';
 import { ensureNotificationStorage, saveOne } from './notification-system-v2.js';
 import { publishNotification } from './notification-sse.js';
@@ -159,10 +159,15 @@ async function effectiveBreaksFor(employeeId: string, date: string): Promise<Arr
     .sort((a: any, b: any) => toMinutes(a.startTime) - toMinutes(b.startTime));
 }
 
-async function writeBreaksForDate(employeeId: string, companyId: string | null, date: string, breaks: Array<Record<string, any>>) {
-  // Normalize to a clean day key AND sweep ISO-timestamp zombie rows for the
-  // same day (left(date::text,10)) so approvals never leave stale duplicates.
-  const day = toDateKey(date);
+/**
+ * Bare replace-all of one employee-day's breaks (delete + insert).
+ * MUST be called while holding withBreakSaveLock for the same
+ * employee|day — it takes no lock itself so the whole read-modify-write
+ * stays inside the caller's lock window.
+ */
+async function replaceBreaksForDate(employeeId: string, companyId: string | null, day: string, breaks: Array<Record<string, any>>) {
+  // Sweep ISO-timestamp zombie rows for the same day (left(date::text,10))
+  // so approvals never leave stale duplicates behind.
   await db.delete(schema.employeeBreaks).where(and(
     eq(schema.employeeBreaks.employeeId, employeeId),
     or(
@@ -364,30 +369,39 @@ export function registerBreakRequests(app: any) {
 
       if (approved) {
         const date = String(request.date);
-        const effective = await effectiveBreaksFor(String(request.employeeId), date);
+        const day = toDateKey(date);
         const currentStart = request.currentStartTime ? String(request.currentStartTime) : '';
         const currentEnd = request.currentEndTime ? String(request.currentEndTime) : '';
-        const next: Array<Record<string, any>> = effective.map((b) => ({ ...b }));
-        const matchIndex = currentStart && currentEnd
-          ? next.findIndex((b) => toMinutes(b.startTime) === toMinutes(currentStart) && toMinutes(b.endTime) === toMinutes(currentEnd))
-          : -1;
-        const proposed = {
-          startTime: String(request.proposedStartTime),
-          endTime: String(request.proposedEndTime),
-          name: (matchIndex >= 0 ? next[matchIndex].name : undefined),
-          nameAr: (matchIndex >= 0 ? next[matchIndex].nameAr : undefined),
-          nameEn: (matchIndex >= 0 ? next[matchIndex].nameEn : undefined),
-        };
-        if (matchIndex >= 0) next[matchIndex] = { ...next[matchIndex], ...proposed };
-        else next.push(proposed);
-        next.sort((a, b) => toMinutes(a.startTime) - toMinutes(b.startTime));
+        // Read-compute-validate-write ALL inside the advisory lock window:
+        // effectiveBreaksFor must see (and rewrite onto) whatever a concurrent
+        // manual edit committed, otherwise the approval resurrects stale rows
+        // (read-modify-write race) and the day ends with merged duplicates.
+        const outcome = await withBreakSaveLock(String(request.employeeId), day, async () => {
+          const effective = await effectiveBreaksFor(String(request.employeeId), day);
+          const next: Array<Record<string, any>> = effective.map((b) => ({ ...b }));
+          const matchIndex = currentStart && currentEnd
+            ? next.findIndex((b) => toMinutes(b.startTime) === toMinutes(currentStart) && toMinutes(b.endTime) === toMinutes(currentEnd))
+            : -1;
+          const proposedBreak = {
+            startTime: String(request.proposedStartTime),
+            endTime: String(request.proposedEndTime),
+            name: (matchIndex >= 0 ? next[matchIndex].name : undefined),
+            nameAr: (matchIndex >= 0 ? next[matchIndex].nameAr : undefined),
+            nameEn: (matchIndex >= 0 ? next[matchIndex].nameEn : undefined),
+          };
+          if (matchIndex >= 0) next[matchIndex] = { ...next[matchIndex], ...proposedBreak };
+          else next.push(proposedBreak);
+          next.sort((a, b) => toMinutes(a.startTime) - toMinutes(b.startTime));
 
-        const [validated, validationError] = validateBreakList(next);
-        if (validationError) {
-          return res.status(400).json({ success: false, error: `Approval rejected by break validation: ${validationError}` });
+          const [validated, validationError] = validateBreakList(next);
+          if (validationError) return { validationError };
+          await replaceBreaksForDate(String(request.employeeId), target.companyId ?? null, day, validated);
+          return { validated };
+        });
+        if ((outcome as any).validationError) {
+          return res.status(400).json({ success: false, error: `Approval rejected by break validation: ${(outcome as any).validationError}` });
         }
-        await writeBreaksForDate(String(request.employeeId), target.companyId ?? null, date, validated);
-        savedBreaks = validated;
+        savedBreaks = (outcome as any).validated;
       }
 
       const updated = {

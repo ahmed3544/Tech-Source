@@ -1,0 +1,44 @@
+name: Cloudflare Health Check
+
+on:
+  schedule:
+    # Ping every 10 minutes so uptime history stays continuous for the Worker
+    # (the runtime itself never idles — this is monitoring, not keep-alive).
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  health-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Check Cloudflare Worker
+        env:
+          WORKER_HEALTH_URL: ${{ vars.WORKER_HEALTH_URL }}
+        run: |
+          set -eu
+          # Defaults to the production Worker; set the repository variable
+          # WORKER_HEALTH_URL to override without a code change.
+          HEALTH_URL="${WORKER_HEALTH_URL:-https://tech-source.tech-source.workers.dev/api/health}"
+          echo "Checking: $HEALTH_URL"
+          STATUS="$(curl --silent --show-error --location --max-time 45 --output /tmp/health.json --write-out '%{http_code}' "$HEALTH_URL" || true)"
+          echo "HTTP status: $STATUS"
+          cat /tmp/health.json 2>/dev/null || true
+          echo
+
+          case "$STATUS" in
+            2*) echo "Worker reachable." ;;
+            *) echo "::error::REPORT: Cloudflare Worker health check failed (HTTP $STATUS)."; exit 1 ;;
+          esac
+
+          # The /api/health probe performs a real Hyperdrive → PostgreSQL
+          # round-trip, so this catches database outages, not just API outages.
+          if ! grep -q '"database":"connected"' /tmp/health.json; then
+            echo "::error::REPORT: Worker is up but the database is NOT connected."
+            exit 1
+          fi
+
+          echo "REPORT: Cloudflare health check passed (Worker + database connected)."
