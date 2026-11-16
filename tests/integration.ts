@@ -108,6 +108,7 @@ process.env.DATABASE_URL = BASE_URL;
 // 2. Build the real HTTP app from the real handlers
 // ---------------------------------------------------------------------------
 const { registerDirectScheduleSync } = await import('../server/schedule-sync-direct.js');
+const { registerApprovedChanges } = await import('../server/approved-changes.js');
 const { registerEmployeeBreaks } = await import('../server/employee-breaks.js');
 const { registerBreakRequests } = await import('../server/break-requests.js');
 const { updateEmployeeHandler, createEmployeeHandler, deleteEmployeeHandler } = await import('../server/employees.js');
@@ -117,6 +118,7 @@ const { listNotificationsForUser, markAllNotificationsRead, markNotificationRead
 const app = express();
 app.use(express.json({ limit: '1mb' }));
 registerDirectScheduleSync(app);
+registerApprovedChanges(app);
 registerEmployeeBreaks(app);
 registerBreakRequests(app);
 app.put('/api/employees/:id', (req: any, res: any) => updateEmployeeHandler(req, res));
@@ -908,6 +910,89 @@ await test('Overtime sync: rejection deletes the leaders\' overtime_requested co
   assert.equal(after.length, 0, 'reviewer copies must be resolved on rejection');
   const outcome = await row(`SELECT id FROM notifications WHERE recipient_id = 'emp-a' AND type = 'overtime_rejected' AND related_overtime_id = 'ot-test-1'`);
   assert.ok(outcome.length >= 1, 'employee outcome notification must survive');
+});
+
+// ---------------------------------------------------------------------------
+// "Swap Shift or Break" table (v0.0.15) — every approved swap / approved
+// break change with its date and data, served to the Google Sheets payload
+// and the Excel export's third sheet via GET /api/approved-swap-breaks.
+// ---------------------------------------------------------------------------
+await test('Approved swap yields both employee sides in the Swap Shift or Break rows', async () => {
+  const { listApprovedSwapBreakRows } = await import('../server/approved-changes.js');
+  await client.query(`INSERT INTO shifts (id, company_id, name, start_time, end_time, duration_minutes, break_minutes, grace_period_minutes)
+    VALUES ('shift-2', 'tech-source', 'Evening', '15:00', '23:00', 480, 0, 10) ON CONFLICT (id) DO NOTHING`);
+  const r = await call('POST', '/api/sync', { body: {
+    shiftSwapRequests: [{
+      id: 'swap-swapbreak-1', requesterId: 'emp-a', targetEmployeeId: 'emp-b', date: '2026-11-26',
+      requesterShiftId: 'shift-1', targetShiftId: 'shift-2', status: 'approved',
+      reviewedBy: 'leader-1', reviewedAt: '2026-11-20T10:00:00Z',
+      createdAt: '2026-11-19T00:00:00Z', updatedAt: '2026-11-20T10:00:00Z',
+    }],
+    lastUpdated: Date.now(),
+  } });
+  assert.equal(r.status, 200);
+  // Earlier tests in this file rename/recode the seed employees, so resolve
+  // identity dynamically instead of hardcoding EMP101/Agent A.
+  const codeA = String((await row(`SELECT code FROM employees WHERE id = 'emp-a'`))[0]?.code ?? '');
+  const codeB = String((await row(`SELECT code FROM employees WHERE id = 'emp-b'`))[0]?.code ?? '');
+  const nameBRow = (await row(`SELECT name_ar, name_en FROM employees WHERE id = 'emp-b'`))[0];
+  const nameB = String(nameBRow?.name_ar || nameBRow?.name_en || '');
+  const nameARow = (await row(`SELECT name_ar, name_en FROM employees WHERE id = 'emp-a'`))[0];
+  const nameA = String(nameARow?.name_ar || nameARow?.name_en || '');
+  const rows = await listApprovedSwapBreakRows();
+  const requesterRow = rows.find((x) => x.kind === 'swap' && x.date === '2026-11-26' && x.code === codeA);
+  assert.ok(requesterRow, 'requester side row exists');
+  assert.equal(requesterRow.change, 'Evening', 'requester now works the target shift');
+  assert.equal(requesterRow.partner, nameB);
+  assert.equal(requesterRow.reviewedBy, 'Leader');
+  const targetRow = rows.find((x) => x.kind === 'swap' && x.date === '2026-11-26' && x.code === codeB);
+  assert.ok(targetRow, 'target side row exists');
+  assert.equal(targetRow.change, 'Morning', 'target now works the requester shift');
+  assert.equal(targetRow.partner, nameA);
+  assert.equal(targetRow.reviewedBy, 'Leader');
+});
+
+await test('Approved break change appears with current → proposed times', async () => {
+  const { listApprovedSwapBreakRows } = await import('../server/approved-changes.js');
+  await client.query(`INSERT INTO break_change_requests (id, company_id, employee_id, date, current_start_time, current_end_time,
+      proposed_start_time, proposed_end_time, reason, status, requested_by, reviewed_by, reviewed_at, created_at, updated_at)
+    VALUES ('bcr-swapbreak-1', 'tech-source', 'emp-b', '2026-11-27', '10:00', '10:30', '11:00', '11:30', 'test',
+      'approved', 'emp-b', 'leader-1', '2026-11-20T11:00:00Z', '2026-11-19T00:00:00Z', '2026-11-20T11:00:00Z')
+    ON CONFLICT (id) DO NOTHING`);
+  const codeB = String((await row(`SELECT code FROM employees WHERE id = 'emp-b'`))[0]?.code ?? '');
+  const rows = await listApprovedSwapBreakRows();
+  const breakRow = rows.find((x) => x.kind === 'breaks' && x.date === '2026-11-27' && x.code === codeB);
+  assert.ok(breakRow, 'approved break change row exists');
+  assert.equal(breakRow.change, '10:00-10:30 → 11:00-11:30');
+  assert.equal(breakRow.partner, '');
+  assert.equal(breakRow.reviewedBy, 'Leader');
+});
+
+await test('Rejected/pending requests never appear in the Swap Shift or Break rows', async () => {
+  const { listApprovedSwapBreakRows } = await import('../server/approved-changes.js');
+  await call('POST', '/api/sync', { body: {
+    shiftSwapRequests: [{
+      id: 'swap-swapbreak-rejected', requesterId: 'emp-a', targetEmployeeId: 'emp-b', date: '2026-11-28',
+      requesterShiftId: 'shift-1', targetShiftId: 'shift-2', status: 'rejected',
+      reviewedBy: 'leader-1', reviewedAt: '2026-11-20T12:00:00Z',
+      createdAt: '2026-11-19T00:00:00Z', updatedAt: '2026-11-20T12:00:00Z',
+    }],
+    lastUpdated: Date.now(),
+  } });
+  const rows = await listApprovedSwapBreakRows();
+  assert.ok(!rows.some((x) => x.date === '2026-11-28'), 'rejected swap must not be listed');
+});
+
+await test('GET /api/approved-swap-breaks serves managers and blocks employees', async () => {
+  const ok = await call('GET', '/api/approved-swap-breaks', { headers: auth('admin-1', '1234') });
+  assert.equal(ok.status, 200);
+  assert.equal(ok.json?.success, true);
+  assert.ok(Array.isArray(ok.json?.rows), 'rows array is returned');
+  assert.ok(ok.json.rows.some((x: any) => x.kind === 'swap' && x.date === '2026-11-26'), 'approved swap rows are served');
+  assert.ok(ok.json.rows.some((x: any) => x.kind === 'breaks' && x.date === '2026-11-27'), 'approved break rows are served');
+  const pinA = String((await row(`SELECT pin FROM employees WHERE id = 'emp-a'`))[0]?.pin ?? '1111');
+  const denied = await call('GET', '/api/approved-swap-breaks', { headers: auth('emp-a', pinA) });
+  assert.equal(denied.status, 403, `employees cannot read the manager table (got ${denied.status})`);
 });
 
 // ---------------------------------------------------------------------------

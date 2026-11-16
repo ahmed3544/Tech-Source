@@ -6,7 +6,7 @@ import { ShiftSwapPanel } from './ShiftSwapPanel';
 import { BreakRequestPanel } from './BreakRequestPanel';
 import { authHeaders, errorToMessage, extractApiError, parseResponse } from '../utils/errors';
 import { sortShiftsAscending } from '../utils/shiftSort';
-import { exportScheduleToExcel } from '../utils/scheduleExport';
+import { exportScheduleToExcel, type ScheduleSwapBreakRow } from '../utils/scheduleExport';
 import { ImportPreview, parseScheduleWorkbook } from '../utils/scheduleImport';
 import {
   DayStatus,
@@ -729,6 +729,17 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
       const from = dates[0];
       const to = dates[dates.length - 1];
       const breaksByEmployee = await fetchExportBreaks(from, to);
+      // "Swap Shift or Break" sheet rows — every approved swap / approved
+      // break change with its date and data. Best-effort: when the fetch
+      // fails the third sheet is simply omitted (never blocks the export).
+      let swapBreakRows: ScheduleSwapBreakRow[] | undefined;
+      try {
+        const rowsRes = await fetch('/api/approved-swap-breaks', { cache: 'no-store', headers: authHeaders({ Accept: 'application/json' }) });
+        if (rowsRes.ok) {
+          const rowsData = await parseResponse(rowsRes);
+          if (rowsData?.success && Array.isArray(rowsData.rows)) swapBreakRows = rowsData.rows;
+        }
+      } catch { /* sheet omitted */ }
       const fileBase = isMonth
         ? `TechSource-Schedule-Month-${from.slice(0, 7)}`
         : `TechSource-Schedule-Week-${from}`;
@@ -744,6 +755,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
         lang,
         dates,
         breaksByEmployee,
+        swapBreakRows,
         fileBase,
         title,
       });

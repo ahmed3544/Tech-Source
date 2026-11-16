@@ -16,6 +16,7 @@ import { registerEmployeeBreaks } from "./server/employee-breaks.js";
 import { registerBreakRequests } from "./server/break-requests.js";
 import { registerActivityLogs } from "./server/activity-logs.js";
 import { registerSheetSync } from "./server/sheet-sync.js";
+import { registerApprovedChanges } from "./server/approved-changes.js";
 import { registerDashboardImport } from "./server/dashboard-import.js";
 import { ensureSchema } from "./server/ensure-schema.js";
 import { listNotificationsForUser, markAllNotificationsRead, markNotificationRead } from "./server/notification-reads.js";
@@ -123,6 +124,7 @@ registerBreakRequests(app);
 registerActivityLogs(app);
 // Google Sheets dashboard sync (config/test/push-to-webhook endpoints).
 registerSheetSync(app);
+registerApprovedChanges(app);
 // Excel dashboard import (upload apply + URL auto-sync + daily cron).
 registerDashboardImport(app);
 // Login is also served by the main server so non-Vercel deployments work.
