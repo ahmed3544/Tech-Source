@@ -69,7 +69,7 @@ await client.query(`
     review_notes text, created_at text, updated_at text);
   CREATE TABLE IF NOT EXISTS notifications (id text PRIMARY KEY, company_id text, recipient_id text NOT NULL, type text NOT NULL,
     title text NOT NULL, message text NOT NULL, related_employee_id text, related_leave_id text, related_overtime_id text,
-    related_shift_swap_id text, is_read boolean DEFAULT false, created_at text NOT NULL, updated_at text NOT NULL);
+    related_shift_swap_id text, related_break_request_id text, is_read boolean DEFAULT false, created_at text NOT NULL, updated_at text NOT NULL);
   CREATE TABLE IF NOT EXISTS login_audit (id text PRIMARY KEY, company_id text, employee_id text, login_identifier text NOT NULL,
     success boolean NOT NULL DEFAULT false, failure_reason text, ip_address text, user_agent text, created_at text NOT NULL);
   CREATE TABLE IF NOT EXISTS employee_shift_assignments (id text PRIMARY KEY, company_id text, employee_id text NOT NULL,

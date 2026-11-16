@@ -65,6 +65,28 @@ const migration0004Sql = fs.readFileSync(path.join(tableDir, '../drizzle/0004_br
 await client.query(migration0004Sql); // break_change_requests
 await client.query(migration0004Sql); // idempotency proof
 
+const migration0006Sql = fs.readFileSync(path.join(tableDir, '../drizzle/0006_notification_break_request_link.sql'), 'utf8');
+await client.query(migration0006Sql); // notifications.related_break_request_id
+await client.query(migration0006Sql); // idempotency proof
+
+// Tables used by the sync + notification-validation paths (device-sync-v2
+// snapshot reads them; listForUser validates reviewer notifications against
+// them). Column lists mirror scripts/cloudflare-e2e.mjs.
+await client.query(`
+  CREATE TABLE IF NOT EXISTS leave_requests (id text PRIMARY KEY, company_id text, employee_id text NOT NULL, type text,
+    start_date text, end_date text, reason text, status text, created_at text, hours integer, permission_slot text,
+    attachment_url text, attachment_name text, reviewed_by text, review_notes text);
+  CREATE TABLE IF NOT EXISTS overtime_requests (id text PRIMARY KEY, company_id text, employee_id text NOT NULL, date text NOT NULL,
+    type text NOT NULL, duration_seconds integer NOT NULL, reason text, status text DEFAULT 'pending', reviewed_by text,
+    review_notes text, created_at text, updated_at text);
+  CREATE TABLE IF NOT EXISTS attendance_records (id text PRIMARY KEY, company_id text, employee_id text NOT NULL, date text NOT NULL,
+    check_in text, check_out text, break_start text, break_end text, breaks jsonb, total_break_seconds integer,
+    location text, device_info jsonb, late_minutes integer, late_seconds integer, early_leave_minutes integer,
+    work_hours real, overtime_hours real, minus_hours real, status text, leave_type text, notes text,
+    verified_by_face boolean, is_excused boolean, excused_by text, excused_reason text, updated_at text,
+    is_explicit_cancel_check_out boolean DEFAULT false);
+`);
+
 await client.query(`INSERT INTO employees (id, code, name_ar, name_en, pin, role, status, shift_id, team_leader_id, company_id) VALUES
   ('admin-1',  'EMP001', 'Admin',    'Admin',    '1234',    'admin',    'active', 'shift-1', NULL,       'tech-source'),
   ('leader-1', 'EMP010', 'Leader',   'Leader',   'lead123', 'leader',   'active', 'shift-1', NULL,       'tech-source'),
@@ -135,6 +157,17 @@ app.post('/api/notifications-read-all', async (req: any, res: any) => {
     return res.json({ success: true, notifications: await listNotificationsForUser(userId) });
   } catch { return res.status(500).json({ success: false, error: 'database_unavailable' }); }
 });
+
+// Notification + sync stack, registered in the same relative order as
+// server.ts: the triggers middleware wraps res.json for POST /api/sync FIRST,
+// then device-sync-v2 is the terminal /api/sync handler whose res.json call
+// fires emitForSync (notification creation + reviewer-copy resolution).
+const { registerRequestNotificationTriggers } = await import('../server/request-notification-triggers.js');
+const { registerNotificationSystemV2 } = await import('../server/notification-system-v2.js');
+const { registerDeviceSyncV2 } = await import('../server/device-sync-v2.js');
+registerRequestNotificationTriggers(app);
+registerNotificationSystemV2(app);
+registerDeviceSyncV2(app);
 
 const server = app.listen(0);
 await new Promise<void>((resolve) => server.once('listening', resolve));
@@ -707,6 +740,174 @@ await test('GET /api/break-requests scoping: self / team / all + cross-employee 
 
   const probe = await call('GET', '/api/break-requests?employeeId=emp-a', { headers: auth('emp-b', '2222') });
   assert.equal(probe.status, 403);
+});
+
+// ---------------------------------------------------------------------------
+// — Request notification resolution —
+// When a request reaches a final state (approved/rejected) the reviewer-side
+// "new request" notification must be deleted instead of lingering unread and
+// looking like the request is still pending. Outcome notifications for the
+// employee must be unaffected.
+// ---------------------------------------------------------------------------
+console.log('\n— Request notification resolution —');
+
+const reviewerNotifs = (recipient = 'leader-1', type = 'break_request_requested') =>
+  row(`SELECT id, related_break_request_id, message FROM notifications WHERE recipient_id = '${recipient}' AND type = '${type}'`);
+
+await test('Break request submit tags the leader notification with the request id', async () => {
+  const r = await call('POST', '/api/break-request', { headers: auth('emp-a', 'new-pin-9'), body: {
+    date: '2026-11-20', currentStartTime: '12:00', currentEndTime: '13:00', proposedStartTime: '14:00', proposedEndTime: '14:30', reason: 'prayer window',
+  } });
+  assert.equal(r.status, 200);
+  const rows = await reviewerNotifs();
+  const mine = rows.filter((x: any) => x.related_break_request_id === r.json.request.id);
+  assert.equal(mine.length, 1, 'exactly one tagged reviewer notification');
+  assert.match(mine[0].message, /ليوم 2026-11-20 من/);
+});
+
+await test('Approving the request deletes the reviewer notification (all copies) and keeps the employee outcome', async () => {
+  const pendingId = (await row(`SELECT id FROM break_change_requests WHERE employee_id = 'emp-a' AND date = '2026-11-20' AND status = 'pending'`))[0].id;
+  const before = await reviewerNotifs();
+  assert.equal(before.length, 1);
+  const r = await call('POST', '/api/break-request-review', { headers: auth('leader-1', 'lead123'), body: { id: pendingId, action: 'approve' } });
+  assert.equal(r.status, 200);
+  assert.equal((await reviewerNotifs()).length, 0, 'reviewer copy must be resolved on approval');
+  const employeeNotif = await row(`SELECT id FROM notifications WHERE recipient_id = 'emp-a' AND type = 'break_request_approved'`);
+  assert.ok(employeeNotif.length >= 1, 'employee outcome notification must survive');
+  const status = (await row(`SELECT status FROM break_change_requests WHERE id = '${pendingId}'`))[0].status;
+  assert.equal(status, 'approved');
+});
+
+await test('Re-submitting the same request creates a fresh reviewer notification', async () => {
+  const r = await call('POST', '/api/break-request', { headers: auth('emp-a', 'new-pin-9'), body: {
+    date: '2026-11-20', proposedStartTime: '15:00', proposedEndTime: '15:30',
+  } });
+  assert.equal(r.status, 200);
+  const rows = await reviewerNotifs();
+  assert.equal(rows.length, 1, 'the resolved notification id must be reusable');
+  assert.equal(rows[0].related_break_request_id, r.json.request.id);
+});
+
+await test('Rejecting the request deletes the reviewer notification too', async () => {
+  const pendingId = (await row(`SELECT id FROM break_change_requests WHERE employee_id = 'emp-a' AND date = '2026-11-20' AND status = 'pending'`))[0].id;
+  const r = await call('POST', '/api/break-request-review', { headers: auth('leader-1', 'lead123'), body: { id: pendingId, action: 'reject', reviewNotes: 'peak hours' } });
+  assert.equal(r.status, 200);
+  assert.equal((await reviewerNotifs()).length, 0, 'reviewer copy must be resolved on rejection');
+  const employeeNotif = await row(`SELECT id FROM notifications WHERE recipient_id = 'emp-a' AND type = 'break_request_rejected'`);
+  assert.ok(employeeNotif.length >= 1, 'employee outcome notification must survive');
+});
+
+await test('Legacy reviewer notification (no request link) is resolved by the employee+date fallback', async () => {
+  // Row written before notifications carried related_break_request_id — same
+  // employee + same date as the real request below, but different times so it
+  // is a distinct row that only the LIKE fallback can match.
+  await client.query(`INSERT INTO notifications (id, recipient_id, type, title, message, related_employee_id, is_read, created_at, updated_at) VALUES
+    ('notif-legacy-break', 'leader-1', 'break_request_requested', 'طلب تغيير بريك جديد',
+     'Agent A يطلب تغيير البريك ليوم 2026-11-23 من 08:00-08:30 إلى 09:00-09:30. راجع الطلب من لوحة طلبات الجدول.',
+     'emp-a', false, '2026-11-22T00:00:00Z', '2026-11-22T00:00:00Z')`);
+  const submitted = await call('POST', '/api/break-request', { headers: auth('emp-a', 'new-pin-9'), body: {
+    date: '2026-11-23', currentStartTime: '12:00', currentEndTime: '13:00', proposedStartTime: '14:00', proposedEndTime: '14:30',
+  } });
+  assert.equal(submitted.status, 200);
+  const before = await reviewerNotifs();
+  assert.equal(before.length, 2, 'legacy row + fresh tagged row coexist');
+  const pendingId = (await row(`SELECT id FROM break_change_requests WHERE employee_id = 'emp-a' AND date = '2026-11-23' AND status = 'pending'`))[0].id;
+  const r = await call('POST', '/api/break-request-review', { headers: auth('leader-1', 'lead123'), body: { id: pendingId, action: 'approve' } });
+  assert.equal(r.status, 200);
+  assert.equal((await reviewerNotifs()).length, 0, 'legacy fallback must resolve the untagged copy too');
+});
+
+await test('GET /api/notifications sweeps stale reviewer notifications and keeps genuinely pending ones', async () => {
+  // An already-approved request whose reviewer notification predates the fix.
+  await client.query(`INSERT INTO break_change_requests (id, company_id, employee_id, date, proposed_start_time, proposed_end_time, status, requested_by, created_at, updated_at)
+    VALUES ('bcr-sweep-approved', 'tech-source', 'emp-a', '2027-01-05', '10:00', '10:30', 'approved', 'emp-a', '2027-01-01T00:00:00Z', '2027-01-02T00:00:00Z')`);
+  // A genuinely pending request that must stay visible.
+  await client.query(`INSERT INTO break_change_requests (id, company_id, employee_id, date, proposed_start_time, proposed_end_time, status, requested_by, created_at, updated_at)
+    VALUES ('bcr-sweep-pending', 'tech-source', 'emp-a', '2027-01-06', '11:00', '11:30', 'pending', 'emp-a', '2027-01-01T00:00:00Z', '2027-01-02T00:00:00Z')`);
+  await client.query(`INSERT INTO notifications (id, recipient_id, type, title, message, related_employee_id, is_read, created_at, updated_at) VALUES
+    ('notif-sweep-stale', 'leader-1', 'break_request_requested', 'طلب تغيير بريك جديد',
+     'Agent A يطلب تغيير البريك ليوم 2027-01-05 من 12:00-12:30 إلى 10:00-10:30. راجع الطلب من لوحة طلبات الجدول.',
+     'emp-a', false, '2027-01-01T00:00:00Z', '2027-01-01T00:00:00Z'),
+    ('notif-sweep-pending', 'leader-1', 'break_request_requested', 'طلب تغيير بريك جديد',
+     'Agent A يطلب تغيير البريك ليوم 2027-01-06 من 12:00-12:30 إلى 11:00-11:30. راجع الطلب من لوحة طلبات الجدول.',
+     'emp-a', false, '2027-01-01T00:00:00Z', '2027-01-01T00:00:00Z')`);
+  const list = await call('GET', '/api/notifications?userId=leader-1');
+  assert.equal(list.status, 200);
+  const types = list.json.notifications.map((n: any) => n.id);
+  assert.ok(!types.includes('notif-sweep-stale'), 'resolved request copy must be swept');
+  assert.ok(types.includes('notif-sweep-pending'), 'genuinely pending request copy must stay');
+  const dbRows = await row(`SELECT id FROM notifications WHERE id IN ('notif-sweep-stale', 'notif-sweep-pending')`);
+  assert.deepEqual(dbRows.map((x: any) => x.id).sort(), ['notif-sweep-pending'], 'sweep must persist the deletion');
+});
+
+const swapPayload = (id: string, status: string, date = '2026-11-24') => ({
+  id, requesterId: 'emp-a', targetEmployeeId: 'emp-b', date,
+  requesterShiftId: 'shift-1', targetShiftId: 'shift-1', status,
+  createdAt: '2026-11-23T00:00:00Z', updatedAt: new Date(Date.now() + (status === 'awaiting_target' ? 0 : status === 'pending' ? 1000 : 2000)).toISOString(),
+});
+
+await test('Swap awaiting_target notifies the target', async () => {
+  const r = await call('POST', '/api/sync', { body: { shiftSwapRequests: [swapPayload('swap-test-1', 'awaiting_target')], lastUpdated: Date.now() } });
+  assert.equal(r.status, 200);
+  const rows = await row(`SELECT id FROM notifications WHERE recipient_id = 'emp-b' AND type = 'shift_swap_requested' AND related_shift_swap_id = 'swap-test-1'`);
+  assert.equal(rows.length, 1);
+});
+
+await test('Target acceptance (pending) deletes the target copy and notifies the leader', async () => {
+  const r = await call('POST', '/api/sync', { body: { shiftSwapRequests: [swapPayload('swap-test-1', 'pending')], lastUpdated: Date.now() } });
+  assert.equal(r.status, 200);
+  const targetCopy = await row(`SELECT id FROM notifications WHERE recipient_id = 'emp-b' AND type = 'shift_swap_requested' AND related_shift_swap_id = 'swap-test-1'`);
+  assert.equal(targetCopy.length, 0, 'the target acted — their copy must be resolved');
+  const leaderCopy = await row(`SELECT id FROM notifications WHERE recipient_id = 'leader-1' AND type = 'shift_swap_accepted' AND related_shift_swap_id = 'swap-test-1'`);
+  assert.equal(leaderCopy.length, 1, 'leader must be told the swap awaits their review');
+});
+
+await test('Leader approval deletes the reviewer copy and notifies both employees', async () => {
+  const r = await call('POST', '/api/sync', { body: { shiftSwapRequests: [swapPayload('swap-test-1', 'approved')], lastUpdated: Date.now() } });
+  assert.equal(r.status, 200);
+  const leaderCopy = await row(`SELECT id FROM notifications WHERE recipient_id = 'leader-1' AND type = 'shift_swap_accepted' AND related_shift_swap_id = 'swap-test-1'`);
+  assert.equal(leaderCopy.length, 0, 'reviewer copy must be resolved on approval');
+  for (const employee of ['emp-a', 'emp-b']) {
+    const outcome = await row(`SELECT id FROM notifications WHERE recipient_id = '${employee}' AND type = 'shift_changed' AND related_shift_swap_id = 'swap-test-1'`);
+    assert.equal(outcome.length, 1, `${employee} must keep the shift_changed outcome`);
+  }
+});
+
+await test('Rejected swap resolves every reviewer copy', async () => {
+  await call('POST', '/api/sync', { body: { shiftSwapRequests: [swapPayload('swap-test-2', 'awaiting_target', '2026-11-25')], lastUpdated: Date.now() } });
+  await call('POST', '/api/sync', { body: { shiftSwapRequests: [swapPayload('swap-test-2', 'pending', '2026-11-25')], lastUpdated: Date.now() } });
+  const r = await call('POST', '/api/sync', { body: { shiftSwapRequests: [swapPayload('swap-test-2', 'rejected', '2026-11-25')], lastUpdated: Date.now() } });
+  assert.equal(r.status, 200);
+  const requested = await row(`SELECT id FROM notifications WHERE recipient_id = 'emp-b' AND type = 'shift_swap_requested' AND related_shift_swap_id = 'swap-test-2'`);
+  assert.equal(requested.length, 0);
+  const accepted = await row(`SELECT id FROM notifications WHERE recipient_id = 'leader-1' AND type = 'shift_swap_accepted' AND related_shift_swap_id = 'swap-test-2'`);
+  assert.equal(accepted.length, 0);
+  const rejections = await row(`SELECT id FROM notifications WHERE type = 'shift_swap_rejected' AND related_shift_swap_id = 'swap-test-2'`);
+  assert.equal(rejections.length, 2, 'both employees keep the rejection outcome');
+});
+
+await test('Leave sync: approval deletes the leaders\' leave_requested copies', async () => {
+  const now = new Date().toISOString();
+  await call('POST', '/api/sync', { body: { leaveRequests: [{ id: 'leave-test-1', employeeId: 'emp-a', type: 'annual', startDate: '2026-11-26', endDate: '2026-11-27', status: 'pending', createdAt: now, updatedAt: now }], lastUpdated: Date.now() } });
+  const before = await row(`SELECT id FROM notifications WHERE type = 'leave_requested' AND related_leave_id = 'leave-test-1'`);
+  assert.ok(before.length >= 1, 'leaders must be notified of the pending leave');
+  await call('POST', '/api/sync', { body: { leaveRequests: [{ id: 'leave-test-1', employeeId: 'emp-a', type: 'annual', startDate: '2026-11-26', endDate: '2026-11-27', status: 'approved', createdAt: now, updatedAt: now }], lastUpdated: Date.now() } });
+  const after = await row(`SELECT id FROM notifications WHERE type = 'leave_requested' AND related_leave_id = 'leave-test-1'`);
+  assert.equal(after.length, 0, 'reviewer copies must be resolved on approval');
+  const outcome = await row(`SELECT id FROM notifications WHERE recipient_id = 'emp-a' AND type = 'leave_approved' AND related_leave_id = 'leave-test-1'`);
+  assert.ok(outcome.length >= 1, 'employee outcome notification must survive');
+});
+
+await test('Overtime sync: rejection deletes the leaders\' overtime_requested copies', async () => {
+  const now = new Date().toISOString();
+  await call('POST', '/api/sync', { body: { overtimeRequests: [{ id: 'ot-test-1', employeeId: 'emp-a', date: '2026-11-26', type: 'extra', durationSeconds: 3600, status: 'pending', createdAt: now, updatedAt: now }], lastUpdated: Date.now() } });
+  const before = await row(`SELECT id FROM notifications WHERE type = 'overtime_requested' AND related_overtime_id = 'ot-test-1'`);
+  assert.ok(before.length >= 1, 'leaders must be notified of the pending overtime');
+  await call('POST', '/api/sync', { body: { overtimeRequests: [{ id: 'ot-test-1', employeeId: 'emp-a', date: '2026-11-26', type: 'extra', durationSeconds: 3600, status: 'rejected', createdAt: now, updatedAt: now }], lastUpdated: Date.now() } });
+  const after = await row(`SELECT id FROM notifications WHERE type = 'overtime_requested' AND related_overtime_id = 'ot-test-1'`);
+  assert.equal(after.length, 0, 'reviewer copies must be resolved on rejection');
+  const outcome = await row(`SELECT id FROM notifications WHERE recipient_id = 'emp-a' AND type = 'overtime_rejected' AND related_overtime_id = 'ot-test-1'`);
+  assert.ok(outcome.length >= 1, 'employee outcome notification must survive');
 });
 
 // ---------------------------------------------------------------------------

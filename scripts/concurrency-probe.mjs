@@ -77,7 +77,7 @@ await client.query(`
     review_notes text, created_at text, updated_at text);
   CREATE TABLE IF NOT EXISTS notifications (id text PRIMARY KEY, company_id text, recipient_id text NOT NULL, type text NOT NULL,
     title text NOT NULL, message text NOT NULL, related_employee_id text, related_leave_id text, related_overtime_id text,
-    related_shift_swap_id text, is_read boolean DEFAULT false, created_at text NOT NULL, updated_at text NOT NULL);
+    related_shift_swap_id text, related_break_request_id text, is_read boolean DEFAULT false, created_at text NOT NULL, updated_at text NOT NULL);
   CREATE TABLE IF NOT EXISTS login_audit (id text PRIMARY KEY, company_id text, employee_id text, login_identifier text NOT NULL,
     success boolean NOT NULL DEFAULT false, failure_reason text, ip_address text, user_agent text, created_at text NOT NULL);
   CREATE TABLE IF NOT EXISTS employee_shift_assignments (id text PRIMARY KEY, company_id text, employee_id text NOT NULL,
@@ -246,6 +246,12 @@ try {
   const p4Manual = [{ startTime: '11:00', endTime: '11:30', nameAr: 'يدوي', nameEn: 'Manual' }];
   const p4Proposed = [{ startTime: '14:15', endTime: '14:45', nameAr: 'موافقة', nameEn: 'Approved' }];
   for (let round = 0; round < 3; round++) {
+    // Start each round from a clean day: once an approval lands 14:15, the
+    // NEXT round's identical proposal would legitimately fail overlap
+    // validation against it (correct server behavior — not a race defect).
+    // Resetting keeps every round an independent approval-vs-manual race.
+    const reset = await saveBreaks('emp-101', p4Date, []);
+    if (reset.status !== 200) { p4Outcomes.push(`reset ${reset.status}`); continue; }
     // fresh pending request for the same date (allowed again once reviewed)
     const created = await fetch(`${BASE}/api/break-request`, {
       method: 'POST', headers: empHeaders('emp-101'),

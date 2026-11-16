@@ -14,7 +14,7 @@ import { toDateKey, validateBreakList, withBreakSaveLock } from './employee-brea
 import { recordApprovedChanges } from './approved-changes.js';
 import { pushSheetSnapshot, type SheetPushResult } from './sheet-sync.js';
 import { logActivity } from './activity-logs.js';
-import { ensureNotificationStorage, saveOne } from './notification-system-v2.js';
+import { ensureNotificationStorage, resolveBreakRequestNotifications, saveOne } from './notification-system-v2.js';
 import { publishNotification } from './notification-sse.js';
 import { sendPushToEmployee } from './fcm.js';
 
@@ -66,12 +66,13 @@ function serializeRequest(row: any) {
 }
 
 /** Same notification pipeline as request-notification-triggers (SSE + FCM + DB). */
-async function notify(recipientId: string, type: string, title: string, message: string, relatedEmployeeId: string) {
+async function notify(recipientId: string, type: string, title: string, message: string, relatedEmployeeId: string, relatedBreakRequestId?: string) {
   const recipient = clean(recipientId);
   if (!recipient) return;
   try {
     await ensureNotificationStorage();
     const related = clean(relatedEmployeeId);
+    const requestId = clean(relatedBreakRequestId);
     const id = `n2_${crypto.createHash('sha256').update(`${recipient}|${type}|${related}|${title}|${message}`).digest('hex').slice(0, 40)}`;
     const now = new Date().toISOString();
     const saved = await saveOne({
@@ -81,6 +82,10 @@ async function notify(recipientId: string, type: string, title: string, message:
       title,
       message,
       relatedEmployeeId: related || null,
+      // Link the notification to its request so the reviewer's copy can be
+      // deleted the moment the request is approved/rejected (previously it
+      // lingered unread, looking like the request was still pending).
+      relatedBreakRequestId: requestId || null,
       isRead: false,
       createdAt: now,
       updatedAt: now,
@@ -330,6 +335,7 @@ export function registerBreakRequests(app: any) {
           'طلب تغيير بريك جديد',
           `${employeeName} يطلب تغيير البريك ليوم ${date} من ${currentLabel} إلى ${proposedStart}-${proposedEnd}${reason ? `. السبب: ${reason}` : ''}. راجع الطلب من لوحة طلبات الجدول.`,
           employeeId,
+          row.id,
         );
       }
 
@@ -424,6 +430,16 @@ export function registerBreakRequests(app: any) {
         reviewNotes: updated.reviewNotes,
         updatedAt: updated.updatedAt,
       } as any).where(eq(schema.breakChangeRequests.id, id));
+
+      // The request just reached a final state — resolve every reviewer-side
+      // "طلب تغيير بريك جديد" notification for it (all recipients), including
+      // legacy rows written before notifications carried the request id.
+      // Best-effort: a failed cleanup must never fail the review itself.
+      try {
+        await resolveBreakRequestNotifications(String(id), String(request.employeeId), String(request.date));
+      } catch (resolveError: any) {
+        console.warn('[BREAK-REQUESTS] reviewer notification cleanup failed (ignored):', resolveError?.message || resolveError);
+      }
 
       // Approved break change → protect the day from import overwrites and
       // push the fresh snapshot to the Google dashboard sheet so the

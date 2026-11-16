@@ -179,7 +179,7 @@ app.use(async (req:any,res:any,next:any)=>{
     for (const item of items) {
       if (!item?.id || !item?.recipientId) continue;
       const values:any = {};
-      for (const key of ['id','recipientId','type','title','message','relatedEmployeeId','relatedLeaveId','relatedOvertimeId','relatedShiftSwapId','isRead','createdAt','updatedAt']) if (item[key] !== undefined) values[key] = item[key];
+      for (const key of ['id','recipientId','type','title','message','relatedEmployeeId','relatedLeaveId','relatedOvertimeId','relatedShiftSwapId','relatedBreakRequestId','isRead','createdAt','updatedAt']) if (item[key] !== undefined) values[key] = item[key];
       const saved = await saveOne(values);
       if (saved) publishNotification(saved);
     }
