@@ -235,13 +235,20 @@ try {
     breaksPost?.success === true && breaksGet2?.breaksByDate?.[WEEK[3]]?.[0]?.startTime === '11:00',
     JSON.stringify(breaksGet2?.breaksByDate || {}).slice(0, 60));
 
-  // 8. Unmatched /api/* answers JSON 404 (not Express HTML)
+  // 8. "Swap Shift or Break" rows endpoint (v0.0.15) — manager-only read
+  const swapBreaks = await fetch(`${BASE}/api/approved-swap-breaks`, { headers: authHeaders() }).then(j);
+  const swapBreaksAnon = await fetch(`${BASE}/api/approved-swap-breaks`);
+  check('approved-swap-breaks: manager gets rows, anon blocked',
+    swapBreaks?.success === true && Array.isArray(swapBreaks?.rows) && swapBreaksAnon.status === 401,
+    `rows=${swapBreaks?.rows?.length} anon=${swapBreaksAnon.status}`);
+
+  // 9. Unmatched /api/* answers JSON 404 (not Express HTML)
   const missing = await fetch(`${BASE}/api/definitely-not-a-route`);
   const missingBody = await missing.json().catch(() => null);
   check('unmatched api: JSON 404 fallback',
     missing.status === 404 && missingBody?.error === 'not_found', `status=${missing.status} ct=${missing.headers.get('content-type')}`);
 
-  // 9. Static assets served by the ASSETS binding
+  // 10. Static assets served by the ASSETS binding
   const home = await fetch(`${BASE}/`);
   const homeHtml = await home.text();
   check('assets: SPA index served', home.status === 200 && homeHtml.includes('<div id="root">'), `status=${home.status} bytes=${homeHtml.length}`);

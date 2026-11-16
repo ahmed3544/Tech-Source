@@ -3,6 +3,7 @@ import { db } from '../src/db/index.js';
 import * as schema from '../src/db/schema.js';
 import { requireManager, isPlatformAdmin } from './auth.js';
 import { logActivity } from './activity-logs.js';
+import { listApprovedSwapBreakRows } from './approved-changes.js';
 
 /**
  * Google Sheets dashboard sync — "اربط الويب سايت بشيت الداش بورد".
@@ -221,6 +222,25 @@ async function buildPayload(): Promise<{ sheets: Record<string, SheetBlock>; cou
         cell(r.status), cell(r.reason), cell(r.reviewedBy),
       ]),
   };
+
+  // "Swap Shift or Break" feed tab ("تيبول اسمها سواب شفت او بريك بتاريخ
+  // الاسواب بالداتا") — every APPROVED shift swap and approved break change
+  // with its date and data, so the admin sees exactly which days an approval
+  // moved. The Apps Script writes one tab per payload block, so this appears
+  // as a new tab next to Schedule/Breaks without touching existing tabs.
+  try {
+    const swapBreakRows = await listApprovedSwapBreakRows({ employees, shifts });
+    sheets['Swap Shift or Break'] = {
+      header: ['Date', 'Code', 'Name', 'Type', 'Change', 'Swapped With', 'Approved By', 'Approved At'],
+      rows: swapBreakRows.slice(0, MAX_ROWS_PER_SHEET).map((r) => [
+        cell(r.date), cell(r.code), cell(r.name),
+        cell(r.kind === 'swap' ? 'Swap Shift' : 'Break Change'),
+        cell(r.change), cell(r.partner), cell(r.reviewedBy), cell(r.approvedAt),
+      ]),
+    };
+  } catch (error: any) {
+    console.warn('[sheet-sync] Swap Shift or Break block failed (ignored):', error?.message || error);
+  }
 
   sheets.Swaps = {
     header: ['Date', 'From', 'To', 'Date Swap', 'Status', 'Updated At'],

@@ -28,6 +28,25 @@ export interface ScheduleExportInput {
   fileBase: string;
   /** Human title printed in the sheet header row. */
   title: string;
+  /** Optional "Swap Shift or Break" rows — every APPROVED shift swap and
+   *  approved break change with its date and data ("تيبول اسمها سواب شفت
+   *  او بريك بتاريخ الاسواب بالداتا"). When provided, a third sheet is
+   *  appended to the workbook listing them. */
+  swapBreakRows?: ScheduleSwapBreakRow[];
+}
+
+/** One row of the "Swap Shift or Break" sheet (shape of the rows served by
+ *  GET /api/approved-swap-breaks — kept structural so the export stays
+ *  decoupled from the server types). */
+export interface ScheduleSwapBreakRow {
+  date: string;
+  code: string;
+  name: string;
+  kind: 'swap' | 'breaks';
+  change: string;
+  partner: string;
+  reviewedBy: string;
+  approvedAt: string;
 }
 
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -78,8 +97,10 @@ const parseDate = (key: string) => {
   return new Date(y, (m || 1) - 1, d || 1);
 };
 
+const isDateKey = /^\d{4}-\d{2}-\d{2}$/;
+
 export async function exportScheduleToExcel(input: ScheduleExportInput): Promise<void> {
-  const { employees, shifts, assignments, leaves, holidays, lang, dates, breaksByEmployee, fileBase, title } = input;
+  const { employees, shifts, assignments, leaves, holidays, lang, dates, breaksByEmployee, fileBase, title, swapBreakRows } = input;
   const XLSX = await import('xlsx');
   const isMonth = dates.length > 7;
 
@@ -181,6 +202,39 @@ export async function exportScheduleToExcel(input: ScheduleExportInput): Promise
   const detailSheet = XLSX.utils.aoa_to_sheet(detail);
   detailSheet['!cols'] = [{ wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 24 }, { wch: 16 }, { wch: 9 }, { wch: 9 }, { wch: 14 }];
   XLSX.utils.book_append_sheet(workbook, detailSheet, (lang === 'ar' ? 'تفاصيل البريكات' : 'Breaks Detail').slice(0, 31));
+
+  /* ---------- Sheet 3: "Swap Shift or Break" — approved swaps + break changes ---------- */
+  if (swapBreakRows) {
+    const swapBreak: (string | number)[][] = [[
+      lang === 'ar' ? 'التاريخ' : 'Date',
+      lang === 'ar' ? 'الكود' : 'Code',
+      lang === 'ar' ? 'الموظف' : 'Employee',
+      lang === 'ar' ? 'النوع' : 'Type',
+      lang === 'ar' ? 'التفاصيل' : 'Change',
+      lang === 'ar' ? 'مقايضة مع' : 'Swapped With',
+      lang === 'ar' ? 'اعتمد بواسطة' : 'Approved By',
+      lang === 'ar' ? 'تاريخ الاعتماد' : 'Approved At',
+    ]];
+    if (!swapBreakRows.length) {
+      swapBreak.push([lang === 'ar' ? 'لا يوجد تبديل شفت أو تغيير بريك معتمد' : 'No approved shift swaps or break changes']);
+    } else {
+      for (const row of swapBreakRows) {
+        swapBreak.push([
+          isDateKey.test(row.date) ? dateLabel(row.date) : row.date,
+          row.code,
+          row.name,
+          row.kind === 'swap' ? (lang === 'ar' ? 'سواب شفت' : 'Swap Shift') : (lang === 'ar' ? 'تغيير بريك' : 'Break Change'),
+          row.change,
+          row.partner,
+          row.reviewedBy,
+          row.approvedAt,
+        ]);
+      }
+    }
+    const swapBreakSheet = XLSX.utils.aoa_to_sheet(swapBreak);
+    swapBreakSheet['!cols'] = [{ wch: 12 }, { wch: 10 }, { wch: 24 }, { wch: 12 }, { wch: 26 }, { wch: 20 }, { wch: 16 }, { wch: 18 }];
+    XLSX.utils.book_append_sheet(workbook, swapBreakSheet, (lang === 'ar' ? 'سواب شفت أو بريك' : 'Swap Shift or Break').slice(0, 31));
+  }
 
   XLSX.writeFile(workbook, `${fileBase}.xlsx`);
 }
