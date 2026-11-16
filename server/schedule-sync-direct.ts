@@ -3,6 +3,8 @@ import { db } from '../src/db/index.js';
 import * as schema from '../src/db/schema.js';
 import { canManageEmployee, isPlatformAdmin, requireManager } from './auth.js';
 import { logActivity } from './activity-logs.js';
+import { recordApprovedChanges, clearApprovedChanges } from './approved-changes.js';
+import { pushSheetSnapshot } from './sheet-sync.js';
 
 const asBoolean = (value:any) => {
   if (typeof value === 'boolean') return value;
@@ -138,6 +140,31 @@ export function registerDirectScheduleSync(app:any) {
       if(existingRows[0]) await db.update(schema.settings).set({value:assignments} as any).where(eq(schema.settings.key,'dailyShiftAssignments')); else await db.insert(schema.settings).values({key:'dailyShiftAssignments',value:assignments} as any);
       const stampKey='__sync_updated_at:dailyShiftAssignments'; const stampRow=await db.select().from(schema.settings).where(eq(schema.settings.key,stampKey));
       if(stampRow[0]) await db.update(schema.settings).set({value:stamp} as any).where(eq(schema.settings.key,stampKey)); else await db.insert(schema.settings).values({key:stampKey,value:stamp} as any);
+      // Approved-change protection for the Excel import sheet: an approved
+      // swap (source 'shift-swap') protects its employee|date cells from
+      // being reverted by the next dashboard import; a deliberate manual
+      // edit clears the protection; imports never clear it. Best-effort —
+      // a registry failure must not fail the schedule write.
+      {
+        const source = String(req.body?.source ?? '');
+        try {
+          if (source === 'shift-swap') {
+            await recordApprovedChanges(incoming
+              .filter((row: any) => !row.clear)
+              .map((row: any) => ({ key: `${row.employeeId}|${row.date}`, kind: 'swap' as const, shiftId: row.shiftId, isOffDay: Boolean(row.isOffDay) })));
+          } else if (source !== 'excel-import' && incoming.length) {
+            await clearApprovedChanges(incoming.map((row: any) => `${row.employeeId}|${row.date}`));
+          }
+        } catch (registryError: any) {
+          console.warn('[schedule-sync] approved-changes registry update failed (ignored):', registryError?.message || registryError);
+        }
+        // Push the refreshed snapshot to the Google dashboard sheet so the
+        // approved swap shows up in the Schedule tab right away (best-effort,
+        // capped at 10s; no-op when no webhook is configured).
+        if (source === 'shift-swap') {
+          try { await pushSheetSnapshot('swap-approved'); } catch { /* never fail the swap */ }
+        }
+      }
       // Activity log: one summary entry per successful schedule write. The
       // Excel import reports itself with body.source='excel-import' so the
       // audit trail can distinguish bulk imports from manual edits.

@@ -60,4 +60,14 @@ export const applyDatabaseBindings = (): void => {
   if (connectionString) {
     process.env.DATABASE_URL = connectionString;
   }
+  // Plain string/number vars and secrets are mirrored onto process.env so
+  // server code can read configuration (e.g. SHEET_EVENT_MIN_INTERVAL_MS)
+  // the same way it does on the Node server. Object bindings (Hyperdrive,
+  // ASSETS) are skipped, existing process.env keys always win.
+  for (const [name, value] of Object.entries(bindings ?? {})) {
+    if (typeof value !== "string" && typeof value !== "number") continue;
+    const key = String(name);
+    if (key in process.env) continue;
+    process.env[key] = String(value);
+  }
 };
