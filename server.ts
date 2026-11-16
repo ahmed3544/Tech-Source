@@ -56,6 +56,13 @@ try {
 }
 
 async function dbSnapshot(){
+  // /api/data is read WITHOUT authentication, so it never passes through
+  // authenticateRequest's self-heal. Heal here too: the drizzle SELECTs below
+  // reference every schema column (notifications included) and would 500 the
+  // app's main snapshot right after a deploy adds a new column, until some
+  // authed request healed that isolate. Cached per process — no-op after the
+  // first success.
+  await ensureSchema();
   let [employees,attendanceRecords,leaveRequests,overtimeRequests,shifts,notifications,settings,employeeShiftAssignments]=await Promise.all([db.select().from(schema.employees),db.select().from(schema.attendanceRecords),db.select().from(schema.leaveRequests),db.select().from(schema.overtimeRequests),db.select().from(schema.shifts),db.select().from(schema.notifications),db.select().from(schema.settings),db.select().from(schema.employeeShiftAssignments)]);
   const m=new Map(settings.map((s:any)=>[String(s.key),s.value]));
   

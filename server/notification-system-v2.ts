@@ -3,6 +3,7 @@ import type { Express, Request } from 'express';
 import { and, eq, inArray, like, or } from 'drizzle-orm';
 import { db } from '../src/db/index.js';
 import * as schema from '../src/db/schema.js';
+import { ensureSchema } from './ensure-schema.js';
 import { publishNotification } from './notification-sse.js';
 
 type NotificationRecord = { id: string; recipientId: string; type: string; title: string; message: string; relatedEmployeeId?: string; relatedLeaveId?: string; relatedOvertimeId?: string; relatedShiftSwapId?: string; relatedBreakRequestId?: string; link?: string; targetUrl?: string; isRead: boolean; createdAt: string; updatedAt: string; };
@@ -80,9 +81,15 @@ function mergeDuplicates(items: NotificationRecord[]): NotificationRecord[] {
 }
 
 async function ensureReady() {
-  // The notifications table is part of the application schema. Do not run
-  // CREATE/ALTER TABLE during a user request on serverless/Vercel.
-  return;
+  // Self-heal the additive schema pieces on the UNAUTHENTICATED notification
+  // paths too. GET /api/notifications and POST /api/sync never pass through
+  // authenticateRequest, and a drizzle SELECT/INSERT referencing a column the
+  // production database does not have yet (e.g. related_break_request_id right
+  // after a deploy) would 500 them until some authed request happened to heal
+  // that isolate. ensureSchema is additive, idempotent and cached per process,
+  // so after the first success this is a no-op; failures are retried with a
+  // cooldown inside ensureSchema itself.
+  await ensureSchema();
 }
 
 export async function ensureNotificationStorage() {
