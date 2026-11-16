@@ -10,6 +10,7 @@ function cryptoSafeEqual(a: string, b: string): boolean {
   catch { return false; }
 }
 import { analyzeDashboardSheets, type DashboardSheetInput, type DashboardAnalysis } from '../src/utils/dashboardImport.js';
+import { listApprovedChanges } from './approved-changes.js';
 
 /**
  * Excel dashboard import — "استيراد الداش بورد من اكسيل تلقائي".
@@ -133,6 +134,7 @@ export interface ApplySummary {
   assignmentsApplied: number;
   offDays: number;
   skippedAssignments: number;
+  protectedAssignments: number;
   dateRange: [string, string] | null;
   warnings: string[];
   createdEmployeeCodes: string[];
@@ -154,6 +156,7 @@ export async function applyDashboardImport(
     assignmentsApplied: 0,
     offDays: 0,
     skippedAssignments: 0,
+    protectedAssignments: 0,
     dateRange: null,
     warnings: [...analysis.warnings],
     createdEmployeeCodes: [],
@@ -161,6 +164,7 @@ export async function applyDashboardImport(
   };
 
   const employees = await db.select().from(schema.employees);
+  const codeById = new Map(employees.map((e: any) => [String(e.id), String(e.code || e.id)]));
   const shifts = await db.select().from(schema.shifts);
   const settingsRows = await db.select().from(schema.settings).where(eq(schema.settings.key, 'dailyShiftAssignments'));
   const existingAssignments: any[] = Array.isArray(settingsRows[0]?.value) ? settingsRows[0].value : [];
@@ -329,6 +333,18 @@ export async function applyDashboardImport(
     if (employeeId && /^\d{4}-\d{2}-\d{2}$/.test(date)) merged.set(`${employeeId}|${date}`, item);
   }
 
+  // Approved swaps/break changes (in-app approvals) win over the workbook:
+  // their employee|date cells are skipped below so a stale sheet can never
+  // revert an approved shift swap. Best-effort — an unreadable registry must
+  // not block imports.
+  let swapProtectedKeys = new Set<string>();
+  try {
+    const approvedChanges = await listApprovedChanges();
+    swapProtectedKeys = new Set(approvedChanges.filter((e) => e.kinds.includes('swap')).map((e) => e.key));
+  } catch (registryError: any) {
+    console.warn('[dashboard-import] approved-changes read failed (ignored):', registryError?.message || registryError);
+  }
+
   let minDate = '';
   let maxDate = '';
   for (let sheetIdx = 0; sheetIdx < analysis.sheets.length; sheetIdx++) {
@@ -357,6 +373,17 @@ export async function applyDashboardImport(
 
       const key = `${employee.id}|${assignment.date}`;
       if (!options.overwriteAssignments && merged.has(key)) { summary.skippedAssignments++; continue; }
+      // Approved swap protection: keep the app's approved assignment instead
+      // of the workbook's stale cell, and tell the admin their sheet is
+      // outdated for that cell (so they can update the source file).
+      if (swapProtectedKeys.has(key) && merged.has(key)) {
+        summary.protectedAssignments++;
+        if (summary.warnings.length < 12) {
+          const code = codeById.get(employee.id) || employee.id;
+          summary.warnings.push(`تم حماية تبديل معتمد: ${code} ليوم ${assignment.date} — لم يتم الكتابة فوقه من الشيت. حدّث الشيت أو عدّل الجدول يدويًا لتجاوز الحماية. / Approved swap protected: ${code} on ${assignment.date} was NOT overwritten from the sheet.`);
+        }
+        continue;
+      }
       // Preserve any existing shadowing (training) window — the dashboard file
       // has no concept of shadowing, so imports must never erase one.
       const previousShadowing = merged.get(key)?.shadowing ?? null;
@@ -579,7 +606,7 @@ export function registerDashboardImport(app: any) {
       const summary = await applyDashboardImport(sheets, options, manager);
       logActivity({
         actorId: manager.id, actorRole: manager.role, action: 'dashboard.import', entityType: 'dashboard', entityId: 'excel-upload',
-        entityLabel: `Excel dashboard import: +${summary.employeesCreated} موظف، ${summary.assignmentsApplied} تعيين`,
+        entityLabel: `Excel dashboard import: +${summary.employeesCreated} موظف، ${summary.assignmentsApplied} تعيين${summary.protectedAssignments ? `، ${summary.protectedAssignments} محمي` : ''}`,
         details: {
           source: 'upload',
           sheets: summary.sheetKinds,
@@ -589,6 +616,7 @@ export function registerDashboardImport(app: any) {
           assignmentsApplied: summary.assignmentsApplied,
           offDays: summary.offDays,
           skipped: summary.skippedAssignments,
+          protectedAssignments: summary.protectedAssignments,
           dateRange: summary.dateRange,
         },
         companyId: 'tech-source',
@@ -627,9 +655,9 @@ export function registerDashboardImport(app: any) {
       if (result.ok === true) {
         next.lastSyncStatus = 'ok';
         next.lastSyncError = null;
-        next.lastSyncSummary = `+${result.summary.employeesCreated} موظف، ${result.summary.assignmentsApplied} تعيين شيفت`;
+        next.lastSyncSummary = `+${result.summary.employeesCreated} موظف، ${result.summary.assignmentsApplied} تعيين شيفت${result.summary.protectedAssignments ? `، ${result.summary.protectedAssignments} محمي` : ''}`;
         action = 'dashboard.import';
-        entityLabel = `Excel auto-sync from URL: +${result.summary.employeesCreated} موظف، ${result.summary.assignmentsApplied} تعيين`;
+        entityLabel = `Excel auto-sync from URL: +${result.summary.employeesCreated} موظف، ${result.summary.assignmentsApplied} تعيين${result.summary.protectedAssignments ? `، ${result.summary.protectedAssignments} محمي` : ''}`;
         details = { source: 'url', assignmentsApplied: result.summary.assignmentsApplied, employeesCreated: result.summary.employeesCreated, dateRange: result.summary.dateRange };
         payload = { success: true, summary: result.summary };
       } else {
@@ -734,9 +762,9 @@ export function registerDashboardImport(app: any) {
       if (result.ok === true) {
         next.lastSyncStatus = 'ok';
         next.lastSyncError = null;
-        next.lastSyncSummary = `+${result.summary.employeesCreated} موظف، ${result.summary.assignmentsApplied} تعيين شيفت`;
+        next.lastSyncSummary = `+${result.summary.employeesCreated} موظف، ${result.summary.assignmentsApplied} تعيين شيفت${result.summary.protectedAssignments ? `، ${result.summary.protectedAssignments} محمي` : ''}`;
         action = 'dashboard.import';
-        entityLabel = `استيراد الملف المحفوظ (${cfg.storedFile.name}): +${result.summary.employeesCreated} موظف، ${result.summary.assignmentsApplied} تعيين`;
+        entityLabel = `استيراد الملف المحفوظ (${cfg.storedFile.name}): +${result.summary.employeesCreated} موظف، ${result.summary.assignmentsApplied} تعيين${result.summary.protectedAssignments ? `، ${result.summary.protectedAssignments} محمي` : ''}`;
         details = { source: 'stored-file', assignmentsApplied: result.summary.assignmentsApplied, employeesCreated: result.summary.employeesCreated, dateRange: result.summary.dateRange };
         payload = { success: true, summary: result.summary };
       } else {
@@ -870,9 +898,9 @@ export function registerDashboardImport(app: any) {
       if (result.ok === true) {
         next.lastSyncStatus = 'ok';
         next.lastSyncError = null;
-        next.lastSyncSummary = `+${result.summary.employeesCreated} موظف، ${result.summary.assignmentsApplied} تعيين شيفت`;
+        next.lastSyncSummary = `+${result.summary.employeesCreated} موظف، ${result.summary.assignmentsApplied} تعيين شيفت${result.summary.protectedAssignments ? `، ${result.summary.protectedAssignments} محمي` : ''}`;
         action = 'dashboard.import';
-        entityLabel = `مزامنة تلقائية يومية (${useUrl ? 'رابط' : `الملف المحفوظ: ${cfg.storedFile?.name ?? 'dashboard'}`}): +${result.summary.employeesCreated} موظف، ${result.summary.assignmentsApplied} تعيين`;
+        entityLabel = `مزامنة تلقائية يومية (${useUrl ? 'رابط' : `الملف المحفوظ: ${cfg.storedFile?.name ?? 'dashboard'}`}): +${result.summary.employeesCreated} موظف، ${result.summary.assignmentsApplied} تعيين${result.summary.protectedAssignments ? `، ${result.summary.protectedAssignments} محمي` : ''}`;
         details = { source: useUrl ? 'cron-url' : 'cron-stored-file', assignmentsApplied: result.summary.assignmentsApplied, employeesCreated: result.summary.employeesCreated };
         payload = { success: true, summary: result.summary };
       } else {

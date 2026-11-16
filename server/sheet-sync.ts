@@ -253,10 +253,106 @@ async function buildPayload(): Promise<{ sheets: Record<string, SheetBlock>; cou
 }
 
 /* ------------------------------------------------------------------ */
-/* Routes                                                              */
+/* Event-driven snapshot push — approvals reach the sheet instantly    */
 /* ------------------------------------------------------------------ */
 
 let runningSync: Promise<unknown> | null = null;
+
+export interface SheetPushResult {
+  pushed: boolean;
+  skipped?: 'no_webhook' | 'recent' | 'in_progress';
+  counts?: Record<string, number>;
+  error?: string;
+}
+
+/**
+ * Build the current snapshot and push it to the configured Google dashboard
+ * webhook WITHOUT an HTTP request context. Called on the server whenever an
+ * approved swap or break change lands ("تظهر في شيت الـ Import"): the
+ * Schedule / Breaks / BreakRequests feed tabs then show the approved state
+ * immediately instead of waiting for the hourly autoSync.
+ *
+ * Guardrails: no-op when no webhook is configured; event pushes collapse to
+ * at most one per SHEET_EVENT_MIN_INTERVAL_MS (default 60s — bursts of
+ * approvals share one push and the hourly autoSync covers the rest); a push
+ * already in progress wins; failures never throw — they only mark
+ * lastSyncStatus so the panel shows them.
+ */
+export async function pushSheetSnapshot(reason: string): Promise<SheetPushResult> {
+  try {
+    const cfg = await readConfig();
+    if (!URL_RE.test(cfg.webhookUrl)) return { pushed: false, skipped: 'no_webhook' };
+
+    const minMs = Number(process.env.SHEET_EVENT_MIN_INTERVAL_MS || '') || AUTO_MIN_INTERVAL_MS;
+    const lastMs = cfg.lastSyncAt ? new Date(cfg.lastSyncAt).getTime() : 0;
+    if (cfg.lastSyncStatus === 'ok' && Date.now() - lastMs < minMs) {
+      return { pushed: false, skipped: 'recent' };
+    }
+    if (runningSync) return { pushed: false, skipped: 'in_progress' };
+
+    const run = (async (): Promise<SheetPushResult> => {
+      try {
+        const payload = await buildPayload();
+        const response = await fetch(cfg.webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: cfg.token, generatedAt: new Date().toISOString(), timeZone: 'Africa/Cairo', source: 'tech-source', reason, sheets: payload.sheets, counts: payload.counts }),
+          signal: AbortSignal.timeout(10000),
+        });
+        const text = (await response.text()).slice(0, 1000);
+        let remoteError: string | null = null;
+        try {
+          const parsed = JSON.parse(text);
+          if (parsed && parsed.ok === false) remoteError = String(parsed.error || 'script error');
+        } catch { /* non-JSON: judge by HTTP status only */ }
+        const ok = response.ok && !remoteError;
+        const next: SheetSyncConfig = {
+          ...cfg,
+          lastSyncAt: new Date().toISOString(),
+          lastSyncStatus: ok ? 'ok' : 'error',
+          lastSyncError: ok ? null : (remoteError || `HTTP ${response.status}: ${text.slice(0, 200)}`),
+          lastSyncCounts: payload.counts,
+        };
+        await writeConfig(next);
+        logActivity({
+          actorId: 'system', actorRole: 'leader',
+          action: ok ? 'sheet.sync' : 'sheet.sync_failed',
+          entityType: 'sheet', entityId: 'google-sheets',
+          entityLabel: `Google Sheets sync (${reason}) — ${payload.totalRows} rows`,
+          details: { reason, counts: payload.counts, httpStatus: response.status, ok },
+          companyId: 'tech-source',
+        });
+        if (!ok) return { pushed: false, error: next.lastSyncError || 'push failed' };
+        return { pushed: true, counts: payload.counts };
+      } catch (error: any) {
+        const message = String(error?.message || error);
+        try {
+          await writeConfig({ ...cfg, lastSyncAt: new Date().toISOString(), lastSyncStatus: 'error', lastSyncError: message.slice(0, 500), lastSyncCounts: null });
+        } catch { /* keep the failure result below */ }
+        logActivity({
+          actorId: 'system', actorRole: 'leader', action: 'sheet.sync_failed',
+          entityType: 'sheet', entityId: 'google-sheets', entityLabel: `Google Sheets sync failed (${reason})`,
+          details: message.slice(0, 500), companyId: 'tech-source',
+        });
+        return { pushed: false, error: message.slice(0, 300) };
+      }
+    })();
+
+    runningSync = run;
+    try {
+      return await run;
+    } finally {
+      runningSync = null;
+    }
+  } catch (error: any) {
+    // The caller's own operation (approval) must never fail because of the push.
+    return { pushed: false, error: String(error?.message || error).slice(0, 300) };
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Routes                                                              */
+/* ------------------------------------------------------------------ */
 
 export function registerSheetSync(app: any) {
   // GET — config + last sync status (managers; the panel is leader/admin only).

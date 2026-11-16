@@ -11,6 +11,8 @@ import {
   type AuthedEmployee,
 } from './auth.js';
 import { toDateKey, validateBreakList, withBreakSaveLock } from './employee-breaks.js';
+import { recordApprovedChanges } from './approved-changes.js';
+import { pushSheetSnapshot, type SheetPushResult } from './sheet-sync.js';
 import { logActivity } from './activity-logs.js';
 import { ensureNotificationStorage, saveOne } from './notification-system-v2.js';
 import { publishNotification } from './notification-sse.js';
@@ -366,6 +368,8 @@ export function registerBreakRequests(app: any) {
       const now = new Date().toISOString();
       const approved = action === 'approve';
       let savedBreaks: any[] | null = null;
+      let approvedDay: string | null = null;
+      let sheetPush: SheetPushResult | null = null;
 
       if (approved) {
         const date = String(request.date);
@@ -402,6 +406,7 @@ export function registerBreakRequests(app: any) {
           return res.status(400).json({ success: false, error: `Approval rejected by break validation: ${(outcome as any).validationError}` });
         }
         savedBreaks = (outcome as any).validated;
+        approvedDay = day;
       }
 
       const updated = {
@@ -419,6 +424,21 @@ export function registerBreakRequests(app: any) {
         reviewNotes: updated.reviewNotes,
         updatedAt: updated.updatedAt,
       } as any).where(eq(schema.breakChangeRequests.id, id));
+
+      // Approved break change → protect the day from import overwrites and
+      // push the fresh snapshot to the Google dashboard sheet so the
+      // Breaks/BreakRequests/Schedule tabs show the approval immediately.
+      // Runs AFTER the status update so the pushed snapshot already carries
+      // "approved". Both are best-effort: a registry or webhook failure must
+      // never fail the approval itself.
+      if (approved && approvedDay) {
+        try {
+          await recordApprovedChanges([{ key: `${String(request.employeeId)}|${approvedDay}`, kind: 'breaks' }]);
+        } catch (registryError: any) {
+          console.warn('[break-requests] approved-changes registry update failed (ignored):', registryError?.message || registryError);
+        }
+        sheetPush = await pushSheetSnapshot('break-request-approved');
+      }
 
       const proposedLabel = `${request.proposedStartTime}-${request.proposedEndTime}`;
 
@@ -451,7 +471,7 @@ export function registerBreakRequests(app: any) {
         );
       }
       res.setHeader('Cache-Control', 'no-store');
-      return res.json({ success: true, request: updated, ...(savedBreaks ? { breaks: savedBreaks } : {}) });
+      return res.json({ success: true, request: updated, ...(savedBreaks ? { breaks: savedBreaks } : {}), ...(sheetPush ? { sheetSync: { pushed: sheetPush.pushed, skipped: sheetPush.skipped ?? null } } : {}) });
     } catch (error: any) {
       console.error('[BREAK-REQUESTS] review failed:', error?.message || error);
       return res.status(500).json({ success: false, error: 'Could not review the break change request.' });
