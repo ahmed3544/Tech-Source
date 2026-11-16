@@ -103,6 +103,12 @@ const SCHEMA_STATEMENTS: string[] = [
   // Activity logging silently failed on pre-existing activity_logs tables
   // created before the actor_role column existed — make the self-heal add it.
   `ALTER TABLE activity_logs ADD COLUMN IF NOT EXISTS actor_role text`,
+  // Notifications carry the break-change-request id they belong to so the
+  // reviewer's "new request" notification can be deleted when the request is
+  // approved/rejected (otherwise it lingered looking like still-pending).
+  // Pre-existing rows have NULL here and are resolved via the legacy
+  // employee+date fallback instead — see resolveBreakRequestNotifications.
+  `ALTER TABLE notifications ADD COLUMN IF NOT EXISTS related_break_request_id text`,
 ];
 
 const RETRY_COOLDOWN_MS = 30_000;

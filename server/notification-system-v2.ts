@@ -1,23 +1,23 @@
 import crypto from 'crypto';
 import type { Express, Request } from 'express';
-import { eq } from 'drizzle-orm';
+import { and, eq, inArray, like, or } from 'drizzle-orm';
 import { db } from '../src/db/index.js';
 import * as schema from '../src/db/schema.js';
 import { publishNotification } from './notification-sse.js';
 
-type NotificationRecord = { id: string; recipientId: string; type: string; title: string; message: string; relatedEmployeeId?: string; relatedLeaveId?: string; relatedOvertimeId?: string; relatedShiftSwapId?: string; link?: string; targetUrl?: string; isRead: boolean; createdAt: string; updatedAt: string; };
+type NotificationRecord = { id: string; recipientId: string; type: string; title: string; message: string; relatedEmployeeId?: string; relatedLeaveId?: string; relatedOvertimeId?: string; relatedShiftSwapId?: string; relatedBreakRequestId?: string; link?: string; targetUrl?: string; isRead: boolean; createdAt: string; updatedAt: string; };
 const clean = (value: unknown) => String(value ?? '').trim();
 const nowIso = () => new Date().toISOString();
 
 function stableId(input: Omit<NotificationRecord, 'id'> & { id?: string }) {
   if (clean(input.id)) return clean(input.id);
-  const basis = [input.recipientId, input.type, input.relatedEmployeeId || '', input.relatedLeaveId || '', input.relatedOvertimeId || '', input.relatedShiftSwapId || '', input.title, input.message].join('|');
+  const basis = [input.recipientId, input.type, input.relatedEmployeeId || '', input.relatedLeaveId || '', input.relatedOvertimeId || '', input.relatedShiftSwapId || '', input.relatedBreakRequestId || '', input.title, input.message].join('|');
   return `n2_${crypto.createHash('sha256').update(basis).digest('hex').slice(0, 40)}`;
 }
 
 function semanticKey(raw: any): string {
   const recipientId = clean(raw?.recipientId); const type = clean(raw?.type);
-  const relatedId = clean(raw?.relatedLeaveId) || clean(raw?.relatedOvertimeId) || clean(raw?.relatedShiftSwapId);
+  const relatedId = clean(raw?.relatedLeaveId) || clean(raw?.relatedOvertimeId) || clean(raw?.relatedShiftSwapId) || clean(raw?.relatedBreakRequestId);
   if (relatedId) return `${recipientId}|${type}|${relatedId}`;
   return `${recipientId}|${type}|${clean(raw?.title)}|${clean(raw?.message)}`;
 }
@@ -54,6 +54,7 @@ function normalize(raw: any): NotificationRecord | null {
     relatedLeaveId: clean(raw?.relatedLeaveId) || undefined,
     relatedOvertimeId: clean(raw?.relatedOvertimeId) || undefined,
     relatedShiftSwapId: clean(raw?.relatedShiftSwapId) || undefined,
+    relatedBreakRequestId: clean(raw?.relatedBreakRequestId) || undefined,
     isRead: Boolean(raw?.isRead),
     createdAt,
     updatedAt,
@@ -105,7 +106,113 @@ async function listForUser(userId: string): Promise<NotificationRecord[]> {
     .filter((item) => leaveRows.length === 0 || (item.type === 'leave_rejected'
       ? Boolean(item.relatedLeaveId && validRejectedLeaveIds.has(String(item.relatedLeaveId)))
       : !(item.type.startsWith('leave_') && item.relatedLeaveId && !validLeaveIds.has(String(item.relatedLeaveId)))));
-  return mergeDuplicates(normalized);
+  // Reviewer-side request notifications ("new break/swap/leave/overtime
+  // request … review it") must not outlive the request they describe: the
+  // moment a request reaches a final state the notification is deleted at
+  // review time, and this sweep resolves anything that predates that fix
+  // (legacy rows without the link column) or slipped through another path.
+  // It runs only when such rows exist, so steady-state reads stay cheap.
+  let visible = normalized;
+  try {
+    const staleKeys = await staleRequestNotificationKeys(normalized, leaveRows);
+    if (staleKeys.size) {
+      const idsToDelete = new Set<string>();
+      for (const item of normalized) if (staleKeys.has(semanticKey(item))) idsToDelete.add(String(item.id));
+      if (idsToDelete.size) {
+        await db.delete(schema.notifications).where(inArray(schema.notifications.id, Array.from(idsToDelete)));
+        visible = normalized.filter((item) => !staleKeys.has(semanticKey(item)));
+      }
+    }
+  } catch (error) {
+    console.warn('[Notifications v2] resolved-request sweep skipped:', error);
+  }
+  return mergeDuplicates(visible);
+}
+
+/** Reviewer-side notification types whose usefulness dies with the request's pending state. */
+const REQUEST_REVIEWER_TYPES = new Set(['break_request_requested', 'shift_swap_requested', 'shift_swap_accepted', 'leave_requested', 'overtime_requested']);
+
+/** Extracts "… ليوم YYYY-MM-DD من …" — the date slot of legacy break-request messages. */
+function breakDateFromMessage(message: string): string {
+  const match = /ليوم\s*(\d{4}-\d{2}-\d{2})\s*من/.exec(String(message ?? ''));
+  return match?.[1] ?? '';
+}
+
+/**
+ * Returns the semantic keys of reviewer notifications whose underlying request
+ * is no longer pending (approved / rejected / missing). Break rows written
+ * before the related_break_request_id column existed are matched by
+ * relatedEmployeeId + the date embedded in the message text.
+ */
+async function staleRequestNotificationKeys(items: NotificationRecord[], leaveRows: any[]): Promise<Set<string>> {
+  const suspicious = items.filter((item) => REQUEST_REVIEWER_TYPES.has(item.type));
+  if (!suspicious.length) return new Set();
+  const stale = new Set<string>();
+  const pendingOnly = (rows: any[]) => new Set(rows.filter((r: any) => clean(r?.status).toLowerCase() === 'pending').map((r: any) => String(r.id)));
+
+  if (suspicious.some((item) => item.type === 'break_request_requested')) {
+    const breakRows = (await db.select().from(schema.breakChangeRequests)) as any[];
+    const pendingById = pendingOnly(breakRows);
+    const pendingByEmployeeDate = new Set(breakRows
+      .filter((r: any) => clean(r?.status).toLowerCase() === 'pending')
+      .map((r: any) => `${clean(r.employeeId)}|${String(r.date ?? '').slice(0, 10)}`));
+    for (const item of suspicious) {
+      if (item.type !== 'break_request_requested') continue;
+      if (item.relatedBreakRequestId) {
+        if (!pendingById.has(String(item.relatedBreakRequestId))) stale.add(semanticKey(item));
+        continue;
+      }
+      const date = breakDateFromMessage(item.message);
+      if (date && item.relatedEmployeeId && !pendingByEmployeeDate.has(`${item.relatedEmployeeId}|${date}`)) {
+        stale.add(semanticKey(item));
+      }
+    }
+  }
+
+  if (suspicious.some((item) => item.type === 'shift_swap_requested' || item.type === 'shift_swap_accepted')) {
+    const rows = await db.select().from(schema.settings).where(eq(schema.settings.key, 'shiftSwapRequests'));
+    const swaps: any[] = Array.isArray(rows[0]?.value) ? rows[0].value : [];
+    const statusById = new Map(swaps.map((s: any) => [String(s?.id ?? ''), clean(s?.status).toLowerCase()]));
+    for (const item of suspicious) {
+      const swapId = clean(item.relatedShiftSwapId);
+      if (!swapId) continue;
+      const status = statusById.get(swapId);
+      if (item.type === 'shift_swap_requested' && status !== 'awaiting_target') stale.add(semanticKey(item));
+      if (item.type === 'shift_swap_accepted' && status !== 'pending') stale.add(semanticKey(item));
+    }
+  }
+
+  if (leaveRows.length && suspicious.some((item) => item.type === 'leave_requested')) {
+    // Mirror the legacy in-memory filter's guard: an empty/failed leave load
+    // must never count as "no pending leaves exist".
+    const pendingLeaves = pendingOnly(leaveRows);
+    for (const item of suspicious) {
+      if (item.type !== 'leave_requested') continue;
+      const leaveId = clean(item.relatedLeaveId);
+      if (leaveId && !pendingLeaves.has(leaveId)) stale.add(semanticKey(item));
+    }
+  }
+
+  if (suspicious.some((item) => item.type === 'overtime_requested')) {
+    let overtimeRows: any[] = [];
+    let overtimeLoaded = false;
+    try {
+      overtimeRows = await db.select({ id: schema.overtimeRequests.id, status: schema.overtimeRequests.status }).from(schema.overtimeRequests);
+      overtimeLoaded = true;
+    } catch (error) {
+      console.warn('[Notifications v2] overtime validation skipped:', error);
+    }
+    if (overtimeLoaded) {
+      const pendingOvertimes = pendingOnly(overtimeRows);
+      for (const item of suspicious) {
+        if (item.type !== 'overtime_requested') continue;
+        const overtimeId = clean(item.relatedOvertimeId);
+        if (overtimeId && !pendingOvertimes.has(overtimeId)) stale.add(semanticKey(item));
+      }
+    }
+  }
+
+  return stale;
 }
 
 export async function saveOne(input: any): Promise<NotificationRecord | null> {
@@ -150,6 +257,70 @@ async function markAllRead(recipientId: string) {
 }
 
 function bodyOf(req: Request) { return req.body && typeof req.body === 'object' ? req.body : {}; }
+
+/** Related-id columns usable by resolveRequestNotifications. */
+const RELATED_COLUMNS = {
+  relatedLeaveId: schema.notifications.relatedLeaveId,
+  relatedOvertimeId: schema.notifications.relatedOvertimeId,
+  relatedShiftSwapId: schema.notifications.relatedShiftSwapId,
+  relatedBreakRequestId: schema.notifications.relatedBreakRequestId,
+} as const;
+
+/**
+ * Resolves ("consumes") the reviewer-side notifications of a request that
+ * reached a final state: deletes every notification pointing at the given
+ * request id whose type is one of the supplied reviewer types. Semantic
+ * duplicates (client-emitted and server-emitted copies share the related id)
+ * are all covered because the match is by column + type, not by id.
+ * Callers treat it as best-effort — a failed cleanup must never fail the
+ * review itself.
+ */
+export async function resolveRequestNotifications(options: {
+  related: keyof typeof RELATED_COLUMNS;
+  relatedId: string;
+  types: string[];
+}): Promise<number> {
+  await ensureReady();
+  const relatedId = clean(options.relatedId);
+  const types = (options.types ?? []).map((t) => clean(t)).filter(Boolean);
+  const column = RELATED_COLUMNS[options.related];
+  if (!relatedId || !types.length || !column) return 0;
+  const rows = await db.select({ id: schema.notifications.id })
+    .from(schema.notifications)
+    .where(and(eq(column, relatedId), inArray(schema.notifications.type, types))) as any[];
+  if (!rows.length) return 0;
+  await db.delete(schema.notifications).where(inArray(schema.notifications.id, rows.map((row: any) => String(row.id))));
+  return rows.length;
+}
+
+/**
+ * Break-request variant: deletes the reviewer's "new break change request"
+ * notifications for one request — both rows tagged with the request id (new
+ * writes) and legacy rows that predate the related_break_request_id column,
+ * matched by relatedEmployeeId + the request date embedded in the message
+ * ("… ليوم <date> من …"). Only one pending request per employee+date can
+ * exist, so the fallback is unambiguous.
+ */
+export async function resolveBreakRequestNotifications(requestId: string, employeeId: string, date: string): Promise<number> {
+  await ensureReady();
+  const reqId = clean(requestId);
+  const empId = clean(employeeId);
+  const day = clean(date);
+  if (!reqId || !empId || !day) return 0;
+  const rows = await db.select({ id: schema.notifications.id })
+    .from(schema.notifications)
+    .where(or(
+      eq(schema.notifications.relatedBreakRequestId, reqId),
+      and(
+        eq(schema.notifications.type, 'break_request_requested'),
+        eq(schema.notifications.relatedEmployeeId, empId),
+        like(schema.notifications.message, `%ليوم ${day} من%`),
+      ),
+    )) as any[];
+  if (!rows.length) return 0;
+  await db.delete(schema.notifications).where(inArray(schema.notifications.id, rows.map((row: any) => String(row.id))));
+  return rows.length;
+}
 
 export function registerNotificationSystemV2(app: Express) {
   app.get('/api/notifications', async (req, res) => {

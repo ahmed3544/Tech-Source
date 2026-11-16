@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '../src/db/index.js';
 import * as schema from '../src/db/schema.js';
 import { sendPushToEmployee } from './fcm.js';
-import { ensureNotificationStorage, saveOne } from './notification-system-v2.js';
+import { ensureNotificationStorage, resolveRequestNotifications, saveOne } from './notification-system-v2.js';
 import { publishNotification } from './notification-sse.js';
 
 const clean = (v:any) => String(v ?? '').trim();
@@ -20,6 +20,18 @@ async function insertNotification(recipientId:string, type:string, title:string,
   if (!saved) return;
   publishNotification(saved);
   try { await sendPushToEmployee(recipientId, title, message, { type, relatedId }); } catch (e) { console.warn('[FCM] request notification push failed', e); }
+}
+
+/**
+ * Best-effort cleanup of the reviewer-side notifications of a resolved
+ * request. When a request reaches a final state its "new request — review
+ * it" notifications would otherwise linger unread in the reviewer's bell,
+ * looking like the request is still pending (user report: "لما بوافق او
+ * برفض اي ريكوست بيفضل موجود في النوتفكيشن"). Never throws.
+ */
+async function resolveReviewerNotifications(related: 'relatedLeaveId' | 'relatedOvertimeId' | 'relatedShiftSwapId', relatedId: string, types: string[]) {
+  try { await resolveRequestNotifications({ related, relatedId, types }); }
+  catch (error) { console.warn('[request-notification-triggers] reviewer notification cleanup failed:', error); }
 }
 
 async function emitForSync(body:any) {
@@ -47,6 +59,7 @@ async function emitForSync(body:any) {
       const notifTitle = approved ? (isPermission ? 'تم اعتماد الإذن' : 'تم اعتماد طلب الإجازة') : (isPermission ? 'تم رفض الإذن' : 'تم رفض طلب الإجازة');
       const kindAr = isPermission ? 'إذن' : (kind === 'sick' ? 'إجازة مرضية' : 'إجازة');
       await insertNotification(employeeId, approved ? 'leave_approved' : 'leave_rejected', notifTitle, approved ? `تم اعتماد طلب ${kindAr} من ${start} إلى ${end}.` : `تم رفض طلب ${kindAr} من ${start} إلى ${end}.${clean(r.reviewNotes) ? ` السبب: ${clean(r.reviewNotes)}` : ''}`, employeeId, id);
+      await resolveReviewerNotifications('relatedLeaveId', id, ['leave_requested']);
     }
   }
 
@@ -60,6 +73,7 @@ async function emitForSync(body:any) {
     } else if (status === 'approved' || status === 'rejected') {
       const approved = status === 'approved';
       await insertNotification(employeeId, approved ? 'overtime_approved' : 'overtime_rejected', approved ? 'تم اعتماد الوقت الإضافي' : 'تم رفض الوقت الإضافي', approved ? `تم اعتماد طلب الوقت الإضافي ليوم ${date}${duration ? ` لمدة ${duration}` : ''}.` : `تم رفض طلب الوقت الإضافي ليوم ${date}.${clean(r.reviewNotes) ? ` السبب: ${clean(r.reviewNotes)}` : ''}`, employeeId, undefined, id);
+      await resolveReviewerNotifications('relatedOvertimeId', id, ['overtime_requested']);
     }
   }
 
@@ -71,12 +85,17 @@ async function emitForSync(body:any) {
     else if (status === 'pending') {
       const leaderId = clean((employees as any[]).find((e:any) => String(e.id) === requesterId)?.teamLeaderId); const recipients = leaderId ? [leaderId] : leaders;
       for (const recipientId of recipients) if (recipientId !== requesterId && recipientId !== targetId) await insertNotification(recipientId, 'shift_swap_accepted', 'تمت الموافقة على Swap', `${employeeName(targetId)} وافق على تبديل الشفت مع ${employeeName(requesterId)} ليوم ${date}. أصبح الطلب جاهزًا لمراجعة الليدر.`, requesterId, undefined, undefined, id);
+      // The target just acted on the swap — their "new swap request" copy is
+      // answered and must not keep showing as pending.
+      await resolveReviewerNotifications('relatedShiftSwapId', id, ['shift_swap_requested']);
     } else if (status === 'approved') {
       await insertNotification(requesterId, 'shift_changed', 'تم اعتماد تبديل الشفت', `تم اعتماد تبديل الشفت مع ${employeeName(targetId)} ليوم ${date}.`, requesterId, undefined, undefined, id);
       await insertNotification(targetId, 'shift_changed', 'تم اعتماد تبديل الشفت', `تم اعتماد تبديل الشفت مع ${employeeName(requesterId)} ليوم ${date}.`, targetId, undefined, undefined, id);
+      await resolveReviewerNotifications('relatedShiftSwapId', id, ['shift_swap_requested', 'shift_swap_accepted']);
     } else if (status === 'rejected') {
       await insertNotification(requesterId, 'shift_swap_rejected', 'تم رفض طلب تبديل الشفت', `تم رفض طلب تبديل الشفت ليوم ${date}.`, requesterId, undefined, undefined, id);
       await insertNotification(targetId, 'shift_swap_rejected', 'تم رفض طلب تبديل الشفت', `تم رفض طلب تبديل الشفت ليوم ${date}.`, targetId, undefined, undefined, id);
+      await resolveReviewerNotifications('relatedShiftSwapId', id, ['shift_swap_requested', 'shift_swap_accepted']);
     }
   }
 }

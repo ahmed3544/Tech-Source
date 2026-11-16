@@ -38,7 +38,16 @@ export const shifts = pgTable('shifts', { id: text('id').primaryKey(), companyId
 export const employeeShiftAssignments = pgTable('employee_shift_assignments', { id: text('id').primaryKey(), companyId: text('company_id'), employeeId: text('employee_id').notNull(), scheduleDate: text('schedule_date').notNull(), shiftTemplateId: text('shift_template_id'), customStartTime: text('custom_start_time'), customEndTime: text('custom_end_time'), durationMinutes: integer('duration_minutes').default(480), status: text('status').default('draft'), createdAt: text('created_at').notNull(), updatedAt: text('updated_at').notNull(), version: integer('version').default(1), }, (table) => [uniqueIndex('employee_shift_assignment_date_idx').on(table.employeeId, table.scheduleDate)]);
 export const rotationPatterns = pgTable('rotation_patterns', { id: text('id').primaryKey(), companyId: text('company_id'), name: text('name').notNull(), shiftIds: jsonb('shift_ids').notNull(), createdBy: text('created_by'), createdAt: text('created_at').notNull(), updatedAt: text('updated_at').notNull(), });
 export const rotationPatternItems = pgTable('rotation_pattern_items', { id: text('id').primaryKey(), companyId: text('company_id'), patternId: text('pattern_id').notNull(), shiftId: text('shift_id').notNull(), sequence: integer('sequence').notNull(), }, (table) => [uniqueIndex('rotation_pattern_sequence_idx').on(table.patternId, table.sequence)]);
-export const notifications = pgTable('notifications', { id: text('id').primaryKey(), companyId: text('company_id'), recipientId: text('recipient_id').notNull(), type: text('type').notNull(), title: text('title').notNull(), message: text('message').notNull(), relatedEmployeeId: text('related_employee_id'), relatedLeaveId: text('related_leave_id'), relatedOvertimeId: text('related_overtime_id'), relatedShiftSwapId: text('related_shift_swap_id'), isRead: boolean('is_read').default(false), createdAt: text('created_at').notNull(), updatedAt: text('updated_at').notNull(), });
+/**
+ * related_break_request_id links a notification to the break_change_requests
+ * row it is about. It lets the reviewer-side "new break change request"
+ * notification be resolved (deleted) the moment the request is approved or
+ * rejected — without it, reviewed requests kept showing as pending in the
+ * reviewer's notification bell forever. Nullable: notifications for other
+ * request kinds (leave/overtime/swap) leave it NULL, and rows written before
+ * the column existed are resolved by the legacy employee+date fallback.
+ */
+export const notifications = pgTable('notifications', { id: text('id').primaryKey(), companyId: text('company_id'), recipientId: text('recipient_id').notNull(), type: text('type').notNull(), title: text('title').notNull(), message: text('message').notNull(), relatedEmployeeId: text('related_employee_id'), relatedLeaveId: text('related_leave_id'), relatedOvertimeId: text('related_overtime_id'), relatedShiftSwapId: text('related_shift_swap_id'), relatedBreakRequestId: text('related_break_request_id'), isRead: boolean('is_read').default(false), createdAt: text('created_at').notNull(), updatedAt: text('updated_at').notNull(), });
 /**
  * Employee-specific planned breaks, stored per employee + calendar date.
  * Replaces the old shift-level-only breaks (settings.shiftBreaks) as the
