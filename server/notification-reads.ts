@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../src/db/index.js';
 import * as schema from '../src/db/schema.js';
+import { ensureSchema } from './ensure-schema.js';
 
 /**
  * Shared "mark notification as read" logic used by BOTH the Express server
@@ -37,6 +38,10 @@ function semanticKey(row: NotificationRow): string {
 /** Same merge + link + ordering behavior as the legacy directNotifications handler. */
 export async function listNotificationsForUser(userId: string): Promise<NotificationRow[]> {
   if (!userId) return [];
+  // These static-path endpoints never pass through authenticateRequest — heal
+  // the additive schema here too or a drizzle SELECT referencing a column the
+  // production DB does not have yet 500s the whole read (see ensureReady). 
+  await ensureSchema();
   const rows = (await db.select().from(schema.notifications).where(eq(schema.notifications.recipientId, userId))) as any[];
   const bySemantic = new Map<string, NotificationRow>();
   for (const row of rows) {
@@ -75,6 +80,7 @@ export async function markNotificationRead(userId: string, id: string): Promise<
   const cleanUserId = String(userId ?? '').trim();
   const cleanId = String(id ?? '').trim();
   if (!cleanUserId || !cleanId) return { ok: false, status: 400 };
+  await ensureSchema();
   const rows = (await db.select().from(schema.notifications).where(eq(schema.notifications.recipientId, cleanUserId))) as any[];
   const target = rows.find((row) => String(row.id) === cleanId);
   if (!target) return { ok: false, status: 404 };
@@ -95,6 +101,7 @@ export async function markNotificationRead(userId: string, id: string): Promise<
 export async function markAllNotificationsRead(userId: string): Promise<{ ok: boolean; unread?: number }> {
   const cleanUserId = String(userId ?? '').trim();
   if (!cleanUserId) return { ok: false };
+  await ensureSchema();
   const rows = (await db.select({ isRead: schema.notifications.isRead }).from(schema.notifications).where(eq(schema.notifications.recipientId, cleanUserId))) as any[];
   const unread = rows.filter((row) => !Boolean(row.isRead)).length;
   await db.update(schema.notifications).set({ isRead: true, updatedAt: new Date().toISOString() } as any).where(eq(schema.notifications.recipientId, cleanUserId));
