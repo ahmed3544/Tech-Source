@@ -72,6 +72,44 @@ async function deleteRotationRows(patternIds:any[], itemIds:any[]) {
 }
 async function rotationSnapshot(){const [patterns,items]=await Promise.all([db.select().from(schema.rotationPatterns),db.select().from(schema.rotationPatternItems)]);return{rotationPatterns:patterns,rotationPatternItems:items};}
 
+/** Adds plain-language fields to the audit diff items so the activity log
+ *  shows swaps readably (user report: entries read "shift_1793458271971↔OFF"
+ *  which tells nothing). Each item gains:
+ *    employeeName — real employee name instead of "emp-5021"
+ *    fromLabel / toLabel — shift label ("صباحي 09:00-17:00") instead of the raw
+ *    shift_xxx id; OFF/WORKING/null stay as-is (the UI translates them).
+ *  Best-effort: any lookup failure returns the items unchanged — logging must
+ *  never break (or even alter) the schedule write itself. */
+export async function enrichScheduleChangeLogItems(items: any[]): Promise<any[]> {
+  if (!Array.isArray(items) || !items.length) return items;
+  try {
+    const employeeIds = Array.from(new Set(items.map((it) => String(it?.employeeId ?? '').trim()).filter(Boolean)));
+    const shiftIds = Array.from(new Set(items
+      .flatMap((it) => [String(it?.from ?? ''), String(it?.to ?? '')])
+      .filter((v) => v && v !== 'OFF' && v !== 'WORKING')));
+    const [empRows, shiftRows] = await Promise.all([
+      employeeIds.length ? db.select({ id: schema.employees.id, nameAr: schema.employees.nameAr, nameEn: schema.employees.nameEn }).from(schema.employees).where(inArray(schema.employees.id, employeeIds)) : Promise.resolve([] as any[]),
+      shiftIds.length ? db.select({ id: schema.shifts.id, name: schema.shifts.name, startTime: schema.shifts.startTime, endTime: schema.shifts.endTime }).from(schema.shifts).where(inArray(schema.shifts.id, shiftIds)) : Promise.resolve([] as any[]),
+    ]);
+    const empName = new Map<string, string>(empRows.map((e: any) => [String(e.id), String(e.nameAr || e.nameEn || e.id)]));
+    const shiftLabel = new Map<string, string>(shiftRows.map((s: any) => [String(s.id), `${String(s.name)} ${String(s.startTime)}-${String(s.endTime)}`]));
+    const labelOf = (value: unknown): unknown => {
+      const raw = String(value ?? '');
+      if (!raw || raw === 'OFF' || raw === 'WORKING') return value;
+      return shiftLabel.get(raw) ?? value;
+    };
+    return items.map((it) => ({
+      ...it,
+      employeeName: empName.get(String(it?.employeeId ?? '')) ?? it.employeeId,
+      ...(it?.from !== undefined && it?.from !== null ? { fromLabel: labelOf(it.from) } : {}),
+      ...(it?.to !== undefined && it?.to !== null ? { toLabel: labelOf(it.to) } : {}),
+    }));
+  } catch (error: any) {
+    console.warn('[schedule-sync] change-item enrichment failed (ignored):', error?.message || error);
+    return items;
+  }
+}
+
 export function registerDirectScheduleSync(app:any) {
   app.get('/api/rotation-patterns',async(_req:any,res:any)=>{try{return res.json({success:true,...(await rotationSnapshot())});}catch(error){console.error('[rotation-patterns] GET failed',error);return res.status(500).json({success:false,error:'ROTATION_PATTERNS_READ_FAILED'});}});
   app.post('/api/rotation-patterns',async(req:any,res:any)=>{try{await persistRotationPatterns(Array.isArray(req.body?.rotationPatterns)?req.body.rotationPatterns:(req.body?.pattern?[req.body.pattern]:[]),Array.isArray(req.body?.rotationPatternItems)?req.body.rotationPatternItems:[]);await deleteRotationRows(req.body?.deletedRotationPatternIds,req.body?.deletedRotationPatternItemIds);return res.json({success:true,...(await rotationSnapshot())});}catch(error){console.error('[rotation-patterns] POST failed',error);return res.status(500).json({success:false,error:'ROTATION_PATTERNS_SAVE_FAILED'});}});
@@ -188,6 +226,10 @@ export function registerDirectScheduleSync(app:any) {
         }
         if (changedItems.length || isImport) {
           const dates = received.map((x: any) => String(x.date)).sort();
+          // Swap readability: attach employee names + shift labels to each
+          // changed item so the log reads "Nancy (2026-11-19): OFF → صباحي
+          // 09:00-17:00" instead of "emp-5021: shift_xxx↔OFF".
+          const itemsForLog = await enrichScheduleChangeLogItems(changedItems);
           logActivity({
             actorId: manager.id,
             actorName: (manager as any).nameAr || (manager as any).nameEn || manager.id,
@@ -199,7 +241,7 @@ export function registerDirectScheduleSync(app:any) {
               changes: changedItems.length,
               received: received.length,
               ...(isImport ? { breakDays: Math.max(0, Number(req.body?.breaksCount ?? 0) || 0) } : {}),
-              items: changedItems.slice(0, 40),
+              items: itemsForLog.slice(0, 40),
             },
           });
         }

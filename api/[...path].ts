@@ -5,6 +5,7 @@ import { eq, inArray } from "drizzle-orm";
 import { updateEmployeeHandler, createEmployeeHandler, deleteEmployeeHandler } from "../server/employees.js";
 import { requireManager, canManageEmployee, isPlatformAdmin } from "../server/auth.js";
 import { logActivity } from "../server/activity-logs.js";
+import { enrichScheduleChangeLogItems } from "../server/schedule-sync-direct.js";
 import { ensureSchema } from "../server/ensure-schema.js";
 import { sanitizeEmployees } from "../server/employee-sanitize.js";
 
@@ -176,6 +177,9 @@ async function directScheduleSync(req: any, res: any) {
     }
     if (changedItems.length || isImport) {
       const dates = received.map((x: any) => String(x.date)).sort();
+      // Swap readability (parity with the Express handler): employee names +
+      // shift labels instead of raw "emp-x" / "shift_xxx" ids.
+      const itemsForLog = await enrichScheduleChangeLogItems(changedItems);
       logActivity({
         actorId: manager.id,
         actorName: (manager as any).nameAr || (manager as any).nameEn || manager.id,
@@ -187,7 +191,7 @@ async function directScheduleSync(req: any, res: any) {
           changes: changedItems.length,
           received: received.length,
           ...(isImport ? { breakDays: Math.max(0, Number(req.body?.breaksCount ?? 0) || 0) } : {}),
-          items: changedItems.slice(0, 40),
+          items: itemsForLog.slice(0, 40),
         },
       });
     }
