@@ -148,10 +148,18 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ currentU
     const timer = window.setInterval(() => { if (document.visibilityState === 'visible') void load(true); }, 30000);
     const onFocus = () => void load(true);
     const onVisibility = () => { if (document.visibilityState === 'visible') void load(true); };
+    // Instant refresh: review actions elsewhere in this tab (swap approve/reject,
+    // break request review, target accept) delete the reviewer-side "pending
+    // review" notifications server-side immediately — without this listener the
+    // bell kept showing them until the next 30s poll, which read as "the request
+    // is still pending in the notifications" (user report).
+    const onChanged = () => { if (document.visibilityState === 'visible') void load(true); };
+    window.addEventListener('techsource:notifications-changed', onChanged);
     window.addEventListener('focus', onFocus);
     document.addEventListener('visibilitychange', onVisibility);
     return () => {
       window.clearInterval(timer);
+      window.removeEventListener('techsource:notifications-changed', onChanged);
       window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', onVisibility);
     };

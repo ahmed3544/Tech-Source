@@ -87,6 +87,15 @@ export const ShiftSwapPanel: React.FC<Props> = ({ employees, shifts, assignments
     updatedAt: now,
   });
 
+  /** Every swap action reaches a final (or forwarding) state for someone — the
+   *  server trigger resolves the reviewer-side notifications in the same
+   *  request, so tell the bell/notifications page in THIS tab to re-pull
+   *  immediately instead of waiting up to 30s (they kept showing the acted-on
+   *  request as "pending review" until the next poll — user report). */
+  const notifyNotificationsChanged = () => {
+    try { window.dispatchEvent(new CustomEvent('techsource:notifications-changed')); } catch {}
+  };
+
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
@@ -147,6 +156,7 @@ export const ShiftSwapPanel: React.FC<Props> = ({ employees, shifts, assignments
       nextNotifications = [...nextNotifications, makeNotification(request.requesterId, 'shift_swap_rejected', lang === 'ar' ? 'تم رفض طلب تبديل الشفت' : 'Shift Swap Rejected', lang === 'ar' ? `${name(currentUser.id)} رفض طلب تبديل الشفت ليوم ${request.date}.` : `${name(currentUser.id)} rejected the shift swap request for ${request.date}.`, swapId, now)];
     }
     await syncState(nextRequests, nextNotifications);
+    notifyNotificationsChanged();
     reportActivity(status === 'accepted' ? 'swap.accept' : 'swap.reject', request, { targetResponded: status });
     setLoading(false);
   };
@@ -220,12 +230,14 @@ export const ShiftSwapPanel: React.FC<Props> = ({ employees, shifts, assignments
       // The schedule rows just changed server-side — ask the app to re-pull
       // /api/data so the grid shows the swap immediately (no page refresh).
       window.dispatchEvent(new CustomEvent('techsource:assignments-changed'));
+      notifyNotificationsChanged();
     } else {
       nextNotifications = [...notifications,
         makeNotification(request.requesterId, 'shift_swap_rejected', lang === 'ar' ? 'تم رفض تبديل الشفت' : 'Shift Swap Rejected', lang === 'ar' ? `الليدر رفض تبديل الشفت مع ${name(request.targetEmployeeId)} ليوم ${request.date}.` : `The leader rejected the shift swap with ${name(request.targetEmployeeId)} for ${request.date}.`, request.id, now),
         makeNotification(request.targetEmployeeId, 'shift_swap_rejected', lang === 'ar' ? 'تم رفض تبديل الشفت' : 'Shift Swap Rejected', lang === 'ar' ? `الليدر رفض تبديل الشفت مع ${name(request.requesterId)} ليوم ${request.date}.` : `The leader rejected the shift swap with ${name(request.requesterId)} for ${request.date}.`, request.id, now)
       ];
       await syncState(nextRequests, nextNotifications);
+      notifyNotificationsChanged();
     }
     reportActivity(status === 'approved' ? 'swap.approve' : 'swap.reject', request, { reviewedBy: currentUser?.id, newStatus: status });
     setLoading(false);

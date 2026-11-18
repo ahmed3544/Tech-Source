@@ -119,10 +119,15 @@ export const NotificationsPage: React.FC<Props> = ({ currentUserId, lang, onBack
     const isVisible = () => document.visibilityState === 'visible';
     const timer = window.setInterval(() => { if (isVisible()) void load(true); }, 30000);
     const onVisible = () => { if (isVisible()) void load(true); };
+    // Instant refresh after review actions (swap/break review in this tab) so a
+    // resolved request never lingers here looking like it is still pending.
+    const onChanged = () => { if (isVisible()) void load(true); };
+    window.addEventListener('techsource:notifications-changed', onChanged);
     window.addEventListener('focus', onVisible);
     document.addEventListener('visibilitychange', onVisible);
     return () => {
       window.clearInterval(timer);
+      window.removeEventListener('techsource:notifications-changed', onChanged);
       window.removeEventListener('focus', onVisible);
       document.removeEventListener('visibilitychange', onVisible);
     };
@@ -252,7 +257,14 @@ export const NotificationsPage: React.FC<Props> = ({ currentUserId, lang, onBack
         body: JSON.stringify({ shiftSwapRequests: nextRequests, lastUpdated: Date.now() }),
       });
       if (!sync.ok) throw new Error(`Sync failed: ${sync.status}`);
-      for (const item of [{ ...notification, isRead: true, updatedAt: now }, ...additions]) {
+      // NOTE: only the NEW notifications are emitted here. The server-side sync
+      // trigger (emitForSync) has already resolved (deleted) this reviewer's
+      // "new swap request" notification the moment the request reached a final
+      // state, and it also created the leader/requester copies — re-emitting the
+      // original notification resurrected that deleted row and made the request
+      // linger in the list as if it were still pending (user report:
+      // "بتفضل في النوتفكيشن Pending review").
+      for (const item of additions) {
         const emit = await fetch('/api/notifications/emit', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
@@ -263,6 +275,9 @@ export const NotificationsPage: React.FC<Props> = ({ currentUserId, lang, onBack
       }
       await markRead(notification.id);
       await load(true);
+      // Tell the bell (and every other notification surface in this tab) to
+      // refresh immediately instead of waiting for the next poll cycle.
+      try { window.dispatchEvent(new CustomEvent('techsource:notifications-changed')); } catch (err: unknown) { /* noop */ }
     } finally {
       setActingSwapId(null);
     }
