@@ -119,6 +119,11 @@ export const BreakRequestPanel: React.FC<Props> = ({ employees, currentUser, lan
         : (lang === 'ar' ? 'تم رفض الطلب وإشعار الموظف.' : 'Request rejected and the employee was notified.'));
       if (action === 'approve') onBreaksApproved?.(request.employeeId, request.date);
       await load();
+      // The review endpoint just resolved (deleted) this reviewer's "طلب تغيير
+      // بريك جديد" notifications server-side — tell the bell/notifications page
+      // in this tab to re-pull immediately so the acted-on request never lingers
+      // there looking like it is still "Pending review" (user report).
+      try { window.dispatchEvent(new CustomEvent('techsource:notifications-changed')); } catch (err: unknown) { /* noop */ }
     } catch (err: unknown) {
       setError(errorToMessage(err, lang === 'ar' ? 'تعذر تنفيذ المراجعة' : 'Could not review the request'));
     } finally { setBusy(false); }
