@@ -172,6 +172,16 @@ export const ShiftSwapPanel: React.FC<Props> = ({ employees, shifts, assignments
     setTargetId('');
   };
 
+
+  const swapEmployeeBreaks = async (employeeAId: string, employeeBId: string, swapDate: string) => {
+    const response = await fetch('/api/employee-breaks/swap', {
+      method: 'POST', credentials: 'include', cache: 'no-store',
+      headers: authHeaders({ 'Content-Type': 'application/json', Accept: 'application/json' }),
+      body: JSON.stringify({ employeeAId, employeeBId, date: swapDate }),
+    });
+    if (!response.ok) throw new Error(`break-swap-${response.status}`);
+  };
+
   const review = async (request: ShiftSwapRequest, status: 'approved' | 'rejected') => {
     if (!isLeader || request.status !== 'pending') return;
     setLoading(true);
@@ -204,12 +214,21 @@ export const ShiftSwapPanel: React.FC<Props> = ({ employees, shifts, assignments
       // (server/schedule-sync-guard.ts: "the dedicated /api/schedule-sync
       // endpoint is the only schedule writer"), so approvals posted there
       // saved the request status but threw the shift change away.
+      // Move each employee's break plan with the shift. If schedule persistence fails,
+      // exchange them back so the two records remain consistent.
+      try { await swapEmployeeBreaks(request.requesterId, request.targetEmployeeId, request.date); }
+      catch {
+        setActionError(lang === 'ar' ? 'تعذر نقل البريكات؛ لم يتم اعتماد التبديل. حاول مرة أخرى.' : 'Could not move the breaks; the swap was not approved. Please try again.');
+        setLoading(false);
+        return;
+      }
       const swapRes = await fetch('/api/schedule-sync', {
         method: 'POST', credentials: 'include', cache: 'no-store',
         headers: authHeaders({ 'Content-Type': 'application/json', Accept: 'application/json' }),
         body: JSON.stringify({ dailyShiftAssignments: [nextAssignments[a], nextAssignments[b]], syncTimestamp: now, source: 'shift-swap' }),
       });
       if (!swapRes.ok) {
+        try { await swapEmployeeBreaks(request.requesterId, request.targetEmployeeId, request.date); } catch {}
         setActionError(lang === 'ar' ? `تعذر حفظ تبديل الشفت على الجدول (خطأ ${swapRes.status}). تأكد من صلاحياتك وحاول مرة أخرى.` : `Could not save the shift swap to the schedule (error ${swapRes.status}). Check your permissions and try again.`);
         setLoading(false);
         return;
@@ -245,12 +264,20 @@ export const ShiftSwapPanel: React.FC<Props> = ({ employees, shifts, assignments
     const nextA = { ...rowA, shiftId: rowB.shiftId || '', isOffDay: Boolean(rowB.isOffDay), assignedBy: currentUser?.id, updatedAt: now };
     const nextB = { ...rowB, shiftId: rowA.shiftId || '', isOffDay: Boolean(rowA.isOffDay), assignedBy: currentUser?.id, updatedAt: now };
     try {
+      // Break plans follow their shifts, including shift ↔ OFF swaps.
+      try { await swapEmployeeBreaks(directAId, directBId, directDate); }
+      catch {
+        setDirectError(lang === 'ar' ? 'تعذر نقل البريكات؛ لم يتم تنفيذ التبديل.' : 'Could not move the breaks; the swap was not applied.');
+        setDirectBusy(false);
+        return;
+      }
       const res = await fetch('/api/schedule-sync', {
         method: 'POST', credentials: 'include', cache: 'no-store',
         headers: authHeaders({ 'Content-Type': 'application/json', Accept: 'application/json' }),
         body: JSON.stringify({ dailyShiftAssignments: [nextA, nextB], syncTimestamp: now, source: 'shift-swap' }),
       });
       if (!res.ok) {
+        try { await swapEmployeeBreaks(directAId, directBId, directDate); } catch {}
         setDirectError(lang === 'ar' ? `تعذر حفظ التبديل على الجدول (خطأ ${res.status}). تأكد من صلاحياتك وحاول مرة أخرى.` : `Could not save the swap to the schedule (error ${res.status}). Check your permissions and try again.`);
         setDirectBusy(false);
         return;
