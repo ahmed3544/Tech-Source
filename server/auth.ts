@@ -21,6 +21,13 @@ import { ensureSchema } from './ensure-schema.js';
 export type AuthedEmployee = {
   id: string;
   role: string;
+  /** Display names + code + company carried on the authed employee so the
+   *  audit trail can log the REAL user name instead of an id like "emp-002"
+   *  (user report: the activity log showed ids instead of names). */
+  nameAr?: string | null;
+  nameEn?: string | null;
+  code?: string | null;
+  companyId?: string | null;
   teamLeaderId?: string | null;
   teamId?: string | null;
 };
@@ -82,6 +89,10 @@ export async function authenticateRequest(req: any): Promise<
     employee: {
       id: String(employee.id),
       role: roleOf(employee.role),
+      nameAr: (employee as any).nameAr ?? null,
+      nameEn: (employee as any).nameEn ?? null,
+      code: (employee as any).code ?? null,
+      companyId: (employee as any).companyId ?? null,
       teamLeaderId: employee.teamLeaderId ?? null,
       teamId: employee.teamId ?? null,
     },
@@ -143,8 +154,10 @@ async function loadEmployeeMinimal(
   id: string
 ): Promise<{ state: 'found'; employee: any } | { state: 'missing' } | { state: 'error' }> {
   try {
+    // name_ar/name_en are original (pre-migration) columns — safe to include
+    // in degraded mode so audit rows still carry the real user name.
     const result = await createPool().query(
-      'SELECT id, role, status, pin, code FROM employees WHERE id = $1 LIMIT 1',
+      'SELECT id, role, status, pin, code, name_ar, name_en FROM employees WHERE id = $1 LIMIT 1',
       [id]
     );
     const row: any = result?.rows?.[0];

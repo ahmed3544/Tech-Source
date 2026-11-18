@@ -487,7 +487,7 @@ export default function App() {
           </>}
         </div>)}</div>
       </aside>}
-      {showActivityLog && <ActivityLogPanel lang={lang} currentUser={currentUser} onClose={() => setShowActivityLog(false)} />}
+      {showActivityLog && <ActivityLogPanel lang={lang} currentUser={currentUser} employees={employees} shifts={shifts} onClose={() => setShowActivityLog(false)} />}
       {showSheetSync && <SheetSyncPanel lang={lang} currentUser={currentUser} onClose={() => setShowSheetSync(false)} />}
       {showDashboardImport && <DashboardImportPanel lang={lang} currentUser={currentUser} onClose={() => setShowDashboardImport(false)} onImported={() => { try { sessionStorage.setItem('dashboard_import_done', '1'); } catch {} window.setTimeout(() => window.location.reload(), 1800); }} />}
     </div>

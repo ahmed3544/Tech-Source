@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ScrollText, RefreshCw, X } from 'lucide-react';
-import { Employee, Language } from '../types';
+import { Employee, Language, Shift } from '../types';
 import { authHeaders, errorToMessage, extractApiError, parseResponse } from '../utils/errors';
 
 /**
@@ -26,6 +26,11 @@ interface ActivityLogRow {
 interface Props {
   lang: Language;
   currentUser: Employee | null;
+  /** Employees + shifts let the panel translate the raw ids stored in OLD
+   *  log rows ("emp-5021", "shift_xxx") into real names and shift labels;
+   *  new rows already carry employeeName/fromLabel/toLabel inline. */
+  employees?: Employee[];
+  shifts?: Shift[];
   onClose: () => void;
 }
 
@@ -85,8 +90,24 @@ const PERIODS: Array<{ value: string; ar: string; en: string; days: number }> = 
   { value: '30d', ar: 'آخر ٣٠ يوم', en: 'Last 30 days', days: 30 },
 ];
 
+/** Everything describeDetails needs to turn raw ids into readable text. */
+interface DescribeCtx {
+  employeeName: (id: unknown) => string;
+  shiftLabel: (id: unknown) => string | null;
+}
+
+/** One schedule cell value → readable text. `isFrom` distinguishes the
+ *  empty-state wording (old row had nothing vs. cleared now). */
+const cellLabel = (value: unknown, lang: Language, isFrom: boolean, ctx: DescribeCtx): string => {
+  if (value === null || value === undefined || value === '') return isFrom ? (lang === 'ar' ? 'فارغ' : 'empty') : (lang === 'ar' ? 'مسح' : 'cleared');
+  const raw = String(value);
+  if (raw === 'OFF') return lang === 'ar' ? 'راحة' : 'OFF';
+  if (raw === 'WORKING') return lang === 'ar' ? 'حاضر' : 'Working';
+  return ctx.shiftLabel(raw) ?? raw;
+};
+
 /** Short human-readable summary of the JSON details column. */
-const describeDetails = (row: ActivityLogRow, lang: Language): string => {
+const describeDetails = (row: ActivityLogRow, lang: Language, ctx: DescribeCtx): string => {
   if (!row.details) return '';
   try {
     const d = JSON.parse(row.details) as any;
@@ -96,9 +117,17 @@ const describeDetails = (row: ActivityLogRow, lang: Language): string => {
       if (Number.isFinite(d.breakDays) && d.breakDays > 0) bits.push(lang === 'ar' ? `${d.breakDays} يوم بريكات` : `${d.breakDays} break day(s)`);
       if (Array.isArray(d.items) && d.items.length) {
         bits.push(d.items.slice(0, 3).map((it: any) => {
-          const to = it.to === null ? (lang === 'ar' ? 'مسح' : 'cleared') : String(it.to ?? '');
-          const from = it.from === null ? (lang === 'ar' ? 'فارغ' : 'empty') : String(it.from ?? '');
-          return `${it.date}: ${from}→${to}`;
+          // Swap readability: prefer the server-provided labels; fall back to
+          // resolving ids through the employees/shifts lists (covers old rows).
+          const inlineName = typeof it.employeeName === 'string' && it.employeeName && it.employeeName !== it.employeeId ? it.employeeName : '';
+          const who = inlineName || ctx.employeeName(it.employeeId) || it.employeeId || '';
+          const inlineFrom = typeof it.fromLabel === 'string' && it.fromLabel && it.fromLabel !== it.from ? it.fromLabel : '';
+          const inlineTo = typeof it.toLabel === 'string' && it.toLabel && it.toLabel !== it.to ? it.toLabel : '';
+          const fromLabel = inlineFrom || cellLabel(it.from, lang, true, ctx);
+          const toLabel = inlineTo || cellLabel(it.to, lang, false, ctx);
+          const cell = `${who} (${it.date}): ${fromLabel} → ${toLabel}`;
+          const shadow = [it.shadowingFrom, it.shadowingTo].filter(Boolean).join(lang === 'ar' ? ' ← ' : ' → ');
+          return shadow ? `${cell} · ${shadow}` : cell;
         }).join(' · '));
         if (d.items.length > 3) bits.push(lang === 'ar' ? `+${d.items.length - 3} آخرين` : `+${d.items.length - 3} more`);
       }
@@ -109,7 +138,29 @@ const describeDetails = (row: ActivityLogRow, lang: Language): string => {
     }
     if (row.action.startsWith('break_request') && (d.from !== undefined || d.to !== undefined || d.proposed)) {
       const to = d.to ?? d.proposed ?? '';
-      return [d.from ? `${lang === 'ar' ? 'من' : 'from'} ${d.from}` : '', to ? `${lang === 'ar' ? 'إلى' : 'to'} ${to}` : ''].filter(Boolean).join(' ');
+      const bits = [d.from ? `${lang === 'ar' ? 'من' : 'from'} ${d.from}` : '', to ? `${lang === 'ar' ? 'إلى' : 'to'} ${to}` : ''].filter(Boolean);
+      if (d.reason) bits.unshift(`"${String(d.reason).slice(0, 60)}"`);
+      return bits.join(' ');
+    }
+    if (row.action.startsWith('swap.')) {
+      // Swap flow: who swapped with whom + the outcome. Names resolve through
+      // the employees list so OLD rows (raw ids in details) read fine too.
+      const bits: string[] = [];
+      const reqName = d.requester ? ctx.employeeName(d.requester) : '';
+      const tgtName = d.target ? ctx.employeeName(d.target) : '';
+      if (reqName && tgtName) bits.push(`${reqName} ↔ ${tgtName}`);
+      else if (reqName || tgtName) bits.push(reqName || tgtName);
+      const STATUS_LABELS: Record<string, { ar: string; en: string }> = {
+        approved: { ar: 'معتمد', en: 'approved' },
+        rejected: { ar: 'مرفوض', en: 'rejected' },
+        accepted: { ar: 'وافق الطرف الآخر', en: 'accepted by the other employee' },
+        awaiting_target: { ar: 'بانتظار موافقة الطرف الآخر', en: 'awaiting the other employee' },
+        pending: { ar: 'بانتظار مراجعة الليدر', en: 'awaiting leader review' },
+      };
+      const st = STATUS_LABELS[String(d.newStatus ?? d.status ?? d.targetResponded ?? '')];
+      if (st) bits.push(lang === 'ar' ? st.ar : st.en);
+      if (d.mode === 'direct') bits.push(lang === 'ar' ? 'تبديل مباشر' : 'direct swap');
+      return bits.filter(Boolean).join(' — ');
     }
     if (row.action === 'employee.update' && Array.isArray(d.fields)) {
       return `${lang === 'ar' ? 'الحقول:' : 'Fields:'} ${(d.fields as string[]).slice(0, 6).join(', ')}`;
@@ -131,7 +182,7 @@ const formatTime = (iso: string, lang: Language): string => {
   }
 };
 
-export const ActivityLogPanel: React.FC<Props> = ({ lang, onClose }) => {
+export const ActivityLogPanel: React.FC<Props> = ({ lang, onClose, employees = [], shifts = [] }) => {
   const [rows, setRows] = useState<ActivityLogRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -159,11 +210,39 @@ export const ActivityLogPanel: React.FC<Props> = ({ lang, onClose }) => {
 
   useEffect(() => { void load(); }, [load, reloadTick]);
 
+  // Id → readable-text resolvers (used for both NEW enriched rows and OLD rows).
+  const employeesById = useMemo(() => new Map(employees.map(e => [String(e.id), e])), [employees]);
+  const shiftsById = useMemo(() => new Map(shifts.map(s => [String(s.id), s])), [shifts]);
+  const ctx = useMemo<DescribeCtx>(() => ({
+    employeeName: (id: unknown) => {
+      const key = String(id ?? '').trim();
+      const emp = employeesById.get(key);
+      if (!emp) return key;
+      return lang === 'ar' ? (emp.nameAr || emp.nameEn || key) : (emp.nameEn || emp.nameAr || key);
+    },
+    shiftLabel: (id: unknown) => {
+      const s = shiftsById.get(String(id ?? '').trim());
+      if (!s) return null;
+      const nm = lang === 'ar' ? (s.nameAr || s.nameEn || '') : (s.nameEn || s.nameAr || '');
+      return `${nm ? `${nm} ` : ''}${s.startTime}-${s.endTime}`;
+    },
+  }), [employeesById, shiftsById, lang]);
+
+  /** The actor shown on every row + in the filter dropdown. Old rows stored
+   *  the id as actorName ("emp-002") — resolve the real name from the
+   *  employees list whenever the stored value is missing or just the id. */
+  const actorDisplay = useCallback((row: ActivityLogRow): string => {
+    if (row.actorId === 'system' && (!row.actorName || row.actorName === 'system')) return lang === 'ar' ? 'النظام' : 'System';
+    const stored = (row.actorName || '').trim();
+    if (stored && stored !== row.actorId) return stored;
+    return ctx.employeeName(row.actorId) || row.actorId;
+  }, [ctx, lang]);
+
   const actors = useMemo(() => {
     const map = new Map<string, string>();
-    for (const r of rows) if (!map.has(r.actorId)) map.set(r.actorId, r.actorName || r.actorId);
+    for (const r of rows) if (!map.has(r.actorId)) map.set(r.actorId, actorDisplay(r));
     return Array.from(map.entries());
-  }, [rows]);
+  }, [rows, actorDisplay]);
 
   const visible = useMemo(() => {
     const periodDays = PERIODS.find(p => p.value === period)?.days ?? 0;
@@ -209,11 +288,12 @@ export const ActivityLogPanel: React.FC<Props> = ({ lang, onClose }) => {
             {visible.map(row => {
               const cat = CATEGORY_OF_ACTION(row.action);
               const label = ACTION_LABELS[row.action];
-              const summary = describeDetails(row, lang);
+              const summary = describeDetails(row, lang, ctx);
+              const actorName = actorDisplay(row);
               return <div key={row.id} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-800 dark:bg-slate-800/60">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className={`rounded-lg px-2 py-1 text-[10px] font-black ${CATEGORY_STYLES[cat] || CATEGORY_STYLES.auth}`}>{label ? (lang === 'ar' ? label.ar : label.en) : row.action}</span>
-                  <span className="text-sm font-bold">{row.actorName || row.actorId}</span>
+                  <span className="text-sm font-bold">{actorName}</span>
                   <span className="text-[11px] text-slate-500 dark:text-slate-400">{formatTime(row.createdAt, lang)}</span>
                 </div>
                 {(row.entityLabel || summary) && <div className="mt-1.5 text-xs leading-5 text-slate-600 dark:text-slate-300">

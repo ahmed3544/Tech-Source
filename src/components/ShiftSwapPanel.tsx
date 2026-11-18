@@ -132,7 +132,7 @@ export const ShiftSwapPanel: React.FC<Props> = ({ employees, shifts, assignments
         action,
         entityType: 'swap',
         entityId: request.id,
-        entityLabel: `${request.date}: ${shiftLabel(shifts.find(s => s.id === request.requesterShiftId))} ↔ ${shiftLabel(shifts.find(s => s.id === request.targetShiftId))}`,
+        entityLabel: `${request.date}: ${name(request.requesterId)} ↔ ${name(request.targetEmployeeId)} — ${shiftLabel(shifts.find(s => s.id === request.requesterShiftId))} ↔ ${shiftLabel(shifts.find(s => s.id === request.targetShiftId))}`,
         details: { requester: request.requesterId, target: request.targetEmployeeId, ...extra },
       }),
     }).catch(() => {});
