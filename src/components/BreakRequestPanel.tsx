@@ -23,7 +23,9 @@ const todayKey = () => {
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 const STATUS_CHIP: Record<string, string> = {
+  awaiting_counterpart: 'bg-sky-50 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300',
   pending: 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
+  pending_rtm: 'bg-indigo-50 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300',
   approved: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300',
   rejected: 'bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300',
 };
@@ -36,11 +38,15 @@ export const BreakRequestPanel: React.FC<Props> = ({ employees, currentUser, lan
   const [proposedStart, setProposedStart] = useState('');
   const [proposedEnd, setProposedEnd] = useState('');
   const [reason, setReason] = useState('');
+  // Optional stage-1 counterpart: the colleague this break is swapped WITH.
+  // Empty = a personal break change that goes straight to the team leader.
+  const [counterpartId, setCounterpartId] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   const isManager = ['leader', 'admin', 'company_admin', 'platform_admin'].includes(String(currentUser?.role || ''));
+  const isAdmin = ['admin', 'company_admin', 'platform_admin'].includes(String(currentUser?.role || ''));
   const nameOf = (id: string) => {
     const e = employees.find((x) => x.id === id);
     return e ? (e.code ? `${e.code} - ` : '') + (lang === 'ar' ? e.nameAr || e.nameEn : e.nameEn || e.nameAr) : id;
@@ -88,13 +94,16 @@ export const BreakRequestPanel: React.FC<Props> = ({ employees, currentUser, lan
           proposedStartTime: proposedStart,
           proposedEndTime: proposedEnd,
           reason: reason.trim() || undefined,
+          counterpartEmployeeId: counterpartId || undefined,
         }),
       });
       const data = await parseResponse(response);
       if (response.status === 401) { onAuthFailure?.(); return; }
       if (!response.ok || data?.success === false) throw new Error(extractApiError(data, lang === 'ar' ? 'تعذر إرسال الطلب' : 'Could not submit the request'));
-      setMessage(lang === 'ar' ? `تم إرسال طلب تغيير البريك ليوم ${date}. سيصلك إشعار عند المراجعة.` : `Break change request for ${date} submitted. You will be notified after review.`);
-      setProposedStart(''); setProposedEnd(''); setReason('');
+      setMessage(counterpartId
+        ? (lang === 'ar' ? `تم إرسال طلب تبديل البريك ليوم ${date} للزميل المختار أولًا. بعد موافقته ينتقل للتيم ليدر ثم الإدارة (RTM).` : `Break swap request for ${date} sent to the colleague first. After their approval it goes to the team leader, then RTM.`)
+        : (lang === 'ar' ? `تم إرسال طلب تغيير البريك ليوم ${date}. سيمر عبر التيم ليدر ثم الإدارة (RTM) للموافقة النهائية.` : `Break change request for ${date} submitted. It goes through the team leader, then the final RTM approval.`));
+      setProposedStart(''); setProposedEnd(''); setReason(''); setCounterpartId('');
       await load();
     } catch (err: unknown) {
       setError(errorToMessage(err, lang === 'ar' ? 'تعذر إرسال الطلب' : 'Could not submit the request'));
@@ -114,22 +123,47 @@ export const BreakRequestPanel: React.FC<Props> = ({ employees, currentUser, lan
       const data = await parseResponse(response);
       if (response.status === 401) { onAuthFailure?.(); return; }
       if (!response.ok || data?.success === false) throw new Error(extractApiError(data, lang === 'ar' ? 'تعذر تنفيذ المراجعة' : 'Could not review the request'));
+      const newStatus = String(data?.request?.status ?? '');
       setMessage(action === 'approve'
-        ? (lang === 'ar' ? 'تم اعتماد الطلب وتحديث الجدول وإشعار الموظف.' : 'Request approved: schedule updated and the employee was notified.')
+        ? (newStatus === 'pending_rtm'
+          ? (lang === 'ar' ? 'تم اعتماد الطلب من التيم ليدر — الآن بانتظار الموافقة النهائية من الإدارة (RTM).' : 'Leader approved — now awaiting the final Real Time Management approval.')
+          : (lang === 'ar' ? 'تم الاعتماد النهائي من الإدارة (RTM) وتحديث الجدول وإشعار الموظف.' : 'Final RTM approval: schedule updated and the employee was notified.'))
         : (lang === 'ar' ? 'تم رفض الطلب وإشعار الموظف.' : 'Request rejected and the employee was notified.'));
-      if (action === 'approve') onBreaksApproved?.(request.employeeId, request.date);
+      if (action === 'approve' && newStatus === 'approved') onBreaksApproved?.(request.employeeId, request.date);
       await load();
-      // The review endpoint just resolved (deleted) this reviewer's "طلب تغيير
-      // بريك جديد" notifications server-side — tell the bell/notifications page
-      // in this tab to re-pull immediately so the acted-on request never lingers
-      // there looking like it is still "Pending review" (user report).
-      try { window.dispatchEvent(new CustomEvent('techsource:notifications-changed')); } catch (err: unknown) { /* noop */ }
     } catch (err: unknown) {
       setError(errorToMessage(err, lang === 'ar' ? 'تعذر تنفيذ المراجعة' : 'Could not review the request'));
     } finally { setBusy(false); }
   };
 
-  const statusLabel = (s: string) => s === 'approved' ? (lang === 'ar' ? 'معتمد' : 'Approved') : s === 'rejected' ? (lang === 'ar' ? 'مرفوض' : 'Rejected') : (lang === 'ar' ? 'بانتظار المراجعة' : 'Pending review');
+  /** Stage 1 for break swaps: the addressed colleague accepts or rejects. */
+  const respondAsCounterpart = async (request: BreakChangeRequest, action: 'accept' | 'reject') => {
+    if (!currentUser || busy) return;
+    setError(null); setMessage(null);
+    setBusy(true);
+    try {
+      const response = await fetch('/api/break-request-counterpart', {
+        method: 'POST', credentials: 'include', cache: 'no-store',
+        headers: authHeaders({ 'Content-Type': 'application/json', Accept: 'application/json', 'Cache-Control': 'no-cache' }),
+        body: JSON.stringify({ id: request.id, action }),
+      });
+      const data = await parseResponse(response);
+      if (response.status === 401) { onAuthFailure?.(); return; }
+      if (!response.ok || data?.success === false) throw new Error(extractApiError(data, lang === 'ar' ? 'تعذر تنفيذ المراجعة' : 'Could not review the request'));
+      setMessage(action === 'accept'
+        ? (lang === 'ar' ? 'تم تسجيل موافقتك — الطلب الآن مع التيم ليدر.' : 'Your acceptance was recorded — the request is now with the team leader.')
+        : (lang === 'ar' ? 'تم تسجيل رفضك للتبديل.' : 'You declined the swap.'));
+      await load();
+    } catch (err: unknown) {
+      setError(errorToMessage(err, lang === 'ar' ? 'تعذر تنفيذ المراجعة' : 'Could not review the request'));
+    } finally { setBusy(false); }
+  };
+
+  const statusLabel = (s: string) => s === 'approved' ? (lang === 'ar' ? 'معتمد' : 'Approved')
+    : s === 'rejected' ? (lang === 'ar' ? 'مرفوض' : 'Rejected')
+    : s === 'pending_rtm' ? (lang === 'ar' ? 'بانتظار موافقة الإدارة (RTM)' : 'Awaiting RTM approval')
+    : s === 'awaiting_counterpart' ? (lang === 'ar' ? 'بانتظار موافقة الزميل' : 'Awaiting colleague')
+    : (lang === 'ar' ? 'بانتظار مراجعة التيم ليدر' : 'Awaiting team leader');
 
   return (
     <section className="rounded-2xl border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/50 p-4 space-y-4">
@@ -171,10 +205,20 @@ export const BreakRequestPanel: React.FC<Props> = ({ employees, currentUser, lan
             </label>
             <div className="flex items-end">
               <button type="button" onClick={submit} disabled={busy || !proposedStart || !proposedEnd} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-black text-white hover:bg-emerald-700 disabled:opacity-50">
-                <Send className="h-3.5 w-3.5" />{lang === 'ar' ? 'إرسال الطلب للأدمن' : 'Send to admin'}
+                <Send className="h-3.5 w-3.5" />{lang === 'ar' ? 'إرسال الطلب' : 'Send request'}
               </button>
             </div>
           </div>
+          <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+            {lang === 'ar' ? 'التبديل مع موظف (اختياري — المرحلة الأولى)' : 'Swap with employee (optional — stage 1)'}
+            <select value={counterpartId} onChange={(e) => setCounterpartId(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
+              <option value="">{lang === 'ar' ? 'بدون تبديل مع موظف — يذهب للّيدر مباشرة' : 'No colleague swap — goes straight to the leader'}</option>
+              {employees.filter((e) => e.id !== currentUser?.id && e.status === 'active').map((e) => <option key={e.id} value={e.id}>{e.code ? `${e.code} - ` : ''}{lang === 'ar' ? e.nameAr || e.nameEn : e.nameEn || e.nameAr}</option>)}
+            </select>
+            <span className="mt-1 block text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+              {lang === 'ar' ? 'المراحل: موافقة الزميل (إن وُجد) ← التيم ليدر ← الإدارة (RTM)' : 'Stages: colleague (if selected) → team leader → RTM'}
+            </span>
+          </label>
           {ownBreaksForDate.length > 1 && (
             <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400">
               {lang === 'ar' ? `هذا اليوم فيه ${ownBreaksForDate.length} بريكات — تم تعبئة أول بريك كـ«حالي». اكتب أوقاته يدوياً إن أردت بريكاً آخر.` : `This day has ${ownBreaksForDate.length} breaks — the first one was prefilled as "current". Type its times manually if you meant another one.`}
@@ -202,14 +246,27 @@ export const BreakRequestPanel: React.FC<Props> = ({ employees, currentUser, lan
                   </span>
                 </div>
                 {r.reason && <div className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">{lang === 'ar' ? 'السبب: ' : 'Reason: '}{r.reason}</div>}
+                {r.counterpartEmployeeId && <div className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">{lang === 'ar' ? 'تبديل مع: ' : 'Swap with: '}{nameOf(r.counterpartEmployeeId)}{r.counterpartStatus === 'accepted' ? (lang === 'ar' ? ' — وافق' : ' — accepted') : r.counterpartStatus === 'rejected' ? (lang === 'ar' ? ' — رفض' : ' — declined') : ''}</div>}
                 {r.reviewNotes && <div className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">{lang === 'ar' ? 'ملاحظة المراجع: ' : 'Reviewer note: '}{r.reviewNotes}</div>}
               </div>
               <div className="flex items-center gap-2">
                 <span className={`text-[10px] font-black px-2 py-1 rounded-lg ${STATUS_CHIP[r.status] ?? STATUS_CHIP.pending}`}>{statusLabel(r.status)}</span>
+                {r.status === 'awaiting_counterpart' && r.counterpartEmployeeId === currentUser?.id && (
+                  <>
+                    <button type="button" disabled={busy} onClick={() => respondAsCounterpart(r, 'accept')} className="rounded-lg bg-emerald-50 p-2 text-emerald-700 disabled:opacity-50 dark:bg-emerald-500/15 dark:text-emerald-300" title={lang === 'ar' ? 'موافقة على التبديل' : 'Accept the swap'}><Check className="h-4 w-4" /></button>
+                    <button type="button" disabled={busy} onClick={() => respondAsCounterpart(r, 'reject')} className="rounded-lg bg-rose-50 p-2 text-rose-700 disabled:opacity-50 dark:bg-rose-500/15 dark:text-rose-300" title={lang === 'ar' ? 'رفض التبديل' : 'Decline the swap'}><X className="h-4 w-4" /></button>
+                  </>
+                )}
                 {isManager && r.status === 'pending' && (
                   <>
-                    <button type="button" disabled={busy} onClick={() => review(r, 'approve')} className="rounded-lg bg-emerald-50 p-2 text-emerald-700 disabled:opacity-50 dark:bg-emerald-500/15 dark:text-emerald-300" title={lang === 'ar' ? 'اعتماد وتحديث الجدول' : 'Approve & update schedule'}><Check className="h-4 w-4" /></button>
+                    <button type="button" disabled={busy} onClick={() => review(r, 'approve')} className="rounded-lg bg-emerald-50 p-2 text-emerald-700 disabled:opacity-50 dark:bg-emerald-500/15 dark:text-emerald-300" title={lang === 'ar' ? 'موافقة الليدر — يتحول للإدارة (RTM)' : 'Leader approve — forwards to RTM'}><Check className="h-4 w-4" /></button>
                     <button type="button" disabled={busy} onClick={() => review(r, 'reject')} className="rounded-lg bg-rose-50 p-2 text-rose-700 disabled:opacity-50 dark:bg-rose-500/15 dark:text-rose-300" title={lang === 'ar' ? 'رفض' : 'Reject'}><X className="h-4 w-4" /></button>
+                  </>
+                )}
+                {isAdmin && r.status === 'pending_rtm' && (
+                  <>
+                    <button type="button" disabled={busy} onClick={() => review(r, 'approve')} className="rounded-lg bg-emerald-50 p-2 text-emerald-700 disabled:opacity-50 dark:bg-emerald-500/15 dark:text-emerald-300" title={lang === 'ar' ? 'اعتماد نهائي وتحديث الجدول' : 'Final approval & update schedule'}><Check className="h-4 w-4" /></button>
+                    <button type="button" disabled={busy} onClick={() => review(r, 'reject')} className="rounded-lg bg-rose-50 p-2 text-rose-700 disabled:opacity-50 dark:bg-rose-500/15 dark:text-rose-300" title={lang === 'ar' ? 'رفض نهائي' : 'Final reject'}><X className="h-4 w-4" /></button>
                   </>
                 )}
               </div>

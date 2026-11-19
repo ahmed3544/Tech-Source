@@ -38,8 +38,11 @@ export type NotificationType =
   | 'shift_changed' 
   | 'shift_swap_requested'
   | 'shift_swap_accepted'
+  | 'shift_swap_leader_approved'
   | 'shift_swap_rejected'
   | 'break_request_requested'
+  | 'break_request_counterpart'
+  | 'break_request_leader_approved'
   | 'break_request_approved'
   | 'break_request_rejected'
   | 'admin_notice';
@@ -96,10 +99,14 @@ export interface DailyShiftAssignment {
   updatedAt: string;
 }
 
-export type ShiftSwapStatus = 'awaiting_target' | 'pending' | 'approved' | 'rejected';
+export type ShiftSwapStatus = 'awaiting_target' | 'pending' | 'pending_rtm' | 'approved' | 'rejected';
 
-/** Employee request to move one of their breaks to a new time window. */
-export type BreakChangeStatus = 'pending' | 'approved' | 'rejected';
+/** Employee request to move one of their breaks to a new time window.
+ *  3-stage approval chain (user request):
+ *    awaiting_counterpart → the colleague the requester swaps WITH must accept
+ *    pending              → team leader review
+ *    pending_rtm          → Real Time Management (admins) final approval */
+export type BreakChangeStatus = 'awaiting_counterpart' | 'pending' | 'pending_rtm' | 'approved' | 'rejected';
 
 export interface BreakChangeRequest {
   id: string;
@@ -111,6 +118,15 @@ export interface BreakChangeRequest {
   proposedEndTime: string; // HH:mm
   reason?: string | null;
   status: BreakChangeStatus;
+  /** Optional colleague this break is swapped WITH — stage 1 of the chain:
+   *  they must accept before the team leader sees the request. */
+  counterpartEmployeeId?: string | null;
+  counterpartStatus?: string | null; // awaiting | accepted | rejected
+  counterpartRespondedAt?: string | null;
+  /** Stage-2 reviewer (team leader). reviewedBy/reviewedAt hold the FINAL
+   *  reviewer (Real Time Management). */
+  leaderReviewedBy?: string | null;
+  leaderReviewedAt?: string | null;
   requestedBy?: string | null;
   reviewedBy?: string | null;
   reviewedAt?: string | null;
@@ -130,8 +146,14 @@ export interface ShiftSwapRequest {
   targetWasOff?: boolean;
   status: ShiftSwapStatus;
   createdAt: string;
+  /** Stage-2 reviewer (team leader). reviewedBy/reviewedAt keep the leader
+   *  for history; rtmReviewedBy/rtmReviewedAt hold the final approver. */
   reviewedBy?: string;
   reviewedAt?: string;
+  leaderReviewedBy?: string;
+  leaderReviewedAt?: string;
+  rtmReviewedBy?: string;
+  rtmReviewedAt?: string;
   targetRespondedAt?: string;
 }
 

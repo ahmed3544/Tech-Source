@@ -7,6 +7,7 @@ import {
   canManageEmployee,
   findEmployeeById,
   isManagerRole,
+  isPlatformAdmin,
   requireManager,
   type AuthedEmployee,
 } from './auth.js';
@@ -56,6 +57,11 @@ function serializeRequest(row: any) {
     proposedEndTime: String(row.proposedEndTime),
     reason: row.reason ?? null,
     status: String(row.status ?? 'pending'),
+    counterpartEmployeeId: row.counterpartEmployeeId ?? null,
+    counterpartStatus: row.counterpartStatus ?? null,
+    counterpartRespondedAt: row.counterpartRespondedAt ?? null,
+    leaderReviewedBy: row.leaderReviewedBy ?? null,
+    leaderReviewedAt: row.leaderReviewedAt ?? null,
     requestedBy: row.requestedBy ?? null,
     reviewedBy: row.reviewedBy ?? null,
     reviewedAt: row.reviewedAt ?? null,
@@ -99,15 +105,46 @@ async function notify(recipientId: string, type: string, title: string, message:
   }
 }
 
+const ROLES_LEADER = ['leader'];
+const ROLES_RTM = ['admin', 'company_admin', 'platform_admin'];
+
+/** Stage-2 recipients (team leader review). Scoped to the employee's team
+ *  leader when set; otherwise every leader — Real Time Management (admins)
+ *  only join at the FINAL stage, per the 3-stage approval chain. */
 async function leaderRecipients(employeeId: string): Promise<string[]> {
   const employees = (await db.select().from(schema.employees)) as any[];
   const self = employees.find((e) => clean(e.id) === clean(employeeId));
   const leaderId = clean(self?.teamLeaderId);
   if (leaderId) return [leaderId];
-  return employees
-    .filter((e) => ['leader', 'admin', 'company_admin', 'platform_admin'].includes(clean(e.role)))
+  const leaders = employees
+    .filter((e) => ROLES_LEADER.includes(clean(e.role)) && clean(e.status ?? 'active') === 'active')
     .map((e) => clean(e.id))
     .filter(Boolean);
+  if (leaders.length) return leaders;
+  // No leader accounts at all — fall back to the admins so requests never stall.
+  return employees.filter((e) => ROLES_RTM.includes(clean(e.role))).map((e) => clean(e.id)).filter(Boolean);
+}
+
+/** Stage-3 recipients: Real Time Management = administrator accounts. */
+async function rtmRecipients(): Promise<string[]> {
+  const employees = (await db.select().from(schema.employees)) as any[];
+  return employees
+    .filter((e) => ROLES_RTM.includes(clean(e.role)) && clean(e.status ?? 'active') === 'active')
+    .map((e) => clean(e.id))
+    .filter(Boolean);
+}
+
+/** Stage-2 (team leader) review permission. Team leaders manage their own
+ *  team; employees with NO team_leader_id assigned yet are reviewable by any
+ *  leader so the 3-stage chain never stalls while teams are unassigned.
+ *  Administrator accounts stay admin-managed only. */
+function canReviewAsLeader(manager: AuthedEmployee, target: any): boolean {
+  if (isPlatformAdmin(manager.role)) return true;
+  if (clean(manager.role) !== 'leader') return false;
+  if (!target) return false;
+  if (ROLES_RTM.includes(clean(target.role))) return false;
+  if (clean(target.teamLeaderId) === clean(manager.id) || (manager.teamId && clean(target.teamId) === clean(manager.teamId))) return true;
+  return !clean(target.teamLeaderId);
 }
 
 /** Effective planned breaks for one employee+date: own rows first, then the shift-level fallback. */
@@ -217,22 +254,22 @@ export function registerBreakRequests(app: any) {
       if (employeeIdFilter) {
         const target = await findEmployeeById(employeeIdFilter);
         if (!target) return res.status(404).json({ success: false, error: 'Employee not found.' });
-        const allowed = clean(target.id) === viewer.id || canManageEmployee(viewer, target);
+        const allowed = clean(target.id) === viewer.id || canReviewAsLeader(viewer, target);
         if (!allowed) return res.status(403).json({ success: false, error: 'You can only view your own break requests.' });
         employeeIds = [clean(target.id)];
       } else if (!isManagerRole(viewer.role)) {
         employeeIds = [viewer.id];
       } else if (viewer.role === 'leader') {
         const all = (await db.select().from(schema.employees)) as any[];
-        employeeIds = all.filter((e) => canManageEmployee(viewer, e)).map((e) => clean(e.id));
+        employeeIds = all.filter((e) => canReviewAsLeader(viewer, e)).map((e) => clean(e.id));
       }
 
       // Filter in memory — the requests table stays small and this avoids a
       // drizzle inArray() edge case with empty id lists.
       const rowsRaw = (await db.select().from(schema.breakChangeRequests)) as any[];
       let rows = rowsRaw;
-      if (employeeIds) rows = rows.filter((r) => employeeIds!.includes(clean(r.employeeId)));
-      if (statusFilter && ['pending', 'approved', 'rejected'].includes(statusFilter)) {
+      if (employeeIds) rows = rows.filter((r) => employeeIds!.includes(clean(r.employeeId)) || (clean(r.counterpartEmployeeId) && employeeIds!.includes(clean(r.counterpartEmployeeId))));
+      if (statusFilter && ['awaiting_counterpart', 'pending', 'pending_rtm', 'approved', 'rejected'].includes(statusFilter)) {
         rows = rows.filter((r) => clean(r.status).toLowerCase() === statusFilter);
       }
       if (DATE_RE.test(from)) rows = rows.filter((r) => String(r.date) >= from);
@@ -262,12 +299,24 @@ export function registerBreakRequests(app: any) {
       const proposedStart = clean(body.proposedStartTime);
       const proposedEnd = clean(body.proposedEndTime);
       const reason = clean(body.reason);
+      // Optional stage-1 counterpart: the colleague this break is swapped WITH.
+      // When set, the request goes to THEM first; only after they accept does
+      // it reach the team leader (then Real Time Management for final approval).
+      const counterpartId = clean(body.counterpartEmployeeId);
 
       if (employeeId !== requester.id) {
         const target = await findEmployeeById(employeeId);
         if (!target) return res.status(404).json({ success: false, error: 'Employee not found.' });
         if (!canManageEmployee(requester, target)) {
           return res.status(403).json({ success: false, error: 'You can only request break changes for yourself.' });
+        }
+      }
+      let counterpart: any = null;
+      if (counterpartId) {
+        if (counterpartId === employeeId) return res.status(400).json({ success: false, error: 'The counterpart must be a different employee.' });
+        counterpart = await findEmployeeById(counterpartId);
+        if (!counterpart || clean(counterpart.status ?? 'active') !== 'active') {
+          return res.status(404).json({ success: false, error: 'Counterpart employee not found or inactive.' });
         }
       }
       if (!DATE_RE.test(date)) return res.status(400).json({ success: false, error: 'A valid date (YYYY-MM-DD) is required.' });
@@ -289,8 +338,8 @@ export function registerBreakRequests(app: any) {
 
       const duplicate = (await db.select().from(schema.breakChangeRequests)
         .where(and(eq(schema.breakChangeRequests.employeeId, employeeId), eq(schema.breakChangeRequests.date, date)))) as any[];
-      if (duplicate.some((r) => clean(r.status).toLowerCase() === 'pending')) {
-        return res.status(409).json({ success: false, error: 'There is already a pending break change request for this date.' });
+      if (duplicate.some((r) => ['pending', 'awaiting_counterpart', 'pending_rtm'].includes(clean(r.status).toLowerCase()))) {
+        return res.status(409).json({ success: false, error: 'There is already an open break change request for this date.' });
       }
 
       const now = new Date().toISOString();
@@ -304,7 +353,9 @@ export function registerBreakRequests(app: any) {
         proposedStartTime: proposedStart,
         proposedEndTime: proposedEnd,
         reason: reason || null,
-        status: 'pending',
+        status: counterpart ? 'awaiting_counterpart' : 'pending',
+        counterpartEmployeeId: counterpart ? clean(counterpart.id) : null,
+        counterpartStatus: counterpart ? 'awaiting' : null,
         requestedBy: requester.id,
         createdAt: now,
         updatedAt: now,
@@ -327,16 +378,28 @@ export function registerBreakRequests(app: any) {
       });
 
       const recipients = await leaderRecipients(employeeId);
-      for (const recipientId of recipients) {
-        if (recipientId === requester.id) continue;
+      if (counterpart) {
+        // Stage 1: the colleague swaps WITH the requester — they act first.
         await notify(
-          recipientId,
-          'break_request_requested',
-          'طلب تغيير بريك جديد',
-          `${employeeName} يطلب تغيير البريك ليوم ${date} من ${currentLabel} إلى ${proposedStart}-${proposedEnd}${reason ? `. السبب: ${reason}` : ''}. راجع الطلب من لوحة طلبات الجدول.`,
+          clean(counterpart.id),
+          'break_request_counterpart',
+          'طلب تبديل بريك',
+          `${employeeName} عايز يبدل البريك معاك ليوم ${date} ويحوّله من ${currentLabel} إلى ${proposedStart}-${proposedEnd}${reason ? `. السبب: ${reason}` : ''}. راجع الطلب من لوحة طلبات الجدول ووافق أو ارفض.`,
           employeeId,
           row.id,
         );
+      } else {
+        for (const recipientId of recipients) {
+          if (recipientId === requester.id) continue;
+          await notify(
+            recipientId,
+            'break_request_requested',
+            'طلب تغيير بريك جديد',
+            `${employeeName} يطلب تغيير البريك ليوم ${date} من ${currentLabel} إلى ${proposedStart}-${proposedEnd}${reason ? `. السبب: ${reason}` : ''}. راجع الطلب من لوحة طلبات الجدول.`,
+            employeeId,
+            row.id,
+          );
+        }
       }
 
       res.setHeader('Cache-Control', 'no-store');
@@ -347,7 +410,107 @@ export function registerBreakRequests(app: any) {
     }
   });
 
-  // Admin/leader reviews a request. Approval rewrites that day's breaks.
+  // Stage 1 of the 3-stage chain: the counterpart colleague accepts or rejects
+  // a break swap addressed to them. The requester chose them at submission;
+  // only after they accept does the request reach the team leader.
+  app.post('/api/break-request-counterpart', async (req: any, res: any) => {
+    try {
+      const auth = await authenticateRequest(req);
+      if (auth.ok === false) return res.status(auth.status).json({ success: false, error: auth.error });
+      const viewer: AuthedEmployee = auth.employee;
+
+      const id = clean(req.body?.id);
+      const action = clean(req.body?.action).toLowerCase();
+      if (!id) return res.status(400).json({ success: false, error: 'Request id is required.' });
+      if (!['accept', 'reject'].includes(action)) return res.status(400).json({ success: false, error: "action must be 'accept' or 'reject'." });
+
+      const rows = (await db.select().from(schema.breakChangeRequests).where(eq(schema.breakChangeRequests.id, id))) as any[];
+      const request = rows[0];
+      if (!request) return res.status(404).json({ success: false, error: 'Break change request not found.' });
+      if (clean(request.counterpartEmployeeId) !== viewer.id) {
+        return res.status(403).json({ success: false, error: 'Only the addressed counterpart can respond to this request.' });
+      }
+      if (clean(request.status).toLowerCase() !== 'awaiting_counterpart') {
+        return res.status(409).json({ success: false, error: 'This request is not waiting for the counterpart anymore.' });
+      }
+
+      const now = new Date().toISOString();
+      const accepted = action === 'accept';
+      const nextStatus = accepted ? 'pending' : 'rejected';
+      await db.update(schema.breakChangeRequests).set({
+        status: nextStatus,
+        counterpartStatus: accepted ? 'accepted' : 'rejected',
+        counterpartRespondedAt: now,
+        updatedAt: now,
+      } as any).where(eq(schema.breakChangeRequests.id, id));
+
+      // Their copy of the swap request has been acted on — clean it up.
+      try { await resolveBreakRequestNotifications(String(id), String(request.employeeId), String(request.date)); } catch (resolveError: any) {
+        console.warn('[BREAK-REQUESTS] counterpart notification cleanup failed (ignored):', resolveError?.message || resolveError);
+      }
+
+      const employee = await findEmployeeById(String(request.employeeId));
+      const employeeName = clean(employee?.nameAr) || clean(employee?.nameEn) || String(request.employeeId);
+      const proposedLabel = `${request.proposedStartTime}-${request.proposedEndTime}`;
+      const viewerName = clean((viewer as any).nameAr) || clean((viewer as any).nameEn) || viewer.id;
+
+      logActivity({
+        actorId: viewer.id,
+        actorName: (viewer as any).nameAr || (viewer as any).nameEn || viewer.id,
+        actorRole: isManagerRole(viewer.role) ? 'leader' : 'employee',
+        action: accepted ? 'break_request.counterpart_accept' : 'break_request.counterpart_reject',
+        entityType: 'break_request',
+        entityId: String(id),
+        entityLabel: `${clean(employee?.code) || String(request.employeeId)} — ${employeeName} — ${String(request.date)}`,
+        details: { counterpart: viewer.id, proposed: proposedLabel },
+      });
+
+      if (accepted) {
+        for (const recipientId of await leaderRecipients(String(request.employeeId))) {
+          if (recipientId === viewer.id) continue;
+          await notify(
+            recipientId,
+            'break_request_requested',
+            'طلب تغيير بريك جديد',
+            `${employeeName} يطلب تغيير البريك ليوم ${request.date} إلى ${proposedLabel}، والزميل ${viewerName} وافق على التبديل. راجع الطلب من لوحة طلبات الجدول.`,
+            String(request.employeeId),
+            String(id),
+          );
+        }
+        await notify(
+          String(request.employeeId),
+          'break_request_requested',
+          'وافق الزميل على التبديل',
+          `${viewerName} وافق على تبديل البريك ليوم ${request.date}. الطلب الآن مع التيم ليدر للمراجعة.`,
+          String(request.employeeId),
+          String(id),
+        );
+      } else {
+        await notify(
+          String(request.employeeId),
+          'break_request_rejected',
+          'تم رفض تبديل البريك من الزميل',
+          `${viewerName} رفض تبديل البريك ليوم ${request.date} (المقترح ${proposedLabel}).`,
+          String(request.employeeId),
+          String(id),
+        );
+      }
+
+      const updatedRows = (await db.select().from(schema.breakChangeRequests).where(eq(schema.breakChangeRequests.id, id))) as any[];
+      res.setHeader('Cache-Control', 'no-store');
+      return res.json({ success: true, request: serializeRequest(updatedRows[0] ?? { ...request, status: nextStatus }) });
+    } catch (error: any) {
+      console.error('[BREAK-REQUESTS] counterpart review failed:', error?.message || error);
+      return res.status(500).json({ success: false, error: 'Could not review the break swap as the counterpart.' });
+    }
+  });
+
+  // Stage 2 (team leader) + stage 3 (Real Time Management) reviews.
+  //   status 'pending'    + any manager → approve moves to 'pending_rtm',
+  //                                        reject ends the request.
+  //   status 'pending_rtm' + admins only → approve APPLIES the break change
+  //                                        to the schedule (final approval);
+  //                                        leaders get 403 here.
   app.post('/api/break-request-review', async (req: any, res: any) => {
     try {
       const manager = await requireManager(req, (status, body) => res.status(status).json(body));
@@ -362,17 +525,98 @@ export function registerBreakRequests(app: any) {
       const rows = (await db.select().from(schema.breakChangeRequests).where(eq(schema.breakChangeRequests.id, id))) as any[];
       const request = rows[0];
       if (!request) return res.status(404).json({ success: false, error: 'Break change request not found.' });
-      if (clean(request.status).toLowerCase() !== 'pending') {
+      const currentStatus = clean(request.status).toLowerCase();
+      if (currentStatus === 'awaiting_counterpart') {
+        return res.status(409).json({ success: false, error: 'The request is still waiting for the counterpart employee to accept.' });
+      }
+      if (currentStatus !== 'pending' && currentStatus !== 'pending_rtm') {
         return res.status(409).json({ success: false, error: 'This request was already reviewed.' });
       }
       const target = await findEmployeeById(String(request.employeeId));
       if (!target) return res.status(404).json({ success: false, error: 'Employee not found.' });
-      if (!canManageEmployee(manager, target)) {
+
+      // Stage-3 requests are decided ONLY by Real Time Management (admins).
+      const isRtmStage = currentStatus === 'pending_rtm';
+      if (isRtmStage) {
+        if (!isPlatformAdmin(manager.role)) {
+          return res.status(403).json({ success: false, error: 'Final approval belongs to Real Time Management only.' });
+        }
+      } else if (!canReviewAsLeader(manager, target)) {
         return res.status(403).json({ success: false, error: 'You can only review break change requests for your own team.' });
       }
 
       const now = new Date().toISOString();
       const approved = action === 'approve';
+      const proposedLabel = `${request.proposedStartTime}-${request.proposedEndTime}`;
+      const requesterLabel = `${clean(target.code) || String(request.employeeId)} — ${clean(target.nameAr) || clean(target.nameEn) || String(request.employeeId)} — ${String(request.date)}`;
+      const requesterName = clean(target.nameAr) || clean(target.nameEn) || String(request.employeeId);
+      const managerName = clean((manager as any).nameAr) || clean((manager as any).nameEn) || manager.id;
+
+      // STAGE 2 (team leader approve): route to Real Time Management — the
+      // schedule is NOT touched until the final RTM approval. An ADMIN is
+      // Real Time Management: their approval IS the final decision and
+      // applies immediately (the chain exists to gate agents through the
+      // leader first, not to make RTM click twice).
+      if (approved && !isRtmStage && !isPlatformAdmin(manager.role)) {
+        await db.update(schema.breakChangeRequests).set({
+          status: 'pending_rtm',
+          leaderReviewedBy: manager.id,
+          leaderReviewedAt: now,
+          reviewNotes: reviewNotes || null,
+          updatedAt: now,
+        } as any).where(eq(schema.breakChangeRequests.id, id));
+
+        // The leader acted — clean up the leader-side "new request" copies.
+        try { await resolveBreakRequestNotifications(String(id), String(request.employeeId), String(request.date)); } catch (resolveError: any) {
+          console.warn('[BREAK-REQUESTS] reviewer notification cleanup failed (ignored):', resolveError?.message || resolveError);
+        }
+
+        logActivity({
+          actorId: manager.id,
+          actorName: (manager as any).nameAr || (manager as any).nameEn || manager.id,
+          actorRole: manager.role,
+          action: 'break_request.approve',
+          entityType: 'break_request',
+          entityId: String(id),
+          entityLabel: requesterLabel,
+          details: { proposed: proposedLabel, stage: 'leader', newStatus: 'pending_rtm', reviewNotes: reviewNotes || null },
+        });
+
+        for (const recipientId of await rtmRecipients()) {
+          await notify(
+            recipientId,
+            'break_request_leader_approved',
+            'طلب بريك بانتظار موافقتكم النهائية',
+            `وافق التيم ليدر (${managerName}) على طلب تغيير البريك ليوم ${request.date} إلى ${proposedLabel}. بانتظار الموافقة النهائية من إدارة Real Time Management.`,
+            String(request.employeeId),
+            String(id),
+          );
+        }
+        await notify(
+          String(request.employeeId),
+          'break_request_leader_approved',
+          'وافق التيم ليدر على طلب البريك',
+          `وافق التيم ليدر على تغيير بريكك ليوم ${request.date} إلى ${proposedLabel}. الطلب الآن قيد الموافقة النهائية من الإدارة (RTM).`,
+          String(request.employeeId),
+          String(id),
+        );
+        if (clean(request.counterpartEmployeeId)) {
+          await notify(
+            clean(request.counterpartEmployeeId),
+            'break_request_leader_approved',
+            'وافق التيم ليدر على تبديل البريك',
+            `وافق التيم ليدر على تبديل البريك مع ${requesterName} ليوم ${request.date}. الطلب قيد الموافقة النهائية من الإدارة (RTM).`,
+            String(request.employeeId),
+            String(id),
+          );
+        }
+
+        const leaderRows = (await db.select().from(schema.breakChangeRequests).where(eq(schema.breakChangeRequests.id, id))) as any[];
+        res.setHeader('Cache-Control', 'no-store');
+        return res.json({ success: true, request: serializeRequest(leaderRows[0] ?? { ...request, status: 'pending_rtm' }) });
+      }
+
+      // STAGE 3 (RTM approve) applies the change; any reject ends the flow.
       let savedBreaks: any[] | null = null;
       let approvedDay: string | null = null;
       let sheetPush: SheetPushResult | null = null;
@@ -456,8 +700,6 @@ export function registerBreakRequests(app: any) {
         sheetPush = await pushSheetSnapshot('break-request-approved');
       }
 
-      const proposedLabel = `${request.proposedStartTime}-${request.proposedEndTime}`;
-
       logActivity({
         actorId: manager.id,
         actorName: (manager as any).nameAr || (manager as any).nameEn || manager.id,
@@ -465,26 +707,45 @@ export function registerBreakRequests(app: any) {
         action: approved ? 'break_request.approve' : 'break_request.reject',
         entityType: 'break_request',
         entityId: String(id),
-        entityLabel: `${clean(target.code) || String(request.employeeId)} — ${clean(target.nameAr) || clean(target.nameEn) || String(request.employeeId)} — ${String(request.date)}`,
-        details: { proposed: proposedLabel, reviewNotes: reviewNotes || null },
+        entityLabel: requesterLabel,
+        details: { proposed: proposedLabel, stage: isPlatformAdmin(manager.role) ? 'rtm' : 'leader', reviewNotes: reviewNotes || null },
       });
 
       if (approved) {
         await notify(
           String(request.employeeId),
           'break_request_approved',
-          'تمت الموافقة على تغيير البريك',
-          `تم اعتماد تغيير البريك ليوم ${request.date}: البريك الآن ${proposedLabel}. تم تحديث جدولك.`,
+          'تم اعتماد تغيير البريك نهائياً',
+          `تم اعتماد تغيير البريك نهائياً من إدارة Real Time Management ليوم ${request.date}: البريك الآن ${proposedLabel}. تم تحديث جدولك.`,
           String(request.employeeId),
         );
+        if (clean(request.counterpartEmployeeId)) {
+          await notify(
+            clean(request.counterpartEmployeeId),
+            'break_request_approved',
+            'تم اعتماد تبديل البريك نهائياً',
+            `تم اعتماد تبديل البريك مع ${requesterName} ليوم ${request.date} (${proposedLabel}) من إدارة Real Time Management.`,
+            String(request.employeeId),
+          );
+        }
       } else {
+        const rejectedBy = isRtmStage ? 'إدارة Real Time Management' : 'التيم ليدر';
         await notify(
           String(request.employeeId),
           'break_request_rejected',
           'تم رفض طلب تغيير البريك',
-          `تم رفض طلب تغيير البريك ليوم ${request.date} (المقترح ${proposedLabel}).${reviewNotes ? ` السبب: ${reviewNotes}` : ''}`,
+          `تم رفض طلب تغيير البريك من ${rejectedBy} ليوم ${request.date} (المقترح ${proposedLabel}).${reviewNotes ? ` السبب: ${reviewNotes}` : ''}`,
           String(request.employeeId),
         );
+        if (clean(request.counterpartEmployeeId)) {
+          await notify(
+            clean(request.counterpartEmployeeId),
+            'break_request_rejected',
+            'تم رفض تبديل البريك',
+            `تم رفض تبديل البريك مع ${requesterName} ليوم ${request.date} من ${rejectedBy}.`,
+            String(request.employeeId),
+          );
+        }
       }
       res.setHeader('Cache-Control', 'no-store');
       return res.json({ success: true, request: updated, ...(savedBreaks ? { breaks: savedBreaks } : {}), ...(sheetPush ? { sheetSync: { pushed: sheetPush.pushed, skipped: sheetPush.skipped ?? null } } : {}) });

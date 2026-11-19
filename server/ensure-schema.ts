@@ -63,6 +63,12 @@ const SCHEMA_STATEMENTS: string[] = [
       ON break_change_requests (employee_id, date)`,
   `CREATE INDEX IF NOT EXISTS break_change_requests_status_idx
       ON break_change_requests (status)`,
+  // 3-stage approval chain: optional counterpart colleague + leader-stage audit.
+  `ALTER TABLE break_change_requests ADD COLUMN IF NOT EXISTS counterpart_employee_id text`,
+  `ALTER TABLE break_change_requests ADD COLUMN IF NOT EXISTS counterpart_status text`,
+  `ALTER TABLE break_change_requests ADD COLUMN IF NOT EXISTS counterpart_responded_at text`,
+  `ALTER TABLE break_change_requests ADD COLUMN IF NOT EXISTS leader_reviewed_by text`,
+  `ALTER TABLE break_change_requests ADD COLUMN IF NOT EXISTS leader_reviewed_at text`,
   `CREATE TABLE IF NOT EXISTS activity_logs (
       id text PRIMARY KEY,
       company_id text,

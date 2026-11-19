@@ -30,6 +30,7 @@ export type ActivityAction =
   | 'schedule.update' | 'schedule.import_excel'
   | 'breaks.update'
   | 'break_request.submit' | 'break_request.approve' | 'break_request.reject'
+  | 'break_request.counterpart_accept' | 'break_request.counterpart_reject'
   | 'swap.submit' | 'swap.accept' | 'swap.reject' | 'swap.approve' | 'swap.cancel' | 'swap.direct'
   | 'auth.login'
   | 'sheet.config' | 'sheet.sync' | 'sheet.sync_failed';

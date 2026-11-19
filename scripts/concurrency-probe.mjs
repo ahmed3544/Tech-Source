@@ -262,7 +262,10 @@ try {
     const [manualRes, reviewRes] = await Promise.all([
       saveBreaks('emp-101', p4Date, p4Manual),
       fetch(`${BASE}/api/break-request-review`, {
-        method: 'POST', headers: leaderHeaders(),
+        // The applying actor in the 3-stage chain is RTM (admin): a LEADER
+        // approval only forwards the request to pending_rtm without touching
+        // the schedule, so the race must use the final approver's headers.
+        method: 'POST', headers: adminHeaders(),
         body: JSON.stringify({ id: requestId, action: 'approve' }),
       }).then(async (r) => ({ status: r.status, body: await r.json().catch(() => null) })),
     ]);

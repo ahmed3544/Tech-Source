@@ -87,7 +87,14 @@ export const breakChangeRequests = pgTable('break_change_requests', {
   proposedStartTime: text('proposed_start_time').notNull(), // HH:mm
   proposedEndTime: text('proposed_end_time').notNull(), // HH:mm
   reason: text('reason'),
-  status: text('status').notNull().default('pending'), // pending | approved | rejected
+  // 3-stage approval chain (user request): optional counterpart colleague
+  // accepts first, then the team leader, then Real Time Management (admins).
+  status: text('status').notNull().default('pending'), // awaiting_counterpart | pending | pending_rtm | approved | rejected
+  counterpartEmployeeId: text('counterpart_employee_id'),
+  counterpartStatus: text('counterpart_status'), // awaiting | accepted | rejected
+  counterpartRespondedAt: text('counterpart_responded_at'),
+  leaderReviewedBy: text('leader_reviewed_by'),
+  leaderReviewedAt: text('leader_reviewed_at'),
   requestedBy: text('requested_by'),
   reviewedBy: text('reviewed_by'),
   reviewedAt: text('reviewed_at'),

@@ -42,6 +42,10 @@ async function emitForSync(body:any) {
   if (!requestedLeaves.length && !requestedOvertimes.length && !requestedSwaps.length) return;
   const employees = await db.select().from(schema.employees);
   const leaders = employees.filter((e:any) => e.role === 'leader' || e.role === 'admin').map((e:any) => String(e.id));
+  // Stage-2 (team leader) recipients: leader accounts only — Real Time
+  // Management (admins) join at the FINAL stage of the 3-stage chain.
+  const leaderStage = employees.filter((e:any) => e.role === 'leader').map((e:any) => String(e.id));
+  const rtm = employees.filter((e:any) => e.role === 'admin' || e.role === 'company_admin' || e.role === 'platform_admin').map((e:any) => String(e.id));
   const employeeName = (id:string) => { const e:any = employees.find((x:any) => String(x.id) === id); return clean(e?.nameAr) || clean(e?.nameEn) || id; };
 
   for (const r of requestedLeaves) {
@@ -83,19 +87,28 @@ async function emitForSync(body:any) {
     const date = clean(r.date);
     if (status === 'awaiting_target') await insertNotification(targetId, 'shift_swap_requested', 'طلب تبديل شفت جديد', `${employeeName(requesterId)} أرسل لك طلب تبديل شفت ليوم ${date}. راجع الطلب واضغط موافقة أو رفض.`, requesterId, undefined, undefined, id);
     else if (status === 'pending') {
-      const leaderId = clean((employees as any[]).find((e:any) => String(e.id) === requesterId)?.teamLeaderId); const recipients = leaderId ? [leaderId] : leaders;
+      // Stage 2: team leader review. Scoped to the requester's team leader when
+      // set, otherwise the leader accounts (admins are stage 3 = RTM).
+      const leaderId = clean((employees as any[]).find((e:any) => String(e.id) === requesterId)?.teamLeaderId);
+      const recipients = leaderId ? [leaderId] : (leaderStage.length ? leaderStage : leaders);
       for (const recipientId of recipients) if (recipientId !== requesterId && recipientId !== targetId) await insertNotification(recipientId, 'shift_swap_accepted', 'تمت الموافقة على Swap', `${employeeName(targetId)} وافق على تبديل الشفت مع ${employeeName(requesterId)} ليوم ${date}. أصبح الطلب جاهزًا لمراجعة الليدر.`, requesterId, undefined, undefined, id);
       // The target just acted on the swap — their "new swap request" copy is
       // answered and must not keep showing as pending.
       await resolveReviewerNotifications('relatedShiftSwapId', id, ['shift_swap_requested']);
+    } else if (status === 'pending_rtm') {
+      // Stage 3: the leader approved — Real Time Management (admins) decide last.
+      for (const recipientId of rtm) if (recipientId !== requesterId && recipientId !== targetId) await insertNotification(recipientId, 'shift_swap_leader_approved', 'تبديل شفت بانتظار موافقتكم النهائية', `وافق التيم ليدر على تبديل الشفت بين ${employeeName(requesterId)} و ${employeeName(targetId)} ليوم ${date}. بانتظار الموافقة النهائية من إدارة Real Time Management.`, requesterId, undefined, undefined, id);
+      await insertNotification(requesterId, 'shift_swap_leader_approved', 'وافق التيم ليدر على التبديل', `وافق التيم ليدر على تبديل الشفت مع ${employeeName(targetId)} ليوم ${date}. الطلب الآن قيد الموافقة النهائية من الإدارة (RTM).`, requesterId, undefined, undefined, id);
+      // The leader acted — their "ready for review" copy is answered.
+      await resolveReviewerNotifications('relatedShiftSwapId', id, ['shift_swap_accepted']);
     } else if (status === 'approved') {
       await insertNotification(requesterId, 'shift_changed', 'تم اعتماد تبديل الشفت', `تم اعتماد تبديل الشفت مع ${employeeName(targetId)} ليوم ${date}.`, requesterId, undefined, undefined, id);
       await insertNotification(targetId, 'shift_changed', 'تم اعتماد تبديل الشفت', `تم اعتماد تبديل الشفت مع ${employeeName(requesterId)} ليوم ${date}.`, targetId, undefined, undefined, id);
-      await resolveReviewerNotifications('relatedShiftSwapId', id, ['shift_swap_requested', 'shift_swap_accepted']);
+      await resolveReviewerNotifications('relatedShiftSwapId', id, ['shift_swap_requested', 'shift_swap_accepted', 'shift_swap_leader_approved']);
     } else if (status === 'rejected') {
       await insertNotification(requesterId, 'shift_swap_rejected', 'تم رفض طلب تبديل الشفت', `تم رفض طلب تبديل الشفت ليوم ${date}.`, requesterId, undefined, undefined, id);
       await insertNotification(targetId, 'shift_swap_rejected', 'تم رفض طلب تبديل الشفت', `تم رفض طلب تبديل الشفت ليوم ${date}.`, targetId, undefined, undefined, id);
-      await resolveReviewerNotifications('relatedShiftSwapId', id, ['shift_swap_requested', 'shift_swap_accepted']);
+      await resolveReviewerNotifications('relatedShiftSwapId', id, ['shift_swap_requested', 'shift_swap_accepted', 'shift_swap_leader_approved']);
     }
   }
 }

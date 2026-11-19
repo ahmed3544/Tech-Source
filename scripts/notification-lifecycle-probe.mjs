@@ -193,27 +193,43 @@ try {
     check('resurrected reviewer row stays invisible (read sweep guard)', !resurrected, types(targetNotifs2b));
   }
 
-  // Step 3: leader approves (ShiftSwapPanel.review path: /api/schedule-sync for rows, then /api/sync with the full array)
+  // Step 3a: leader approves (ShiftSwapPanel.review path — STAGE 2). No
+  // schedule write: the request routes to Real Time Management (pending_rtm).
+  const swapRtm = { ...swapPending, status: 'pending_rtm', reviewedBy: 'emp-011', leaderReviewedBy: 'emp-011', reviewedAt: new Date().toISOString() };
+  const rtmRes = await post('/api/sync', { shiftSwapRequests: [swapRtm], notifications: [] });
+  check('leader approval (pending_rtm) via /api/sync', rtmRes?.success === true);
+  await new Promise((r) => setTimeout(r, 800));
+  const leaderNotifs3a = await getNotifs('emp-011');
+  check('leader shift_swap_accepted resolved after leader approval', !leaderNotifs3a.some((n) => n.type === 'shift_swap_accepted' || n.type === 'shift_swap_requested'), types(leaderNotifs3a));
+  const adminNotifs3a = await getNotifs('emp-002');
+  check('RTM got shift_swap_leader_approved', adminNotifs3a.some((n) => n.type === 'shift_swap_leader_approved'), types(adminNotifs3a));
+  const reqNotifs3a = await getNotifs('emp-101');
+  check('requester told the swap is with RTM', reqNotifs3a.some((n) => n.type === 'shift_swap_leader_approved'), types(reqNotifs3a));
+
+  // Step 3b: RTM (emp-002) FINAL approval (ShiftSwapPanel.reviewRtm path):
+  // schedule rows via /api/schedule-sync, then /api/sync 'approved'.
   const adminAuth = auth('emp-002', '1234');
   const dataNow = await fetch(`${BASE}/api/data`).then(j);
   const rowA = (dataNow.dailyShiftAssignments || []).find((x) => x.employeeId === 'emp-101' && x.date === D);
   const rowB = (dataNow.dailyShiftAssignments || []).find((x) => x.employeeId === 'emp-102' && x.date === D);
   const nextA = { ...rowA, shiftId: 'shift-eve', isOffDay: false, assignedBy: 'emp-002', updatedAt: new Date().toISOString() };
   const nextB = { ...rowB, shiftId: 'shift-1', isOffDay: false, assignedBy: 'emp-002', updatedAt: new Date().toISOString() };
-  const swapApproved = { ...swapPending, status: 'approved', reviewedBy: 'emp-002' };
+  const swapApproved = { ...swapRtm, status: 'approved', rtmReviewedBy: 'emp-002', reviewedAt: new Date().toISOString() };
   const schedRes = await post('/api/schedule-sync', { dailyShiftAssignments: [nextA, nextB], syncTimestamp: new Date().toISOString(), source: 'shift-swap' }, adminAuth);
-  check('leader swap rows via /api/schedule-sync', schedRes?.success === true, `status=${schedRes?.success}`);
+  check('RTM swap rows via /api/schedule-sync', schedRes?.success === true, `status=${schedRes?.success}`);
   const apprRes = await post('/api/sync', { shiftSwapRequests: [swapApproved], notifications: [] });
-  check('leader approval via /api/sync', apprRes?.success === true);
+  check('RTM final approval via /api/sync', apprRes?.success === true);
   await new Promise((r) => setTimeout(r, 800));
 
   const leaderNotifs3 = await getNotifs('emp-011');
-  check('leader shift_swap_accepted resolved after approval', !leaderNotifs3.some((n) => n.type === 'shift_swap_accepted' || n.type === 'shift_swap_requested'), types(leaderNotifs3));
+  check('leader reviewer copies resolved after final approval', !leaderNotifs3.some((n) => n.type === 'shift_swap_accepted' || n.type === 'shift_swap_requested' || n.type === 'shift_swap_leader_approved'), types(leaderNotifs3));
+  const adminNotifs3b = await getNotifs('emp-002');
+  check('RTM shift_swap_leader_approved resolved after final approval', !adminNotifs3b.some((n) => n.type === 'shift_swap_leader_approved'), types(adminNotifs3b));
   const reqNotifs3 = await getNotifs('emp-101');
   check('requester got shift_changed', reqNotifs3.some((n) => n.type === 'shift_changed'), types(reqNotifs3));
   const targetNotifs3 = await getNotifs('emp-102');
   check('target got shift_changed', targetNotifs3.some((n) => n.type === 'shift_changed'), types(targetNotifs3));
-  check('no reviewer-type residue for target after approval', !targetNotifs3.some((n) => ['shift_swap_requested', 'shift_swap_accepted'].includes(n.type)), types(targetNotifs3));
+  check('no reviewer-type residue for target after approval', !targetNotifs3.some((n) => ['shift_swap_requested', 'shift_swap_accepted', 'shift_swap_leader_approved'].includes(n.type)), types(targetNotifs3));
 
   // ============ BREAK FLOW ============
   const brkAuth = auth('emp-101', '1234');

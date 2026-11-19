@@ -654,7 +654,7 @@ await test('Duplicate pending request for the same date → 409', async () => {
     date: '2026-11-03', proposedStartTime: '14:00', proposedEndTime: '15:00',
   } });
   assert.equal(r.status, 409);
-  assert.match(r.json?.error, /pending/);
+  assert.match(r.json?.error, /open/);
 });
 await test('Break request validation: end before start → 400, identical to current → 400', async () => {
   const bad = await call('POST', '/api/break-request', { headers: auth('emp-b', '2222'), body: { date: '2026-11-04', proposedStartTime: '14:00', proposedEndTime: '13:00' } });
@@ -670,18 +670,27 @@ await test('Plain employee cannot review requests → 403', async () => {
   const r = await call('POST', '/api/break-request-review', { headers: auth('emp-b', '2222'), body: { id: pendingId, action: 'approve' } });
   assert.equal(r.status, 403);
 });
-await test('Team leader approval rewrites the day breaks + notifies the employee', async () => {
+await test('Team leader approval routes to RTM; final RTM approval rewrites the day breaks + notifies everyone', async () => {
   const pendingId = (await row(`SELECT id FROM break_change_requests WHERE employee_id = 'emp-a' AND status = 'pending' AND date = '2026-11-03'`))[0].id;
-  const r = await call('POST', '/api/break-request-review', { headers: auth('leader-1', 'lead123'), body: { id: pendingId, action: 'approve' } });
+  const leaderRes = await call('POST', '/api/break-request-review', { headers: auth('leader-1', 'lead123'), body: { id: pendingId, action: 'approve' } });
+  assert.equal(leaderRes.status, 200);
+  assert.equal(leaderRes.json?.request?.status, 'pending_rtm', 'leader approval forwards the request to Real Time Management');
+  assert.equal(leaderRes.json?.request?.leaderReviewedBy, 'leader-1');
+  const untouched = await row(`SELECT start_time, end_time FROM employee_breaks WHERE employee_id = 'emp-a' AND date = '2026-11-03'`);
+  assert.equal(untouched.length, 1);
+  assert.equal(untouched[0].start_time, '12:00', 'the leader approval alone must NOT touch the schedule yet');
+  const rtmNotif = await row(`SELECT id FROM notifications WHERE recipient_id = 'admin-1' AND type = 'break_request_leader_approved'`);
+  assert.ok(rtmNotif.length >= 1, 'Real Time Management must be told the leader approved');
+  const r = await call('POST', '/api/break-request-review', { headers: auth('admin-1', '1234'), body: { id: pendingId, action: 'approve' } });
   assert.equal(r.status, 200);
   assert.equal(r.json?.request?.status, 'approved');
-  assert.equal(r.json?.request?.reviewedBy, 'leader-1');
+  assert.equal(r.json?.request?.reviewedBy, 'admin-1');
   const breaks = await row(`SELECT start_time, end_time FROM employee_breaks WHERE employee_id = 'emp-a' AND date = '2026-11-03' ORDER BY start_time`);
   assert.equal(breaks.length, 1);
   assert.equal(breaks[0].start_time, '13:00');
   assert.equal(breaks[0].end_time, '14:00');
   const notif = await row(`SELECT id FROM notifications WHERE recipient_id = 'emp-a' AND type = 'break_request_approved'`);
-  assert.ok(notif.length >= 1, 'employee should receive an approval notification');
+  assert.ok(notif.length >= 1, 'employee should receive the final approval notification');
 });
 await test('Reviewing an already-reviewed request → 409', async () => {
   const approvedId = (await row(`SELECT id FROM break_change_requests WHERE employee_id = 'emp-a' AND status = 'approved'`))[0].id;
@@ -694,6 +703,10 @@ await test('Leader outside the team cannot review → 403; admin approval adds b
   assert.equal(created.status, 201);
   const outsiderId = created.json?.employee?.id as string;
   outsiderEmployeeId = outsiderId;
+  // The outsider belongs to ANOTHER leader — leader-1 must stay locked out
+  // (employees with no team_leader_id at all are reviewable by any leader so
+  // the 3-stage chain never stalls while teams are unassigned).
+  await client.query(`UPDATE employees SET team_leader_id = 'leader-other' WHERE id = '${outsiderId}'`);
   const submitted = await call('POST', '/api/break-request', { headers: auth(outsiderId, '9009'), body: {
     date: '2026-11-04', proposedStartTime: '10:00', proposedEndTime: '10:30', reason: 'No stored break yet',
   } });
@@ -767,13 +780,19 @@ await test('Break request submit tags the leader notification with the request i
   assert.match(mine[0].message, /ليوم 2026-11-20 من/);
 });
 
-await test('Approving the request deletes the reviewer notification (all copies) and keeps the employee outcome', async () => {
+await test('Leader approval resolves the reviewer copy and routes to RTM; RTM final approval keeps the employee outcome', async () => {
   const pendingId = (await row(`SELECT id FROM break_change_requests WHERE employee_id = 'emp-a' AND date = '2026-11-20' AND status = 'pending'`))[0].id;
   const before = await reviewerNotifs();
   assert.equal(before.length, 1);
-  const r = await call('POST', '/api/break-request-review', { headers: auth('leader-1', 'lead123'), body: { id: pendingId, action: 'approve' } });
+  const leaderRes = await call('POST', '/api/break-request-review', { headers: auth('leader-1', 'lead123'), body: { id: pendingId, action: 'approve' } });
+  assert.equal(leaderRes.status, 200);
+  assert.equal((await reviewerNotifs()).length, 0, 'reviewer copy must be resolved on the leader approval');
+  const routedNotif = await row(`SELECT id FROM notifications WHERE recipient_id = 'emp-a' AND type = 'break_request_leader_approved'`);
+  assert.ok(routedNotif.length >= 1, 'employee must be told the request is now with RTM');
+  const midStatus = (await row(`SELECT status FROM break_change_requests WHERE id = '${pendingId}'`))[0].status;
+  assert.equal(midStatus, 'pending_rtm');
+  const r = await call('POST', '/api/break-request-review', { headers: auth('admin-1', '1234'), body: { id: pendingId, action: 'approve' } });
   assert.equal(r.status, 200);
-  assert.equal((await reviewerNotifs()).length, 0, 'reviewer copy must be resolved on approval');
   const employeeNotif = await row(`SELECT id FROM notifications WHERE recipient_id = 'emp-a' AND type = 'break_request_approved'`);
   assert.ok(employeeNotif.length >= 1, 'employee outcome notification must survive');
   const status = (await row(`SELECT status FROM break_change_requests WHERE id = '${pendingId}'`))[0].status;
@@ -817,6 +836,46 @@ await test('Legacy reviewer notification (no request link) is resolved by the em
   const r = await call('POST', '/api/break-request-review', { headers: auth('leader-1', 'lead123'), body: { id: pendingId, action: 'approve' } });
   assert.equal(r.status, 200);
   assert.equal((await reviewerNotifs()).length, 0, 'legacy fallback must resolve the untagged copy too');
+});
+
+await test('Break swap with counterpart walks the full 3-stage chain', async () => {
+  // Stage 0: emp-a submits a break swap addressed to emp-b.
+  const submitted = await call('POST', '/api/break-request', { headers: auth('emp-a', 'new-pin-9'), body: {
+    date: '2026-12-02', currentStartTime: '12:00', currentEndTime: '13:00', proposedStartTime: '14:00', proposedEndTime: '14:30', counterpartEmployeeId: 'emp-b',
+  } });
+  assert.equal(submitted.status, 200);
+  assert.equal(submitted.json?.request?.status, 'awaiting_counterpart');
+  assert.equal(submitted.json?.request?.counterpartEmployeeId, 'emp-b');
+  const swapId = submitted.json.request.id;
+  const counterpartNotif = await row(`SELECT id FROM notifications WHERE recipient_id = 'emp-b' AND type = 'break_request_counterpart'`);
+  assert.ok(counterpartNotif.length >= 1, 'the addressed colleague must be notified first');
+  // The team leader cannot review it while the counterpart has not answered.
+  const early = await call('POST', '/api/break-request-review', { headers: auth('leader-1', 'lead123'), body: { id: swapId, action: 'approve' } });
+  assert.equal(early.status, 409);
+  // A non-counterpart employee cannot answer for the addressed colleague.
+  const wrongResponder = await call('POST', '/api/break-request-counterpart', { headers: auth('emp-a', 'new-pin-9'), body: { id: swapId, action: 'accept' } });
+  assert.ok([403, 409].includes(wrongResponder.status), 'only the addressed counterpart can respond');
+  // Stage 1: emp-b accepts → the request moves to the team leader.
+  const accepted = await call('POST', '/api/break-request-counterpart', { headers: auth('emp-b', '2222'), body: { id: swapId, action: 'accept' } });
+  assert.equal(accepted.status, 200);
+  assert.equal(accepted.json?.request?.status, 'pending');
+  assert.equal(accepted.json?.request?.counterpartStatus, 'accepted');
+  const leaderNotif = await row(`SELECT id FROM notifications WHERE recipient_id = 'leader-1' AND type = 'break_request_requested' AND related_break_request_id = '${swapId}'`);
+  assert.ok(leaderNotif.length >= 1, 'the leader is notified after the counterpart accepts');
+  // Stage 2: leader approve → pending_rtm (schedule untouched).
+  const leaderRes = await call('POST', '/api/break-request-review', { headers: auth('leader-1', 'lead123'), body: { id: swapId, action: 'approve' } });
+  assert.equal(leaderRes.status, 200);
+  assert.equal(leaderRes.json?.request?.status, 'pending_rtm');
+  // Stage 3: RTM final approval applies the break change.
+  const rtm = await call('POST', '/api/break-request-review', { headers: auth('admin-1', '1234'), body: { id: swapId, action: 'approve' } });
+  assert.equal(rtm.status, 200);
+  assert.equal(rtm.json?.request?.status, 'approved');
+  const breaks = await row(`SELECT start_time, end_time FROM employee_breaks WHERE employee_id = 'emp-a' AND date = '2026-12-02'`);
+  assert.equal(breaks.length, 1);
+  assert.equal(breaks[0].start_time, '14:00');
+  assert.equal(breaks[0].end_time, '14:30');
+  const counterpartOutcome = await row(`SELECT id FROM notifications WHERE recipient_id = 'emp-b' AND type = 'break_request_approved'`);
+  assert.ok(counterpartOutcome.length >= 1, 'the counterpart hears the final outcome too');
 });
 
 await test('GET /api/notifications sweeps stale reviewer notifications and keeps genuinely pending ones', async () => {
@@ -873,6 +932,17 @@ await test('Leader approval deletes the reviewer copy and notifies both employee
     const outcome = await row(`SELECT id FROM notifications WHERE recipient_id = '${employee}' AND type = 'shift_changed' AND related_shift_swap_id = 'swap-test-1'`);
     assert.equal(outcome.length, 1, `${employee} must keep the shift_changed outcome`);
   }
+});
+
+await test('Leader approval (pending_rtm) notifies RTM and resolves the leader copy', async () => {
+  await call('POST', '/api/sync', { body: { shiftSwapRequests: [swapPayload('swap-test-3', 'awaiting_target', '2026-12-01')], lastUpdated: Date.now() } });
+  await call('POST', '/api/sync', { body: { shiftSwapRequests: [swapPayload('swap-test-3', 'pending', '2026-12-01')], lastUpdated: Date.now() } });
+  const r = await call('POST', '/api/sync', { body: { shiftSwapRequests: [swapPayload('swap-test-3', 'pending_rtm', '2026-12-01')], lastUpdated: Date.now() } });
+  assert.equal(r.status, 200);
+  const rtmCopy = await row(`SELECT id FROM notifications WHERE recipient_id = 'admin-1' AND type = 'shift_swap_leader_approved' AND related_shift_swap_id = 'swap-test-3'`);
+  assert.equal(rtmCopy.length, 1, 'Real Time Management must be told the leader approved');
+  const leaderCopy = await row(`SELECT id FROM notifications WHERE recipient_id = 'leader-1' AND type = 'shift_swap_accepted' AND related_shift_swap_id = 'swap-test-3'`);
+  assert.equal(leaderCopy.length, 0, 'the leader acted — their copy must be resolved');
 });
 
 await test('Rejected swap resolves every reviewer copy', async () => {
