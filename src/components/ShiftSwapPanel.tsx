@@ -171,7 +171,7 @@ export const ShiftSwapPanel: React.FC<Props> = ({ employees, shifts, assignments
     if (!mine && !isOff(currentUser.id, date)) return;
     if (!theirs && !isOff(targetId, date)) return;
     if (isOff(currentUser.id, date) && isOff(targetId, date)) return;
-    const exists = requests.some(r => ['awaiting_target', 'pending'].includes(r.status) && r.date === date && ((r.requesterId === currentUser.id && r.targetEmployeeId === targetId) || (r.requesterId === targetId && r.targetEmployeeId === currentUser.id)));
+    const exists = requests.some(r => ['awaiting_target', 'pending', 'pending_rtm'].includes(r.status) && r.date === date && ((r.requesterId === currentUser.id && r.targetEmployeeId === targetId) || (r.requesterId === targetId && r.targetEmployeeId === currentUser.id)));
     if (exists) return;
     const now = new Date().toISOString();
     const req: ShiftSwapRequest = { id: `swap-${Date.now()}-${Math.random().toString(36).slice(2,8)}`, requesterId: currentUser.id, targetEmployeeId: targetId, date, requesterShiftId: mineAssignment.shiftId, targetShiftId: targetAssignment.shiftId, requesterWasOff: isOff(currentUser.id, date), targetWasOff: isOff(targetId, date), status: 'awaiting_target', createdAt: now };
@@ -182,13 +182,46 @@ export const ShiftSwapPanel: React.FC<Props> = ({ employees, shifts, assignments
     setTargetId('');
   };
 
+  /** STAGE 2 — team leader review. Approving does NOT touch the schedule:
+   *  it forwards the request to Real Time Management (admins) for the final
+   *  decision (3-stage chain: agent ↔ agent → leader → RTM). */
   const review = async (request: ShiftSwapRequest, status: 'approved' | 'rejected') => {
     if (!isLeader || request.status !== 'pending') return;
     setLoading(true);
     setActionError('');
     const now = new Date().toISOString();
-    const nextRequests = requests.map(r => r.id === request.id ? { ...r, status, reviewedBy: currentUser?.id, reviewedAt: now } : r);
-    let nextNotifications = notifications;
+    if (status === 'approved') {
+      const nextRequests = requests.map(r => r.id === request.id ? { ...r, status: 'pending_rtm' as const, reviewedBy: currentUser?.id, reviewedAt: now, leaderReviewedBy: currentUser?.id, leaderReviewedAt: now } : r);
+      const rtmRecipients = employees.filter(e => e.role === 'admin' && e.status === 'active').map(e => e.id);
+      const nextNotifications = [...notifications,
+        ...rtmRecipients.filter(id => id !== request.requesterId && id !== request.targetEmployeeId).map(recipientId => makeNotification(recipientId, 'shift_swap_leader_approved', lang === 'ar' ? 'تبديل شفت بانتظار موافقتكم النهائية' : 'Shift swap awaiting your final approval', lang === 'ar' ? `وافق التيم ليدر على تبديل الشفت بين ${name(request.requesterId)} و ${name(request.targetEmployeeId)} ليوم ${request.date}. بانتظار الموافقة النهائية من إدارة Real Time Management.` : `The team leader approved the shift swap between ${name(request.requesterId)} and ${name(request.targetEmployeeId)} for ${request.date}. Awaiting the final Real Time Management approval.`, request.id, now)),
+        makeNotification(request.requesterId, 'shift_swap_leader_approved', lang === 'ar' ? 'وافق التيم ليدر على التبديل' : 'Leader approved the swap', lang === 'ar' ? `وافق التيم ليدر على تبديل الشفت مع ${name(request.targetEmployeeId)} ليوم ${request.date}. الطلب الآن قيد الموافقة النهائية من الإدارة (RTM).` : `The team leader approved your shift swap with ${name(request.targetEmployeeId)} for ${request.date}. It is now awaiting the final Real Time Management approval.`, request.id, now),
+      ];
+      await syncState(nextRequests, nextNotifications);
+      notifyNotificationsChanged();
+      reportActivity('swap.approve', request, { reviewedBy: currentUser?.id, newStatus: 'pending_rtm', stage: 'leader' });
+    } else {
+      const nextRequests = requests.map(r => r.id === request.id ? { ...r, status, reviewedBy: currentUser?.id, reviewedAt: now } : r);
+      const nextNotifications = [...notifications,
+        makeNotification(request.requesterId, 'shift_swap_rejected', lang === 'ar' ? 'تم رفض تبديل الشفت' : 'Shift Swap Rejected', lang === 'ar' ? `الليدر رفض تبديل الشفت مع ${name(request.targetEmployeeId)} ليوم ${request.date}.` : `The leader rejected the shift swap with ${name(request.targetEmployeeId)} for ${request.date}.`, request.id, now),
+        makeNotification(request.targetEmployeeId, 'shift_swap_rejected', lang === 'ar' ? 'تم رفض تبديل الشفت' : 'Shift Swap Rejected', lang === 'ar' ? `الليدر رفض تبديل الشفت مع ${name(request.requesterId)} ليوم ${request.date}.` : `The leader rejected the shift swap with ${name(request.requesterId)} for ${request.date}.`, request.id, now)
+      ];
+      await syncState(nextRequests, nextNotifications);
+      notifyNotificationsChanged();
+      reportActivity('swap.reject', request, { reviewedBy: currentUser?.id, newStatus: 'rejected', stage: 'leader' });
+    }
+    setLoading(false);
+  };
+
+  /** STAGE 3 — Real Time Management (admins) final decision. Approval here
+   *  is what actually exchanges the two shifts on the schedule. An admin may
+   *  also finalize straight from 'pending' (RTM is the top authority — same
+   *  rule as the break chain); leaders only forward to RTM. */
+  const reviewRtm = async (request: ShiftSwapRequest, status: 'approved' | 'rejected') => {
+    if (!isAdmin || !['pending', 'pending_rtm'].includes(request.status)) return;
+    setLoading(true);
+    setActionError('');
+    const now = new Date().toISOString();
     if (status === 'approved') {
       const nextAssignments = [...assignments];
       const a = nextAssignments.findIndex(x => key(x.employeeId, x.date) === key(request.requesterId, request.date));
@@ -204,16 +237,19 @@ export const ShiftSwapPanel: React.FC<Props> = ({ employees, shifts, assignments
       }
       nextAssignments[a] = { ...requesterCurrent, shiftId: request.targetShiftId, isOffDay: request.targetWasOff ?? ['__OFF__', 'OFF', 'off'].includes(String(request.targetShiftId)), assignedBy: currentUser?.id, updatedAt: now };
       nextAssignments[b] = { ...targetCurrent, shiftId: request.requesterShiftId, isOffDay: request.requesterWasOff ?? ['__OFF__', 'OFF', 'off'].includes(String(request.requesterShiftId)), assignedBy: currentUser?.id, updatedAt: now };
-      nextNotifications = [...notifications,
-        makeNotification(request.requesterId, 'shift_changed', lang === 'ar' ? 'تم اعتماد تبديل الشفت' : 'Shift Swap Approved', lang === 'ar' ? `تم اعتماد تبديل الشفت مع ${name(request.targetEmployeeId)} ليوم ${request.date}. شفتك الآن ${shiftName(request.targetShiftId)}.` : `Your shift swap with ${name(request.targetEmployeeId)} for ${request.date} was approved. Your new shift is ${shiftName(request.targetShiftId)}.`, request.id, now),
-        makeNotification(request.targetEmployeeId, 'shift_changed', lang === 'ar' ? 'تم اعتماد تبديل الشفت' : 'Shift Swap Approved', lang === 'ar' ? `تم اعتماد تبديل الشفت مع ${name(request.requesterId)} ليوم ${request.date}. شفتك الآن ${shiftName(request.requesterShiftId)}.` : `Your shift swap with ${name(request.requesterId)} for ${request.date} was approved. Your new shift is ${shiftName(request.requesterShiftId)}.`, request.id, now)
+      const nextRequests = requests.map(r => r.id === request.id ? { ...r, status: 'approved' as const, rtmReviewedBy: currentUser?.id, rtmReviewedAt: now } : r);
+      const nextNotifications = [...notifications,
+        makeNotification(request.requesterId, 'shift_changed', lang === 'ar' ? 'تم اعتماد تبديل الشفت' : 'Shift Swap Approved', lang === 'ar' ? `تم اعتماد تبديل الشفت مع ${name(request.targetEmployeeId)} ليوم ${request.date} من إدارة Real Time Management. شفتك الآن ${shiftName(request.targetShiftId)}.` : `Your shift swap with ${name(request.targetEmployeeId)} for ${request.date} received the final Real Time Management approval. Your new shift is ${shiftName(request.targetShiftId)}.`, request.id, now),
+        makeNotification(request.targetEmployeeId, 'shift_changed', lang === 'ar' ? 'تم اعتماد تبديل الشفت' : 'Shift Swap Approved', lang === 'ar' ? `تم اعتماد تبديل الشفت مع ${name(request.requesterId)} ليوم ${request.date} من إدارة Real Time Management. شفتك الآن ${shiftName(request.requesterShiftId)}.` : `Your shift swap with ${name(request.requesterId)} for ${request.date} received the final Real Time Management approval. Your new shift is ${shiftName(request.requesterShiftId)}.`, request.id, now),
+        ...(request.leaderReviewedBy ? [makeNotification(request.leaderReviewedBy, 'shift_changed', lang === 'ar' ? 'تم اعتماد التبديل من الإدارة' : 'Swap finally approved', lang === 'ar' ? `اعتمدت إدارة Real Time Management تبديل الشفت بين ${name(request.requesterId)} و ${name(request.targetEmployeeId)} ليوم ${request.date} ونُفّذ على الجدول.` : `Real Time Management approved and applied the shift swap between ${name(request.requesterId)} and ${name(request.targetEmployeeId)} for ${request.date}.`, request.id, now)] : []),
       ];
       // THE FIX for "بعد الاسواب مايتعمل الشفت مش بيتبدل": the swapped rows
       // MUST go through the dedicated permission-checked /api/schedule-sync
       // endpoint. The legacy /api/sync silently STRIPS dailyShiftAssignments
       // (server/schedule-sync-guard.ts: "the dedicated /api/schedule-sync
       // endpoint is the only schedule writer"), so approvals posted there
-      // saved the request status but threw the shift change away.
+      // saved the request status but threw the shift change away. Only admins
+      // reach this stage, so the write passes the manager/team checks.
       const swapRes = await fetch('/api/schedule-sync', {
         method: 'POST', credentials: 'include', cache: 'no-store',
         headers: authHeaders({ 'Content-Type': 'application/json', Accept: 'application/json' }),
@@ -226,20 +262,22 @@ export const ShiftSwapPanel: React.FC<Props> = ({ employees, shifts, assignments
       }
       const swapData = await swapRes.json().catch(() => null);
       if (Array.isArray(swapData?.dailyShiftAssignments)) { try { localStorage.setItem('daily_shift_assignments', JSON.stringify(swapData.dailyShiftAssignments)); } catch {} }
-      await syncState(nextRequests, nextNotifications);
+      await syncState(nextRequests, nextNotifications, nextAssignments);
       // The schedule rows just changed server-side — ask the app to re-pull
       // /api/data so the grid shows the swap immediately (no page refresh).
       window.dispatchEvent(new CustomEvent('techsource:assignments-changed'));
       notifyNotificationsChanged();
+      reportActivity('swap.approve', request, { reviewedBy: currentUser?.id, newStatus: 'approved', stage: 'rtm' });
     } else {
-      nextNotifications = [...notifications,
-        makeNotification(request.requesterId, 'shift_swap_rejected', lang === 'ar' ? 'تم رفض تبديل الشفت' : 'Shift Swap Rejected', lang === 'ar' ? `الليدر رفض تبديل الشفت مع ${name(request.targetEmployeeId)} ليوم ${request.date}.` : `The leader rejected the shift swap with ${name(request.targetEmployeeId)} for ${request.date}.`, request.id, now),
-        makeNotification(request.targetEmployeeId, 'shift_swap_rejected', lang === 'ar' ? 'تم رفض تبديل الشفت' : 'Shift Swap Rejected', lang === 'ar' ? `الليدر رفض تبديل الشفت مع ${name(request.requesterId)} ليوم ${request.date}.` : `The leader rejected the shift swap with ${name(request.requesterId)} for ${request.date}.`, request.id, now)
+      const nextRequests = requests.map(r => r.id === request.id ? { ...r, status, rtmReviewedBy: currentUser?.id, rtmReviewedAt: now } : r);
+      const nextNotifications = [...notifications,
+        makeNotification(request.requesterId, 'shift_swap_rejected', lang === 'ar' ? 'تم رفض تبديل الشفت' : 'Shift Swap Rejected', lang === 'ar' ? `إدارة Real Time Management رفضت تبديل الشفت مع ${name(request.targetEmployeeId)} ليوم ${request.date}.` : `Real Time Management rejected the shift swap with ${name(request.targetEmployeeId)} for ${request.date}.`, request.id, now),
+        makeNotification(request.targetEmployeeId, 'shift_swap_rejected', lang === 'ar' ? 'تم رفض تبديل الشفت' : 'Shift Swap Rejected', lang === 'ar' ? `إدارة Real Time Management رفضت تبديل الشفت مع ${name(request.requesterId)} ليوم ${request.date}.` : `Real Time Management rejected the shift swap with ${name(request.requesterId)} for ${request.date}.`, request.id, now),
       ];
       await syncState(nextRequests, nextNotifications);
       notifyNotificationsChanged();
+      reportActivity('swap.reject', request, { reviewedBy: currentUser?.id, newStatus: 'rejected', stage: 'rtm' });
     }
-    reportActivity(status === 'approved' ? 'swap.approve' : 'swap.reject', request, { reviewedBy: currentUser?.id, newStatus: status });
     setLoading(false);
   };
 
@@ -295,7 +333,9 @@ export const ShiftSwapPanel: React.FC<Props> = ({ employees, shifts, assignments
     : requests.filter(r => r.requesterId === currentUser?.id || r.targetEmployeeId === currentUser?.id);
 
   return <section className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-4 space-y-4">
-    <div className="flex items-center gap-2"><ArrowLeftRight className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /><h4 className="text-sm font-black text-slate-900 dark:text-white dark:text-slate-100">{lang === 'ar' ? 'تبديل الشفت' : 'Shift Swap'}</h4></div>
+    <div className="flex flex-wrap items-center gap-2"><ArrowLeftRight className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /><h4 className="text-sm font-black text-slate-900 dark:text-white dark:text-slate-100">{lang === 'ar' ? 'تبديل الشفت' : 'Shift Swap'}</h4>
+      <span className="rounded-full bg-slate-200/70 px-2.5 py-1 text-[10px] font-black text-slate-600 dark:bg-slate-700/60 dark:text-slate-300">{lang === 'ar' ? 'المراحل: موافقة الزميل ← التيم ليدر ← الإدارة (RTM)' : 'Stages: colleague → team leader → RTM'}</span>
+    </div>
     {actionError && <div className="rounded-xl border border-rose-300 bg-rose-50 dark:border-rose-500/40 dark:bg-rose-500/10 px-3 py-2 text-xs font-bold text-rose-700 dark:text-rose-300">{actionError}</div>}
     {isAdmin && <div className="space-y-3 rounded-xl border-2 border-indigo-300 bg-indigo-50/70 p-3 dark:border-indigo-500/40 dark:bg-indigo-500/10">
       <div className="flex items-center gap-2 text-xs font-black text-indigo-800 dark:text-indigo-200"><Zap className="h-4 w-4" />{lang === 'ar' ? 'تبديل مباشر للشيفتات (أدمن فقط) — بدون طلب أو موافقة الإدارة' : 'Direct shift swap (admin only) — no request or approval needed'}</div>
@@ -330,9 +370,10 @@ export const ShiftSwapPanel: React.FC<Props> = ({ employees, shifts, assignments
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
           <div className="min-w-0"><div className="text-xs font-black text-slate-900 dark:text-white dark:text-slate-100">{name(r.requesterId)} ↔ {name(r.targetEmployeeId)}</div><div className="text-[11px] text-slate-500 mt-1 dark:text-slate-400">{r.date} · {r.requesterWasOff ? 'OFF' : shiftName(r.requesterShiftId)} ↔ {r.targetWasOff ? 'OFF' : shiftName(r.targetShiftId)}</div></div>
           <div className="flex items-center gap-2">
-            <span className={`text-[10px] font-black px-2 py-1 rounded-lg ${r.status === 'approved' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' : r.status === 'rejected' ? 'bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300' : 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300'}`}>{r.status === 'approved' ? (lang === 'ar' ? 'معتمد' : 'Approved') : r.status === 'rejected' ? (lang === 'ar' ? 'مرفوض' : 'Rejected') : (lang === 'ar' ? 'موافقة الليدر مطلوبة' : 'Leader approval required')}</span>
+            <span className={`text-[10px] font-black px-2 py-1 rounded-lg ${r.status === 'approved' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' : r.status === 'rejected' ? 'bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300' : r.status === 'pending_rtm' ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300' : 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300'}`}>{r.status === 'approved' ? (lang === 'ar' ? 'معتمد' : 'Approved') : r.status === 'rejected' ? (lang === 'ar' ? 'مرفوض' : 'Rejected') : r.status === 'pending_rtm' ? (lang === 'ar' ? 'بانتظار موافقة الإدارة (RTM)' : 'RTM approval required') : r.status === 'awaiting_target' ? (lang === 'ar' ? 'بانتظار موافقة الزميل' : 'Awaiting colleague') : (lang === 'ar' ? 'موافقة الليدر مطلوبة' : 'Leader approval required')}</span>
             {!isLeader && r.targetEmployeeId === currentUser?.id && r.status === 'awaiting_target' && <><button disabled={loading} type="button" onClick={() => respondAsTarget(r.id, 'accepted')} className="p-2 rounded-lg bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300" title={lang === 'ar' ? 'موافقة' : 'Accept'}><Check className="w-4 h-4" /></button><button disabled={loading} type="button" onClick={() => respondAsTarget(r.id, 'rejected')} className="p-2 rounded-lg bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300" title={lang === 'ar' ? 'رفض' : 'Reject'}><X className="w-4 h-4" /></button></>}
-            {isLeader && r.status === 'pending' && <><button disabled={loading} type="button" onClick={() => review(r, 'approved')} className="p-2 rounded-lg bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300" title={lang === 'ar' ? 'اعتماد' : 'Approve'}><Check className="w-4 h-4" /></button><button disabled={loading} type="button" onClick={() => review(r, 'rejected')} className="p-2 rounded-lg bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300" title={lang === 'ar' ? 'رفض' : 'Reject'}><X className="w-4 h-4" /></button></>}
+            {isLeader && !isAdmin && r.status === 'pending' && <><button disabled={loading} type="button" onClick={() => review(r, 'approved')} className="p-2 rounded-lg bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300" title={lang === 'ar' ? 'موافقة الليدر — يتحول للإدارة (RTM)' : 'Leader approve — forwards to RTM'}><Check className="w-4 h-4" /></button><button disabled={loading} type="button" onClick={() => review(r, 'rejected')} className="p-2 rounded-lg bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300" title={lang === 'ar' ? 'رفض' : 'Reject'}><X className="w-4 h-4" /></button></>}
+            {isAdmin && (r.status === 'pending' || r.status === 'pending_rtm') && <><button disabled={loading} type="button" onClick={() => reviewRtm(r, 'approved')} className="p-2 rounded-lg bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300" title={lang === 'ar' ? 'اعتماد نهائي وتنفيذ التبديل' : 'Final approval & apply swap'}><Check className="w-4 h-4" /></button><button disabled={loading} type="button" onClick={() => reviewRtm(r, 'rejected')} className="p-2 rounded-lg bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300" title={lang === 'ar' ? 'رفض نهائي' : 'Final reject'}><X className="w-4 h-4" /></button></>}
           </div>
         </div>
       </div>)}

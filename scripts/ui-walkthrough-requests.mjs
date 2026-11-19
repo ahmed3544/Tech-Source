@@ -100,15 +100,15 @@ await page.locator('input[type="date"]').first().fill(tomorrowKey);
 const timeInputs = page.locator('input[type="time"]');
 await timeInputs.nth(2).fill('14:00'); // proposed from
 await timeInputs.nth(3).fill('14:45'); // proposed to
-await page.getByRole('button', { name: /إرسال الطلب للأدمن|Send to admin/ }).click();
+await page.getByRole('button', { name: /إرسال الطلب|Send request/ }).click();
 await page.waitForSelector('text=/تم إرسال طلب تغيير البريك|submitted/i', { timeout: 15000 });
 check('break change request submitted from UI', true);
-check('pending chip shows', await page.getByText('بانتظار المراجعة', { exact: true }).first().isVisible().catch(() => false));
+check('pending chip shows', await page.getByText(/بانتظار مراجعة|بانتظار المراجعة/i).first().isVisible().catch(() => false));
 
 // ---- Approve it (admin clicks approve on the pending row) ----
-await page.locator('button[title*="اعتماد وتحديث الجدول"], button[title*="Approve & update schedule"]').first().click();
-await page.waitForSelector('text=/تم اعتماد الطلب|Request approved/i', { timeout: 15000 });
-check('approval from UI works (schedule updated + notified)', true);
+await page.locator('button[title*="موافقة الليدر"], button[title*="Leader approve"]').first().click();
+await page.waitForSelector('text=/تم الاعتماد النهائي|تم اعتماد|Request approved|Final RTM/i', { timeout: 15000 });
+check('approval from UI works (admin = RTM final: schedule updated + notified)', true);
 
 // ---- ADMIN DIRECT SWAP ("يسواب الشفت بدون الرجوع للاداره") ----
 // The admin swaps two agents' shifts for a date IMMEDIATELY — no swap
@@ -436,7 +436,7 @@ await page.locator('[data-requests-toggle]').click();
 await page.waitForTimeout(400);
 check('leader can expand the dropdown (swap panel visible)', await page.getByText('تبديل الشفت', { exact: true }).first().isVisible().catch(() => false));
 check('leader does NOT see the direct swap tool (admin-only)', !(await page.locator('[data-direct-swap-apply]').isVisible().catch(() => false)));
-check('leader sees the pending swap approve button', await page.locator('[data-requests-card] button[title="اعتماد"], [data-requests-card] button[title="Approve"]').first().isVisible().catch(() => false));
+check('leader sees the pending swap approve button (forwards to RTM)', await page.locator('[data-requests-card] button[title*="موافقة الليدر"], [data-requests-card] button[title*="Leader approve"]').first().isVisible().catch(() => false));
 await page.screenshot({ path: `${SHOTS}/requests-dropdown-leader.png`, fullPage: false });
 
 // ---- Excel content sanity: open the week workbook with xlsx and inspect rows ----
@@ -469,7 +469,7 @@ check('admin re-login for import', true);
 // /api/sync (which strips schedule rows server-side).
 if (swapState) {
   if (!(await requestsToggle.isVisible().catch(() => false))) { await page.locator('[data-requests-toggle]').click(); await page.waitForTimeout(400); }
-  const approveBtn = page.locator('[data-requests-card] button[title="اعتماد"], [data-requests-card] button[title="Approve"]').first();
+  const approveBtn = page.locator('[data-requests-card] button[title*="اعتماد نهائي"], [data-requests-card] button[title*="Final approval"]').first();
   if (await approveBtn.isVisible().catch(() => false)) {
     await approveBtn.click();
     let landed = false;

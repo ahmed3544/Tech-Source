@@ -57,6 +57,8 @@ const ACTION_LABELS: Record<string, { ar: string; en: string }> = {
   'break_request.submit': { ar: 'طلب تغيير بريك', en: 'Break request sent' },
   'break_request.approve': { ar: 'اعتماد طلب بريك', en: 'Break request approved' },
   'break_request.reject': { ar: 'رفض طلب بريك', en: 'Break request rejected' },
+  'break_request.counterpart_accept': { ar: 'موافقة الزميل على تبديل البريك', en: 'Colleague accepted break swap' },
+  'break_request.counterpart_reject': { ar: 'رفض الزميل تبديل البريك', en: 'Colleague declined break swap' },
   'swap.submit': { ar: 'طلب تبديل شيفت', en: 'Swap requested' },
   'swap.accept': { ar: 'قبول تبديل الشيفت', en: 'Swap accepted' },
   'swap.reject': { ar: 'رفض تبديل الشيفت', en: 'Swap rejected' },
@@ -155,6 +157,8 @@ const describeDetails = (row: ActivityLogRow, lang: Language, ctx: DescribeCtx):
         rejected: { ar: 'مرفوض', en: 'rejected' },
         accepted: { ar: 'وافق الطرف الآخر', en: 'accepted by the other employee' },
         awaiting_target: { ar: 'بانتظار موافقة الطرف الآخر', en: 'awaiting the other employee' },
+        awaiting_counterpart: { ar: 'بانتظار موافقة الزميل', en: 'awaiting the colleague' },
+        pending_rtm: { ar: 'وافق الليدر — بانتظار موافقة الإدارة (RTM)', en: 'leader approved — awaiting RTM' },
         pending: { ar: 'بانتظار مراجعة الليدر', en: 'awaiting leader review' },
       };
       const st = STATUS_LABELS[String(d.newStatus ?? d.status ?? d.targetResponded ?? '')];
