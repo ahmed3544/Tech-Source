@@ -211,6 +211,17 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
   const [cardFlash, setCardFlash] = useState(false);
   const [mobileDayIndex, setMobileDayIndex] = useState(() => new Date().getDay());
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
+  /* Phones shrink the team-day grid's minimum column width so up to 3 agent
+     columns fit the screen WITHOUT horizontal scrolling — at 112px min the
+     grid was 48 + 3×112 = 384px, wider than a phone viewport, so the last
+     agent was always cut off at the edge. */
+  const [narrowScreen, setNarrowScreen] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 640px)').matches);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 640px)');
+    const onChange = () => setNarrowScreen(mq.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
   const [editPanelOpen, setEditPanelOpen] = useState(true);
   // The hide button inside the panel can only manage a LOCAL flag — the open
   // intent itself comes from App via props (externalSettingsOpen).
@@ -1148,9 +1159,9 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
       <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-2 dark:border-slate-700 dark:bg-slate-900/60">
         {viewMode !== 'day' && (
         <div className="flex items-center justify-center gap-2">
-          <button type="button" onClick={() => setWeekStart(addDays(weekStart, -7))} className="shrink-0 rounded-lg border border-slate-300 bg-white p-2 text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800/70" aria-label={lang === 'ar' ? 'الأسبوع السابق' : 'Previous week'}><ChevronRight className="h-4 w-4" /></button>
-          <span data-range-label className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-2 py-2 text-center font-mono text-xs font-black text-slate-800 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100">{toolbarRangeLabel}</span>
-          <button type="button" onClick={() => setWeekStart(addDays(weekStart, 7))} className="shrink-0 rounded-lg border border-slate-300 bg-white p-2 text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800/70" aria-label={lang === 'ar' ? 'الأسبوع التالي' : 'Next week'}><ChevronLeft className="h-4 w-4" /></button>
+          <button type="button" onClick={() => setWeekStart(addDays(weekStart, -7))} className="shrink-0 rounded-lg border border-slate-300 bg-white p-2 text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800/70" aria-label={lang === 'ar' ? 'الأسبوع السابق' : 'Previous week'}>{lang === 'ar' ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}</button>
+          <span data-range-label className="min-w-0 flex-1 truncate whitespace-nowrap rounded-lg border border-slate-300 bg-white px-2 py-2 text-center font-mono text-xs font-black text-slate-800 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100">{toolbarRangeLabel}</span>
+          <button type="button" onClick={() => setWeekStart(addDays(weekStart, 7))} className="shrink-0 rounded-lg border border-slate-300 bg-white p-2 text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800/70" aria-label={lang === 'ar' ? 'الأسبوع التالي' : 'Next week'}>{lang === 'ar' ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}</button>
         </div>
         )}
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1266,16 +1277,19 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
             || String(person.code || '').toLowerCase().includes(q));
         const colCount = Math.max(1, columns.length);
         /* Columns stretch to fill the row width ("اظبط الحجم") — minWidth keeps
-           horizontal scrolling on phones instead of a half-empty desktop grid. */
-        const gridTemplate = `48px repeat(${colCount}, minmax(112px, 1fr))`;
+           horizontal scrolling on phones instead of a half-empty desktop grid.
+           Phones drop the column minimum to 88px so up to 3 agents fit the
+           viewport (48 + 3×88 = 312px ≤ ~336px usable); 4+ columns still scroll. */
+        const colMin = narrowScreen ? 88 : 112;
+        const gridTemplate = `48px repeat(${colCount}, minmax(${colMin}px, 1fr))`;
         const badgeFor = (resolved: ReturnType<typeof resolveDayStatus>) => {
           if (resolved.status === 'working' && resolved.shift) {
             const s = resolved.shift;
             const name = lang === 'ar' ? (s.nameAr || s.name) : (s.nameEn || s.name);
-            return <span data-team-day-badge className="inline-block max-w-[104px] truncate rounded bg-green-500 px-1.5 py-0.5 text-[8px] font-black text-white" title={`${name} ${s.startTime}–${s.endTime}`}>{name}</span>;
+            return <span data-team-day-badge className="inline-block max-w-full truncate rounded bg-green-500 px-1.5 py-0.5 text-[8px] font-black text-white" title={`${name} ${s.startTime}–${s.endTime}`}>{name}</span>;
           }
           const b = TEAM_BADGE[resolved.label] ?? TEAM_BADGE.unassigned;
-          return <span data-team-day-badge className={`inline-block max-w-[104px] truncate rounded px-1.5 py-0.5 text-[8px] font-black ${b.cls}`}>{lang === 'ar' ? b.ar : b.en}</span>;
+          return <span data-team-day-badge className={`inline-block max-w-full truncate rounded px-1.5 py-0.5 text-[8px] font-black ${b.cls}`}>{lang === 'ar' ? b.ar : b.en}</span>;
         };
         const countChips: Array<{ id: string; label: string; value: number; cls: string; dot: string }> = [
           { id: 'working', label: lang === 'ar' ? 'دوام' : 'On shift', value: teamDayCounts.working, cls: 'bg-green-50 text-green-700 dark:bg-green-500/15 dark:text-green-300', dot: 'bg-green-500' },
@@ -1286,14 +1300,22 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
         ];
         return (
           <div data-day-scope={dayScope} className="space-y-2 rounded-xl border border-slate-200 p-2 dark:border-slate-700">
-            {/* Date navigation — prev/next arrows + date picker + scope buttons */}
-            <div className="flex flex-wrap items-center justify-center gap-2">
-              <button type="button" onClick={() => goToDate(addDays(dayDate, -1))} className="shrink-0 rounded-lg border border-slate-300 bg-white p-2 text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800/70" aria-label={lang === 'ar' ? 'اليوم السابق' : 'Previous day'}><ChevronRight className="h-4 w-4" /></button>
-              <span data-team-day-date className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-2 py-2 text-center text-xs font-black text-slate-800 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100">{lang === 'ar' ? day.ar : day.en} · <span dir="ltr" className="font-mono">{fmtDMY(dayDate)}</span></span>
-              <button type="button" onClick={() => goToDate(addDays(dayDate, 1))} className="shrink-0 rounded-lg border border-slate-300 bg-white p-2 text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800/70" aria-label={lang === 'ar' ? 'اليوم التالي' : 'Next day'}><ChevronLeft className="h-4 w-4" /></button>
-              <input type="date" data-team-day-input value={dayViewKey} onChange={e => { if (e.target.value) goToDate(new Date(`${e.target.value}T00:00:00`)); }} aria-label={lang === 'ar' ? 'اختيار التاريخ' : 'Pick a date'} className="h-9 rounded-lg border border-slate-300 bg-white px-2 font-mono text-xs font-black text-slate-800 outline-none focus:border-blue-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100" />
-              <button type="button" data-day-scope-self onClick={() => { setDayScope('self'); goToDate(new Date()); }} className={`shrink-0 rounded-lg px-3 py-2 text-xs font-black transition ${dayScope === 'self' ? 'bg-blue-600 text-white' : 'border border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 dark:border-blue-500/40 dark:bg-blue-500/15 dark:text-blue-300'}`}>{lang === 'ar' ? 'اليوم' : 'Today'}</button>
-              <button type="button" data-day-scope-team onClick={() => setDayScope('team')} className={`shrink-0 rounded-lg px-3 py-2 text-xs font-black transition ${dayScope === 'team' ? 'bg-indigo-600 text-white' : 'border border-indigo-300 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:border-indigo-500/40 dark:bg-indigo-500/15 dark:text-indigo-300'}`}>{lang === 'ar' ? 'ماي اسكدول' : 'My Schedule'}</button>
+            {/* Date navigation — prev/next arrows + date picker + scope buttons.
+                Phones: two stacked rows (stepper / controls) so the squeezed
+                date label never overlaps the arrows or the picker again;
+                ≥sm: dissolve the groups back into ONE wrapped row (sm:contents)
+                exactly like the original desktop layout. */}
+            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-center">
+              <div className="flex items-center gap-2 sm:contents">
+                <button type="button" onClick={() => goToDate(addDays(dayDate, -1))} className="shrink-0 rounded-lg border border-slate-300 bg-white p-2 text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800/70" aria-label={lang === 'ar' ? 'اليوم السابق' : 'Previous day'}>{lang === 'ar' ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}</button>
+                <span data-team-day-date className="min-w-0 flex-1 truncate whitespace-nowrap rounded-lg border border-slate-300 bg-white px-2 py-2 text-center text-xs font-black text-slate-800 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100">{lang === 'ar' ? day.ar : day.en} · <span dir="ltr" className="font-mono">{fmtDMY(dayDate)}</span></span>
+                <button type="button" onClick={() => goToDate(addDays(dayDate, 1))} className="shrink-0 rounded-lg border border-slate-300 bg-white p-2 text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800/70" aria-label={lang === 'ar' ? 'اليوم التالي' : 'Next day'}>{lang === 'ar' ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}</button>
+              </div>
+              <div className="flex flex-wrap items-center justify-center gap-2 sm:contents">
+                <input type="date" data-team-day-input value={dayViewKey} onChange={e => { if (e.target.value) goToDate(new Date(`${e.target.value}T00:00:00`)); }} aria-label={lang === 'ar' ? 'اختيار التاريخ' : 'Pick a date'} className="h-9 min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-2 font-mono text-xs font-black text-slate-800 outline-none focus:border-blue-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 sm:flex-none" />
+                <button type="button" data-day-scope-self onClick={() => { setDayScope('self'); goToDate(new Date()); }} className={`shrink-0 rounded-lg px-3 py-2 text-xs font-black transition ${dayScope === 'self' ? 'bg-blue-600 text-white' : 'border border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 dark:border-blue-500/40 dark:bg-blue-500/15 dark:text-blue-300'}`}>{lang === 'ar' ? 'اليوم' : 'Today'}</button>
+                <button type="button" data-day-scope-team onClick={() => setDayScope('team')} className={`shrink-0 rounded-lg px-3 py-2 text-xs font-black transition ${dayScope === 'team' ? 'bg-indigo-600 text-white' : 'border border-indigo-300 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:border-indigo-500/40 dark:bg-indigo-500/15 dark:text-indigo-300'}`}>{lang === 'ar' ? 'ماي اسكدول' : 'My Schedule'}</button>
+              </div>
             </div>
             {/* Status counts + name search (Teleopti "Search name") — team scope only */}
             {dayScope === 'team' && (
@@ -1308,7 +1330,7 @@ export const WeeklyShiftSchedule: React.FC<WeeklyShiftScheduleProps> = ({
             )}
             {/* Agents side by side: time axis + one column per agent */}
             <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700" dir="ltr">
-              <div style={{ minWidth: 48 + colCount * 112 }}>
+              <div style={{ minWidth: 48 + colCount * colMin }}>
                 <div className="grid border-b border-slate-200 dark:border-slate-700" style={{ gridTemplateColumns: gridTemplate }}>
                   <div className="flex items-end justify-center border-e border-slate-200 bg-slate-50 pb-1 text-center text-[9px] font-black uppercase tracking-wide text-slate-400 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-500">{lang === 'ar' ? 'الوقت' : 'Time'}</div>
                   {columns.map(({ person, resolved }) => {
